@@ -1,4 +1,4 @@
-import type { AccountId, CorrelationId, IdempotencyKey, IsoTime, JobId, Price, ProviderId, Stars } from "../domain.ts";
+import { compareSameAsset, type AccountId, type CorrelationId, type IdempotencyKey, type IsoTime, type JobId, type Price, type ProviderId, type Stars } from "../domain.ts";
 import type { Answer } from "../providers/types.ts";
 import type { PaymentReceipt, Transfer } from "../payment/index.ts";
 
@@ -7,6 +7,7 @@ export type Order = {
   readonly providerId: ProviderId;
   readonly question: string;
   readonly budget: Price;
+  readonly payFrom: AccountId;
 };
 
 export type JobEvent =
@@ -113,6 +114,16 @@ export function reputationOf(states: readonly JobState[]): Reputation {
   return { kind: "rated", completedJobs, ratings, average: sum / ratings };
 }
 
+function receiptMatches(
+  state: { readonly key: IdempotencyKey; readonly quote: Price; readonly payTo: AccountId },
+  receipt: PaymentReceipt,
+): boolean {
+  return receipt.key === state.key
+    && receipt.recipient === state.payTo
+    && receipt.amount.symbol === state.quote.symbol
+    && compareSameAsset(receipt.amount, state.quote) === 0;
+}
+
 function apply(state: JobState, event: JobEvent): JobState | null {
   switch (event.type) {
     case "opened":
@@ -132,7 +143,7 @@ function apply(state: JobState, event: JobEvent): JobState | null {
       return { ...state, correlationId: event.correlationId };
     case "payment-settled":
       if (state.phase !== "paying") return null;
-      if (event.receipt.key !== state.key) return null;
+      if (!receiptMatches(state, event.receipt)) return null;
       return {
         phase: "paid",
         order: state.order,

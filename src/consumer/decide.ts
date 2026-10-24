@@ -78,7 +78,7 @@ function routeSystem(listings: readonly Listing[]): string {
     "Choose who answers the question.",
     "Reply with one JSON object and no other text.",
     'Use {"kind":"outsource","providerId":"...","reason":"..."}, {"kind":"answer-locally","reason":"..."}, or {"kind":"decline","reason":"..."}.',
-    "Outsource when a listed provider holds filed figures you do not.",
+    "Outsource when a listed provider holds private data you do not.",
     "Providers:",
     ...lines,
   ].join("\n");

@@ -13,15 +13,17 @@ export type Runtime = {
 };
 
 export async function createRuntime(config: Config): Promise<Runtime> {
-  const bound = bindProviders(PROVIDERS, config.pricing);
-  if (!Array.isArray(bound)) throw new Error(`missing price for ${bound.missing.join(", ")}`);
+  const bound = bindProviders(PROVIDERS, config.roster, config.near);
+  if (!bound.ok) {
+    throw new Error(`providers do not match the roster. missing: ${bound.missing.join(", ")}. extra: ${bound.extra.join(", ")}`);
+  }
   const rail = await createPaymentRail(config.payment);
   const inference = createInference(config.inference);
   const market = createMarketplace({
     ledger: createFileLedger(config.dataDir),
     rail,
     inference,
-    providers: bound,
+    providers: bound.providers,
     clock() {
       const now = new Date().toISOString();
       if (!isIsoTime(now)) throw new Error("clock produced a bad timestamp");

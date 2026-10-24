@@ -1,18 +1,16 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
-  parseAccountId,
   parseAssetId,
-  parseDecimalAmount,
   parseModelId,
-  parseProviderId,
+  parseParentAccount,
   secret,
-  type AccountId,
+  type AssetId,
   type ModelId,
-  type Price,
-  type ProviderId,
+  type ParentAccount,
   type Secret,
 } from "./domain.ts";
+import { resolveRoster, type Roster } from "./roster.ts";
 
 export type PaymentConfig =
   | { readonly kind: "mock"; readonly root: string; readonly chaos: "none" | "uncertain-once" }
@@ -34,9 +32,10 @@ export type InferenceConfig =
 
 export type Config = {
   readonly dataDir: string;
+  readonly roster: Roster;
+  readonly near: { readonly asset: AssetId; readonly symbol: "NEAR" };
   readonly payment: PaymentConfig;
   readonly inference: InferenceConfig;
-  readonly pricing: ReadonlyMap<ProviderId, { price: Price; payTo: AccountId }>;
 };
 
 export type ConfigError =
@@ -47,13 +46,12 @@ const PAYMENT_ENV = [
   "NEAR_INTENTS_AGENT_API_KEY",
   "INFERPAY_AGENT_ID",
   "INFERPAY_GRANT_TOKEN",
-  "INFERPAY_DISCLOSURE_PAY_TO",
+  "INFERPAY_PARENT_ACCOUNT",
 ];
 
-const DEFAULT_USDC_ASSET = "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near";
+const DEFAULT_NEAR_ASSET = "nep141:wrap.near";
 const DEFAULT_CONSUMER_MODEL = "z-ai/glm-5.2";
 const DEFAULT_PROVIDER_MODEL = "zai-org/GLM-5.1-FP8";
-const DISCLOSURE_AMOUNT = "0.25";
 
 export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } | { ok: false; error: ConfigError } {
   const present = PAYMENT_ENV.filter((name) => filled(env[name]));
@@ -63,16 +61,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   }
 
   const dataDir = resolve(filled(env.INFERPAY_DATA_DIR) ? String(env.INFERPAY_DATA_DIR) : ".inferpay");
-  const asset = parseAssetId(filled(env.INFERPAY_USDC_ASSET) ? String(env.INFERPAY_USDC_ASSET) : DEFAULT_USDC_ASSET);
-  if (!asset) return invalid("INFERPAY_USDC_ASSET", "asset id is empty");
-  const amount = parseDecimalAmount(DISCLOSURE_AMOUNT);
-  const providerId = parseProviderId("disclosure");
-  if (!amount || !providerId) return invalid("INFERPAY_DISCLOSURE_PAY_TO", "built-in disclosure price failed its check");
+  const asset = parseAssetId(filled(env.INFERPAY_NEAR_ASSET) ? String(env.INFERPAY_NEAR_ASSET) : DEFAULT_NEAR_ASSET);
+  if (!asset) return invalid("INFERPAY_NEAR_ASSET", "asset id is empty");
 
   const livePayment = present.length === PAYMENT_ENV.length;
-  const payToRaw = livePayment ? String(env.INFERPAY_DISCLOSURE_PAY_TO) : "disclosure.mock";
-  const payTo = parseAccountId(payToRaw);
-  if (!payTo) return invalid("INFERPAY_DISCLOSURE_PAY_TO", "account id has unexpected characters");
+  let kyleParent: ParentAccount | undefined;
+  if (livePayment) {
+    const parent = parseParentAccount(String(env.INFERPAY_PARENT_ACCOUNT));
+    if (!parent) return invalid("INFERPAY_PARENT_ACCOUNT", "named account must contain a dot, such as alice.near");
+    kyleParent = parent;
+  }
 
   const chaosRaw = env.INFERPAY_MOCK_CHAOS;
   let chaos: "none" | "uncertain-once" = "none";
@@ -105,11 +103,19 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
     };
   }
 
-  const pricing = new Map<ProviderId, { price: Price; payTo: AccountId }>([
-    [providerId, { price: { asset, symbol: "USDC", amount }, payTo }],
-  ]);
+  const resolved = kyleParent === undefined ? resolveRoster() : resolveRoster({ kyleParent });
+  if (!resolved.ok) return invalid(livePayment ? "INFERPAY_PARENT_ACCOUNT" : "roster", resolved.detail);
 
-  return { ok: true, value: { dataDir, payment, inference, pricing } };
+  return {
+    ok: true,
+    value: {
+      dataDir,
+      roster: resolved.roster,
+      near: { asset, symbol: "NEAR" },
+      payment,
+      inference,
+    },
+  };
 }
 
 function filled(value: string | undefined): value is string {

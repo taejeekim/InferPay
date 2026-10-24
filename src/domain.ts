@@ -9,6 +9,7 @@ export type JobId = Brand<string, "JobId">;
 export type IdempotencyKey = Brand<string, "IdempotencyKey">;
 export type CorrelationId = Brand<string, "CorrelationId">;
 export type AccountId = Brand<string, "AccountId">;
+export type ParentAccount = AccountId;
 export type AssetId = Brand<string, "AssetId">;
 export type ModelId = Brand<string, "ModelId">;
 export type IsoTime = Brand<string, "IsoTime">;
@@ -86,6 +87,11 @@ export function isAccountId(value: string): value is AccountId {
 export function parseAccountId(raw: string): AccountId | null {
   if (!isAccountId(raw)) return null;
   return raw;
+}
+
+export function parseParentAccount(raw: string): ParentAccount | null {
+  if (!raw.includes(".")) return null;
+  return parseAccountId(raw);
 }
 
 export function isAssetId(value: string): value is AssetId {

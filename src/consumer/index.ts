@@ -1,4 +1,5 @@
 import { newJobId, type JobId, type Price, type Stars } from "../domain.ts";
+import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
 import type { Answer } from "../providers/types.ts";
@@ -22,7 +23,7 @@ export type AskOutcome =
 export interface ConsumerAgent {
   ask(
     question: string,
-    opts: { readonly budget: Price },
+    opts: { readonly budget: Price; readonly buyer: BuyerSeat },
     onProgress?: (progress: Progress) => void,
   ): Promise<AskOutcome>;
   resume(jobId: JobId, onProgress?: (progress: Progress) => void): Promise<AskOutcome>;
@@ -31,7 +32,7 @@ export interface ConsumerAgent {
 export function createConsumerAgent(deps: { readonly market: Marketplace; readonly inference: Inference }): ConsumerAgent {
   const { market, inference } = deps;
   return {
-    async ask(question, { budget }, onProgress) {
+    async ask(question, { budget, buyer }, onProgress) {
       const listings = await market.listings();
       const routed = await decide(inference, question, listings, budget);
       if (!routed.ok) return { kind: "failed", reason: { kind: "inference", detail: routed.detail } };
@@ -39,7 +40,7 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       if (routed.decision.kind === "answer-locally") return answerLocally(inference, question, routed.decision);
       if (routed.decision.kind === "decline") return { kind: "declined", reason: routed.decision.reason };
       const outcome = await market.hire(
-        { jobId: newJobId(), providerId: routed.decision.providerId, question, budget },
+        { jobId: newJobId(), providerId: routed.decision.providerId, question, budget, payFrom: buyer.account },
         (progress) => onProgress?.(progress),
       );
       if (outcome.kind !== "completed") return fromUnfinished(outcome);

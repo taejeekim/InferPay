@@ -5,6 +5,7 @@ import {
   newJobId,
   parseAssetId,
   parseDecimalAmount,
+  parseParentAccount,
   secret,
 } from "./domain.ts";
 
@@ -16,38 +17,43 @@ test("a secret serializes as redacted and still reveals to its caller", () => {
 });
 
 test("prices in one asset compare as decimals", () => {
-  const asset = parseAssetId("usdc");
-  const low = parseDecimalAmount("0.10");
-  const same = parseDecimalAmount("0.100");
-  const high = parseDecimalAmount("0.25");
+  const asset = parseAssetId("nep141:wrap.near");
+  const low = parseDecimalAmount("0.02");
+  const same = parseDecimalAmount("0.020");
+  const high = parseDecimalAmount("0.03");
   assert.ok(asset && low && same && high);
-  const cheap = { asset, symbol: "USDC", amount: low };
-  const equal = { asset, symbol: "USDC", amount: same };
-  const dear = { asset, symbol: "USDC", amount: high };
+  const cheap = { asset, symbol: "NEAR", amount: low };
+  const equal = { asset, symbol: "NEAR", amount: same };
+  const dear = { asset, symbol: "NEAR", amount: high };
   assert.equal(compareSameAsset(cheap, dear), -1);
   assert.equal(compareSameAsset(dear, cheap), 1);
   assert.equal(compareSameAsset(cheap, equal), 0);
 });
 
 test("prices in different assets are not ordered", () => {
-  const usdc = parseAssetId("usdc");
-  const near = parseAssetId("near");
+  const wrap = parseAssetId("nep141:wrap.near");
+  const other = parseAssetId("nep141:other.near");
   const amount = parseDecimalAmount("1");
-  assert.ok(usdc && near && amount);
+  assert.ok(wrap && other && amount);
   assert.equal(
     compareSameAsset(
-      { asset: usdc, symbol: "USDC", amount },
-      { asset: near, symbol: "NEAR", amount },
+      { asset: wrap, symbol: "NEAR", amount },
+      { asset: other, symbol: "NEAR", amount },
     ),
     "different-asset",
   );
+});
+
+test("a parent account contains a dot", () => {
+  assert.equal(parseParentAccount("alice.near"), "alice.near");
+  assert.equal(parseParentAccount("alice"), null);
 });
 
 test("a new job id sorts by time and rejects a blank amount", () => {
   const earlier = newJobId(1_700_000_000_000);
   const later = newJobId(1_700_000_000_001);
   assert.ok(earlier < later);
-  assert.equal(parseDecimalAmount("0.25"), "0.25");
+  assert.equal(parseDecimalAmount("0.02"), "0.02");
   assert.equal(parseDecimalAmount("1e2"), null);
   assert.equal(parseDecimalAmount("-1"), null);
 });

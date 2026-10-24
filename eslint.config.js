@@ -23,8 +23,26 @@ const disclosureInternals = {
     "**/providers/disclosure/crossValidate*",
     "**/providers/disclosure/facts*",
     "**/providers/disclosure/data/**",
+    "**/legal/flagClauses",
+    "**/legal/flagClauses.ts",
+    "**/legal/playbook",
+    "**/legal/playbook.ts",
+    "**/legal/data",
+    "**/legal/data/*",
+    "**/providers/legal/flagClauses*",
+    "**/providers/legal/playbook*",
+    "**/providers/legal/data/**",
+    "**/insurance/lookup",
+    "**/insurance/lookup.ts",
+    "**/insurance/schedule",
+    "**/insurance/schedule.ts",
+    "**/insurance/data",
+    "**/insurance/data/*",
+    "**/providers/insurance/lookup*",
+    "**/providers/insurance/schedule*",
+    "**/providers/insurance/data/**",
   ],
-  message: "Import the disclosure provider through src/providers/disclosure/index.ts.",
+  message: "Import a specialist through its src/providers/<id>/index.ts.",
 };
 
 function restricted({ sdk, openai }) {
@@ -44,7 +62,7 @@ function restricted({ sdk, openai }) {
   return ["error", { paths, patterns: [marketInternals, disclosureInternals] }];
 }
 
-const brandCasts = ["error",
+const paidCasts = [
   {
     selector: "TSAsExpression > TSTypeReference[typeName.name='PaidOrder']",
     message: "Construct PaidOrder only in src/market/index.ts.",
@@ -52,6 +70,17 @@ const brandCasts = ["error",
   {
     selector: "TSAsExpression > TSTypeReference[typeName.name='CompletedJob']",
     message: "Construct CompletedJob only in src/market/index.ts.",
+  },
+];
+
+const seatCasts = [
+  {
+    selector: "TSAsExpression > TSTypeReference[typeName.name='BuyerSeat']",
+    message: "Construct BuyerSeat only in src/roster.ts.",
+  },
+  {
+    selector: "TSAsExpression > TSTypeReference[typeName.name='ShopSeat']",
+    message: "Construct ShopSeat only in src/roster.ts.",
   },
 ];
 
@@ -73,7 +102,15 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.ts"],
-    ignores: ["src/market/index.ts"],
-    rules: { "no-restricted-syntax": brandCasts },
+    ignores: ["src/market/index.ts", "src/roster.ts"],
+    rules: { "no-restricted-syntax": ["error", ...paidCasts, ...seatCasts] },
+  },
+  {
+    files: ["src/market/index.ts"],
+    rules: { "no-restricted-syntax": ["error", ...seatCasts] },
+  },
+  {
+    files: ["src/roster.ts"],
+    rules: { "no-restricted-syntax": ["error", ...paidCasts] },
   },
 );

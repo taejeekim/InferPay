@@ -7,6 +7,7 @@ import {
   newJobId,
   parseAccountId,
   parseAssetId,
+  parseParentAccount,
   parseDecimalAmount,
   parseIsoTime,
   parseModelId,
@@ -74,7 +75,7 @@ test("an uncertain transfer settles on resume with the same key", async () => {
 test("a quote above the budget writes no job file", async () => {
   const { market, order, root } = await harness("none");
   try {
-    const tight = { ...order, budget: price("0.10") };
+    const tight = { ...order, budget: price("0.01") };
     const outcome = await market.hire(tight);
     assert.equal(outcome.kind, "failed");
     if (outcome.kind !== "failed") return;
@@ -144,6 +145,20 @@ test("a second hire waits while the first still holds the job", async () => {
   }
 });
 
+test("a second hire with a different payer conflicts", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const done = await market.hire(order);
+    assert.equal(done.kind, "completed");
+    const again = await market.hire({ ...order, payFrom: must(parseAccountId("clerk.kyle.near")) });
+    assert.equal(again.kind, "failed");
+    if (again.kind !== "failed") return;
+    assert.equal(again.reason.kind, "order-conflict");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a trailing partial line does not block resume", async () => {
   const { market, order, root } = await harness("none");
   try {
@@ -179,8 +194,9 @@ async function harness(
       provider,
       listing: {
         ...provider.describe,
-        price: price("0.25"),
-        payTo: must(parseAccountId("disclosure.mock")),
+        price: price("0.02"),
+        owner: must(parseParentAccount("david.near")),
+        payTo: must(parseAccountId("disclosure.david.near")),
       },
     }],
     clock: fixedClock,
@@ -190,6 +206,7 @@ async function harness(
 
 function sampleProvider(fulfil?: Provider["fulfil"]): Provider {
   return {
+    quoteNear: must(parseDecimalAmount("0.02")),
     describe: {
       id: must(parseProviderId("disclosure")),
       name: "Disclosure analyst",
@@ -205,7 +222,8 @@ function sampleOrder() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure")),
     question: "Does the filing match?",
-    budget: price("0.50"),
+    budget: price("0.10"),
+    payFrom: must(parseAccountId("researcher.kyle.near")),
   };
 }
 
@@ -220,8 +238,8 @@ function sampleAnswer(): Answer {
 
 function price(amount: string): Price {
   return {
-    asset: must(parseAssetId("usdc")),
-    symbol: "USDC",
+    asset: must(parseAssetId("nep141:wrap.near")),
+    symbol: "NEAR",
     amount: must(parseDecimalAmount(amount)),
   };
 }

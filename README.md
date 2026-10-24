@@ -1,161 +1,290 @@
 # InferPay
 
-A consumer agent can pay a specialist for an answer. The specialist keeps the dataset. The consumer gets the answer and the checks.
+A buyer bot pays a specialist bot in NEAR, then receives an answer and checks. The specialist keeps the dataset.
 
-## The problem
+Kyle has ten buyer bots under `kyle.near`. Stella, Ban, and David each sell one specialty. The default buyer is `researcher.kyle.near`. An Intents grant pays the shop, so you do not sign each hire.
 
-Specialist data is the valuable part of an agent, and sending that data to the caller throws it away. A filings question needs the filing. The caller does not need the rest of the workbook.
+## Try the walkthrough
 
-## The product
-
-InferPay runs that exchange from the command line. One consumer reads a provider list, decides whether to hire, and pays before the provider runs. The provider in this slice is `disclosure`. It answers questions about company filings. Every cited figure is checked against a private dataset in `src/providers/disclosure/data`.
-
-The sample filing is Samsung Electronics Q3 2025. Operating profit is 12.1T KRW. Revenue is 79.1T KRW. `TOLERANCE_PCT` in `src/providers/disclosure/crossValidate.ts` is 0.05, and the unit is percent, so 0.05 percent. A claim of 79.0T KRW is 0.13 percent away from 79.1T KRW, so the check is a mismatch.
-
-The consumer grades the answer from those checks. All matches score 5. Each mismatch subtracts 1, and the score does not go below 1. An answer with no checks scores 3. An unverifiable figure does not subtract. The capex question in the walkthrough scores 5 because the dataset has no capex row.
-
-A job is an append-only file under `.inferpay/jobs`. Reputation is the count of completed jobs and the average of the ratings on those jobs. `npx inferpay providers` recomputes it from the files.
-
-## NEAR Intents and NEAR AI Cloud
-
-NEAR Intents is the payment rail. The live path uses `@near-intents-agent-api/sdk` 0.7.1. `NEAR_INTENTS_AGENT_API_KEY` authenticates the backend. `INFERPAY_GRANT_TOKEN` is the consumer agent's grant. `api.forGrant(token).transfer` sends USDC to `INFERPAY_DISCLOSURE_PAY_TO`. The API counts atomic units. USDC has 6 decimal places, so a price of 0.25 is sent as 250000. The marketplace writes the idempotency key into the job file before the transfer. A retry uses that same key. A new key would be a second payment. This slice does not issue grants and does not sign owner intents. The SDK package requires Node 24.
-
-NEAR AI Cloud is the model API when `NEAR_AI_API_KEY` is set. InferPay uses the OpenAI client at `https://cloud-api.near.ai/v1`. The consumer model picks a provider. The disclosure model must call `cross_validate_numbers`. The checks stored on the job are that tool result. The default consumer model is `z-ai/glm-5.2`. The default provider model is `zai-org/GLM-5.1-FP8`. `NEAR_AI_CONSUMER_MODEL` and `NEAR_AI_PROVIDER_MODEL` override them.
-
-With those keys unset, the same functions run against a mock payment file and recorded fixtures. Both modes write the same job file format.
-
-## Ask on the mock rail
-
-Mock mode runs on Node 22.18 or newer. The transcript below is stdout from one run on Node v22.23.2. Job ids, keys, and correlation ids change on every run. Times in `inferpay job` are UTC.
-
-Install dependencies.
+No API keys. Node 22.18 or newer.
 
 ```sh
 npm install
+npx inferpay wallets
+npx inferpay ask "Does this policy cover an outpatient MRI?" --budget 0.10
 ```
 
-See who is selling. With no keys set, the first line says the mock rail and the stub model are active.
+`wallets` prints the named account tree. The ask pays 0.02 NEAR from `researcher.kyle.near` to `insurance.ban.near` and prints a coverage answer with checks.
+
+The first line of every command names the rails. In this walkthrough that line is `rails: payment=mock inference=stub`.
+
+Film three terminal pictures. Leave the command and the output in the same frame.
+
+1. `npx inferpay wallets`. The picture shows ten bots under `kyle.near` and three shop accounts.
+2. The MRI ask. The picture shows `from researcher.kyle.near`, `to insurance.ban.near`, `via Intents grant`, and `rate 5/5`.
+3. The Samsung ask. The picture shows `to disclosure.david.near`, a revenue mismatch, and `rate 4/5`.
+
+## Read the first line
+
+`payment=mock` writes a local receipt. It does not move mainnet NEAR. The `from`, `to`, and `via` lines are the accounts a live Intents grant would use.
+
+`inference=stub` does not call a model. `src/inference/stub.ts` picks a recorded sentence by keyword. MRI, Samsung filings, and unlimited indemnification are the three recordings. A question outside those keywords fails with `no-fixture`.
+
+The checks under the sentence are not recorded. The specialist tool reads a private JSON file and grades the claim. `coverage.json`, `playbook.json`, and `samsung-q3-2025.json` stay on the specialist.
+
+Set `NEAR_AI_API_KEY` when you want the same tools to run under a model. The client calls `https://cloud-api.near.ai/v1`. The default consumer model is `z-ai/glm-5.2`. The default provider model is `zai-org/GLM-5.1-FP8`. Leave the key unset to keep the recordings.
+
+## Walk through the specialists
+
+`npx inferpay providers` lists the shops. Prices are 0.02 NEAR, 0.03 NEAR, and 0.02 NEAR. A budget of 0.10 NEAR covers each price. A budget of 0.01 NEAR declines and writes no job file.
+
+```sh
+npx inferpay wallets
+```
+
+Picture. Ten Kyle bots and three shops. `researcher.kyle.near` is the default payer. `insurance.ban.near` is Ban's shop.
+
+```
+rails: payment=mock inference=stub
+PERSON  PARENT       BOT         ACCOUNT                ROLE
+kyle    kyle.near    researcher  researcher.kyle.near   default payer
+kyle    kyle.near    writer      writer.kyle.near       payer
+kyle    kyle.near    trader      trader.kyle.near       payer
+kyle    kyle.near    analyst     analyst.kyle.near      payer
+kyle    kyle.near    clerk       clerk.kyle.near        payer
+kyle    kyle.near    scout       scout.kyle.near        payer
+kyle    kyle.near    editor      editor.kyle.near       payer
+kyle    kyle.near    buyer       buyer.kyle.near        payer
+kyle    kyle.near    reviewer    reviewer.kyle.near     payer
+kyle    kyle.near    assistant   assistant.kyle.near    payer
+stella  stella.near  legal       legal.stella.near      specialist
+ban     ban.near     insurance   insurance.ban.near     specialist
+david   david.near   disclosure  disclosure.david.near  specialist
+```
 
 ```sh
 npx inferpay providers
 ```
 
+Picture. Three specialties and their prices. Disclosure and insurance are 0.02 NEAR. Legal is 0.03 NEAR. No jobs yet, so each rating is unrated.
+
 ```
 rails: payment=mock inference=stub
-ID          SPECIALTY                                PRICE      JOBS  RATING
-disclosure  Disclosure analysis, number cross-check  0.25 USDC  0     unrated
+ID          OWNER        PAY TO                 SPECIALTY                                          PRICE      JOBS  RATING
+disclosure  david.near   disclosure.david.near  Disclosure analysis, number cross-check            0.02 NEAR  0     unrated
+legal       stella.near  legal.stella.near      Contract clause review against a private playbook  0.03 NEAR  0     unrated
+insurance   ban.near     insurance.ban.near     Private policy schedule: MRI, copay, exclusions    0.02 NEAR  0     unrated
 ```
 
-Ask a filings question inside a 0.50 USDC budget. The disclosure price is 0.25 USDC.
+Ask the filings specialist.
 
 ```sh
-npx inferpay ask "Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?" --budget 0.50
+npx inferpay ask "What was Samsung's Q3 2025 operating profit?" --budget 0.10
 ```
+
+Picture. 0.02 NEAR moves from `researcher.kyle.near` to `disclosure.david.near` through an Intents grant. Operating profit matches. Revenue mismatches. The score is 4/5.
 
 ```
 rails: payment=mock inference=stub
-decide    outsource to disclosure (needs filing figures the consumer does not hold)
-pay       settled 0.25 USDC -> disclosure.mock (job job_01M5PAE3VXD8N1XM6X379NAN6M, key mock_c5b5426d-66b9-4112-be9b-23643181a243, correlation mock-e5f9) transfer called
+decide    outsource to disclosure
+          why     needs filing figures the consumer does not hold
+pay       settled  0.02 NEAR
+          from    researcher.kyle.near
+          to      disclosure.david.near
+          via     Intents grant
 answer    Operating profit matches across both documents: KRW 12.1T.
 checks    match     operating profit Q3 2025  12.1T KRW   (quarterly report, p.14)
           mismatch  revenue Q3 2025           79.0T KRW   ref 79.1T KRW (-0.13%)
-rate      4/5 (1 of 2 figures needed correction)
+rate      4/5 (1 of 2 checks needed correction)
 ```
 
-The command exits 0. Read the job file. Use the job id from the pay line.
+The sample filing is Samsung Electronics Q3 2025. Operating profit is 12.1T KRW. Revenue is 79.1T KRW. The recorded claim of 79.0T KRW is 0.13 percent away. `TOLERANCE_PCT` in `src/providers/disclosure/crossValidate.ts` is 0.05 percent, so that check is a mismatch.
+
+Ask the playbook specialist.
 
 ```sh
-npx inferpay job job_01M5PAE3VXD8N1XM6X379NAN6M
+npx inferpay ask "Does this NDA's unlimited indemnification clause fail our playbook?" --budget 0.10
 ```
+
+Picture. 0.03 NEAR moves from `researcher.kyle.near` to `legal.stella.near`. The playbook raises uncapped indemnity. The score is 4/5.
 
 ```
 rails: payment=mock inference=stub
-opened            06:44:10 UTC  disclosure  quote 0.25 USDC  budget 0.50 USDC
-payment-intended  06:44:10 UTC  key mock_c5b5426d-66b9-4112-be9b-23643181a243
-payment-settled   06:44:10 UTC  correlation mock-e5f9
-fulfilled         06:44:10 UTC  2 checks
-rated             06:44:10 UTC  4/5
+decide    outsource to legal
+          why     needs the private clause playbook the consumer does not hold
+pay       settled  0.03 NEAR
+          from    researcher.kyle.near
+          to      legal.stella.near
+          via     Intents grant
+answer    The unlimited indemnification clause fails the playbook.
+checks    raised    uncapped indemnity        The playbook rejects unlimited indemnification. Cap it or delete it.
+rate      4/5 (1 of 1 checks needed correction)
 ```
 
-List providers again. The completed job and the rating come from that file.
+`src/providers/legal/data/playbook.json` rejects unlimited indemnification.
+
+Ask the coverage specialist.
 
 ```sh
-npx inferpay providers
+npx inferpay ask "Does this policy cover an outpatient MRI?" --budget 0.10
 ```
+
+Picture. 0.02 NEAR moves from `researcher.kyle.near` to `insurance.ban.near` through an Intents grant. Outpatient MRI matches the schedule. The score is 5/5.
 
 ```
 rails: payment=mock inference=stub
-ID          SPECIALTY                                PRICE      JOBS  RATING
-disclosure  Disclosure analysis, number cross-check  0.25 USDC  1     4.0 (1)
-```
-
-Stop a payment after the rail accepts the key and before it settles. `INFERPAY_MOCK_CHAOS=uncertain-once` does that once per key.
-
-```sh
-INFERPAY_MOCK_CHAOS=uncertain-once npx inferpay ask "What was Samsung's Q3 2025 capex?" --budget 0.50
-```
-
-```
-rails: payment=mock inference=stub
-decide    outsource to disclosure (needs filing figures the consumer does not hold)
-pay       uncertain (job job_01M5PAE4801AAZVGAZ28255AXQ, key mock_578438aa-bebe-44f5-81f8-a3f82c2a86dd, correlation mock-98e2) transfer called. Nothing was charged twice.
-pending   job_01M5PAE4801AAZVGAZ28255AXQ is waiting on payment. Run: npx inferpay resume job_01M5PAE4801AAZVGAZ28255AXQ
-```
-
-Resume with the same job id. The pay line uses the same key and the same correlation id. `transfer called` means this run sent the key to the rail again. The mock rail settles the stored key instead of charging a second time.
-
-```sh
-npx inferpay resume job_01M5PAE4801AAZVGAZ28255AXQ
-```
-
-```
-rails: payment=mock inference=stub
-pay       settled 0.25 USDC -> disclosure.mock (job job_01M5PAE4801AAZVGAZ28255AXQ, key mock_578438aa-bebe-44f5-81f8-a3f82c2a86dd, correlation mock-98e2) transfer called
-answer    Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.
-checks    unverifiable  capex Q3 2025             1.0T KRW
+decide    outsource to insurance
+          why     needs the private policy schedule the consumer does not hold
+pay       settled  0.02 NEAR
+          from    researcher.kyle.near
+          to      insurance.ban.near
+          via     Intents grant
+answer    Outpatient MRI is covered at a 20 percent copay.
+checks    match     outpatient MRI            covered   (Policy schedule §4.2. Outpatient MRI is covered at 20% copay.)
 rate      5/5
 ```
 
-Run resume on that finished job again. `transfer skipped` means this run did not call the rail.
+`src/providers/insurance/data/coverage.json` covers outpatient MRI at a 20 percent copay. Cosmetic surgery is excluded.
+
+Ask the same coverage question from another Kyle bot.
 
 ```sh
-npx inferpay resume job_01M5PAE4801AAZVGAZ28255AXQ
+npx inferpay ask "Does this policy cover an outpatient MRI?" --budget 0.10 --from clerk
 ```
+
+Picture. The same MRI payment, with `from` changed to `clerk.kyle.near`. The shop is still `insurance.ban.near`.
 
 ```
 rails: payment=mock inference=stub
-pay       settled 0.25 USDC -> disclosure.mock (job job_01M5PAE4801AAZVGAZ28255AXQ, key mock_578438aa-bebe-44f5-81f8-a3f82c2a86dd, correlation mock-98e2) transfer skipped
-answer    Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.
-checks    unverifiable  capex Q3 2025             1.0T KRW
+decide    outsource to insurance
+          why     needs the private policy schedule the consumer does not hold
+pay       settled  0.02 NEAR
+          from    clerk.kyle.near
+          to      insurance.ban.near
+          via     Intents grant
+answer    Outpatient MRI is covered at a 20 percent copay.
+checks    match     outpatient MRI            covered   (Policy schedule §4.2. Outpatient MRI is covered at 20% copay.)
 rate      5/5
 ```
 
-Stay under the disclosure price. The command declines and writes no job file.
+Ask the filings question with a budget under the price.
 
 ```sh
-npx inferpay ask "Summarize the Q3 filing" --budget 0.10
+npx inferpay ask "What was Samsung's Q3 2025 operating profit?" --budget 0.01
 ```
+
+Picture. The buyer declines. The cheapest shop is 0.02 NEAR and the budget is 0.01 NEAR. No pay line appears.
 
 ```
 rails: payment=mock inference=stub
-decide    declined. Cheapest fitting provider costs 0.25 USDC, budget is 0.10 USDC.
+decide    declined
+          why     Cheapest fitting provider costs 0.02 NEAR, budget is 0.01 NEAR.
 ```
 
-`npm test` checks the ledger fold, the grade, and the 0.13 percent mismatch.
+The buyer grades the checks. No checks scores 3. Each mismatch or raised flag subtracts 1 from 5. The score stays at least 1. An unverifiable figure does not subtract. A clear flag does not subtract.
 
-## Use the live rails
+A job is an append-only file under `.inferpay/jobs`. `npx inferpay providers` recomputes reputation from those files. `.inferpay/` is gitignored.
 
-Copy `.env.example` to `.env` and fill the names you need. Do not commit `.env`.
+## What the finished rails do
 
-Set `NEAR_AI_API_KEY` to use NEAR AI Cloud. Leave it unset to keep the recorded fixtures.
+The commands stay the same. The first line changes when the keys are set.
 
-Set all four payment variables together, or leave all four unset. A partial set is a startup error. The mock rail stays in place when they are unset.
+With the four payment variables set, `payment=near-intents`. `src/payment/near-intents.ts` calls `forGrant` and transfers `nep141:wrap.near`. You do not sign that hire. The spend cap is the Intents grant, not a second cap in this repository. The three shop prices sum to 0.07 NEAR, so a demo grant of 0.10 NEAR covers one pass over disclosure, legal, and insurance.
+
+With `NEAR_AI_API_KEY` set, `inference=near-ai`. The model may call `cross_validate_numbers`, `flag_clauses`, or `lookup_coverage`. The JSON files still stay on the specialist. The model does not receive the raw dataset as the answer.
+
+This repository does not call CreateAccount. `npx inferpay wallets` prints names. It does not open `researcher.kyle.near` on mainnet. A relayer and function-call keys need those accounts to exist, so they are not in this repository. NEAR Intents has no testnet. A live grant runs on mainnet.
+
+Picture. One parent per person. Kyle's ten bots hang under `kyle.near`. Each shop hangs under its own parent.
+
+```mermaid
+flowchart TD
+  kyle["kyle.near"]
+  kyle --> researcher["researcher.kyle.near default payer"]
+  kyle --> writer["writer.kyle.near"]
+  kyle --> trader["trader.kyle.near"]
+  kyle --> analyst["analyst.kyle.near"]
+  kyle --> clerk["clerk.kyle.near"]
+  kyle --> scout["scout.kyle.near"]
+  kyle --> editor["editor.kyle.near"]
+  kyle --> buyer["buyer.kyle.near"]
+  kyle --> reviewer["reviewer.kyle.near"]
+  kyle --> assistant["assistant.kyle.near"]
+  stella["stella.near"]
+  stella --> legal["legal.stella.near playbook specialist receives 0.03 NEAR"]
+  ban["ban.near"]
+  ban --> insurance["insurance.ban.near coverage specialist receives 0.02 NEAR"]
+  david["david.near"]
+  david --> disclosure["disclosure.david.near filings specialist receives 0.02 NEAR"]
+```
+
+Picture. The grant pays 0.02 NEAR before the shop answers. The human does not sign this hire.
+
+```mermaid
+sequenceDiagram
+  participant Human
+  participant Buyer as researcher.kyle.near
+  participant Intents as NEAR Intents
+  participant Shop as insurance.ban.near
+  Human->>Buyer: Intents grant already covers hires
+  Buyer->>Intents: transfer 0.02 NEAR
+  Intents->>Shop: wrap.near arrives
+  Buyer->>Shop: paid question
+  Shop-->>Buyer: answer and checks
+```
+
+Picture. The paid question hits a tool. The JSON file stays on the shop account. The buyer receives checks, not the file.
+
+```mermaid
+flowchart TB
+  question["Paid question"]
+  question --> numbers["cross_validate_numbers"]
+  question --> flags["flag_clauses"]
+  question --> facts["lookup_coverage"]
+  filings["samsung-q3-2025.json stays on disclosure.david.near"] --> numbers
+  playbook["playbook.json stays on legal.stella.near"] --> flags
+  schedule["coverage.json stays on insurance.ban.near"] --> facts
+  numbers --> numberOut["Answer and number checks"]
+  flags --> flagOut["Answer and flag checks"]
+  facts --> factOut["Answer and fact checks"]
+```
+
+The marketplace writes the idempotency key into the job file before the transfer. A retry sends that same key. A new key would pay again.
+
+## Why the accounts are named
+
+NEAR named accounts form a tree. `researcher.kyle.near` is a child of `kyle.near`. `legal.stella.near` is a child of `stella.near`. An Ethereum address is one hex string. It cannot name a child that way.
+
+The buyer and the shop are different parents. Stella cannot spend Ban's shop account. That separation is the named account tree. This repository derives the names in `src/roster.ts`. It does not create the accounts.
+
+The tracks this project fits are `agents`, `swarms`, and `security`. Ten bots hire three shops through one grant. The grant is the spend limit. This project does not use a TEE, so it does not fit `privacy`.
+
+## Set the live rails
+
+Copy `.env.example` to `.env`. Do not commit `.env`.
+
+Set all four payment variables together. Leave all four unset to stay on the mock rail. A partial set stops startup.
 
 ```
 NEAR_INTENTS_AGENT_API_KEY
 INFERPAY_AGENT_ID
 INFERPAY_GRANT_TOKEN
-INFERPAY_DISCLOSURE_PAY_TO
+INFERPAY_PARENT_ACCOUNT
 ```
 
-`INFERPAY_USDC_ASSET` overrides the asset id on the transfer. The default is `nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near`. `INFERPAY_DATA_DIR` overrides `.inferpay`. `INFERPAY_MOCK_CHAOS` is only read for the mock rail.
+`INFERPAY_PARENT_ACCOUNT` is Kyle's Meteor named account, such as `yourname.near`. It must contain a dot. When the four variables are set, InferPay derives Kyle's ten bot names from that parent. Shop names stay `legal.stella.near`, `insurance.ban.near`, and `disclosure.david.near`. If the parent equals `stella.near`, `ban.near`, or `david.near`, startup refuses the overlap.
+
+`INFERPAY_NEAR_ASSET` overrides the asset id. The default is `nep141:wrap.near`. NEAR has 24 decimal places, so 0.02 NEAR is `20000000000000000000000` atomic units.
+
+`INFERPAY_DATA_DIR` overrides `.inferpay`. `INFERPAY_MOCK_CHAOS` applies only to the mock rail.
+
+The live Intents SDK requires Node 24. The mock walkthrough runs on Node 22.18 or newer.
+
+Other commands:
+
+```sh
+npx inferpay resume <jobId>
+npx inferpay job <jobId>
+```
+
+`resume` continues a job that stopped on a pending payment. It reuses the idempotency key. `job` prints the append-only log.

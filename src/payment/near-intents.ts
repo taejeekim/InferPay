@@ -2,16 +2,16 @@ import { isCorrelationId, isIdempotencyKey, type CorrelationId } from "../domain
 import type { PaymentConfig } from "../config.ts";
 import type { PaymentRail, PaymentStatus, Transfer } from "./index.ts";
 
-const USDC_DECIMALS = 6;
+const NEAR_DECIMALS = 24;
 
-// The API counts integer atomic units. USDC has 6 decimal places, so a domain amount of 0.25 is sent as 250000.
+// The API counts integer atomic units. NEAR has 24 decimal places, so a domain amount of 0.02 is sent as 2e22 yoctoNEAR.
 export function decimalToAtomic(symbol: string, amount: string): string | null {
-  if (symbol !== "USDC") return null;
-  const match = /^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/.exec(amount);
+  if (symbol !== "NEAR") return null;
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,24}))?$/.exec(amount);
   if (!match) return null;
   const whole = match[1] ?? "0";
-  const fraction = (match[2] ?? "").padEnd(USDC_DECIMALS, "0");
-  return (BigInt(whole) * 10n ** BigInt(USDC_DECIMALS) + BigInt(fraction)).toString();
+  const fraction = (match[2] ?? "").padEnd(NEAR_DECIMALS, "0");
+  return (BigInt(whole) * 10n ** BigInt(NEAR_DECIMALS) + BigInt(fraction)).toString();
 }
 
 export type WireStatus = {

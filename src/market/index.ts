@@ -31,7 +31,7 @@ export type CompletedJob = Brand<
   "CompletedJob"
 >;
 
-export type Listing = Omit<ProviderListing, "payTo"> & { readonly reputation: Reputation };
+export type Listing = ProviderListing & { readonly reputation: Reputation };
 
 export type FailReason =
   | { readonly kind: "unknown-provider"; readonly providerId: ProviderId }
@@ -60,6 +60,7 @@ export type MarketProgress =
       readonly transfer: "called" | "skipped";
       readonly status: "settled" | "pending" | "uncertain" | "rejected";
       readonly amount: Price;
+      readonly payer: AccountId;
       readonly recipient: AccountId;
       readonly correlationId: CorrelationId | null;
       readonly key: IdempotencyKey;
@@ -111,11 +112,7 @@ export function createMarketplace(deps: {
         states.set(id, bucket);
       }
       return providers.map((bound) => ({
-        id: bound.listing.id,
-        name: bound.listing.name,
-        specialty: bound.listing.specialty,
-        routingHint: bound.listing.routingHint,
-        price: bound.listing.price,
+        ...bound.listing,
         reputation: reputationOf(states.get(bound.listing.id) ?? []),
       }));
     },
@@ -216,16 +213,13 @@ export function createMarketplace(deps: {
           const status = await rail.settle(effect.transfer);
           if (status.kind === "settled") {
             events = await commit(order.jobId, { type: "payment-settled", at: clock(), receipt: status.receipt });
-            onProgress?.({
-              step: "pay",
+            onProgress?.(payProgress(folded.state, {
               transfer: "called",
               status: "settled",
-              amount: status.receipt.amount,
-              recipient: status.receipt.recipient,
               correlationId: status.receipt.correlationId,
               key: status.receipt.key,
               jobId: order.jobId,
-            });
+            }));
             break;
           }
           if (status.kind === "pending" || status.kind === "uncertain") {
@@ -236,30 +230,24 @@ export function createMarketplace(deps: {
               correlationId: status.correlationId,
               uncertain: status.kind === "uncertain",
             });
-            onProgress?.({
-              step: "pay",
+            onProgress?.(payProgress(folded.state, {
               transfer: "called",
               status: status.kind,
-              amount: effect.transfer.amount,
-              recipient: effect.transfer.recipient,
               correlationId: status.correlationId,
               key: effect.transfer.key,
               jobId: order.jobId,
-            });
+            }));
             onProgress?.({ step: "pending", jobId: order.jobId, why, correlationId: status.correlationId });
             return { kind: "waiting", jobId: order.jobId, why, correlationId: status.correlationId };
           }
           events = await commit(order.jobId, { type: "payment-rejected", at: clock(), reason: status.reason });
-          onProgress?.({
-            step: "pay",
+          onProgress?.(payProgress(folded.state, {
             transfer: "called",
             status: "rejected",
-            amount: effect.transfer.amount,
-            recipient: effect.transfer.recipient,
             correlationId: null,
             key: effect.transfer.key,
             jobId: order.jobId,
-          });
+          }));
           break;
         }
         case "fulfil": {
@@ -284,16 +272,13 @@ export function createMarketplace(deps: {
           const job = completedJob(folded.state);
           if (!job) return fail(order.jobId, { kind: "corrupt-ledger", jobId: order.jobId, detail: "completed job failed its check" });
           if (transfer === "skipped" && (folded.state.phase === "completed" || folded.state.phase === "rated")) {
-            onProgress?.({
-              step: "pay",
+            onProgress?.(payProgress(folded.state, {
               transfer: "skipped",
               status: "settled",
-              amount: folded.state.receipt.amount,
-              recipient: folded.state.receipt.recipient,
               correlationId: folded.state.receipt.correlationId,
               key: folded.state.receipt.key,
               jobId: order.jobId,
-            });
+            }));
             onProgress?.({ step: "answer", answer: folded.state.answer });
           }
           return { kind: "completed", job, transfer };
@@ -322,10 +307,34 @@ function fail(jobId: JobId, reason: FailReason): HireOutcome {
   return { kind: "failed", jobId, reason };
 }
 
+function payProgress(
+  opened: { readonly order: Order; readonly quote: Price; readonly payTo: AccountId },
+  payment: {
+    readonly transfer: "called" | "skipped";
+    readonly status: "settled" | "pending" | "uncertain" | "rejected";
+    readonly correlationId: CorrelationId | null;
+    readonly key: IdempotencyKey;
+    readonly jobId: JobId;
+  },
+): MarketProgress {
+  return {
+    step: "pay",
+    transfer: payment.transfer,
+    status: payment.status,
+    amount: opened.quote,
+    payer: opened.order.payFrom,
+    recipient: opened.payTo,
+    correlationId: payment.correlationId,
+    key: payment.key,
+    jobId: payment.jobId,
+  };
+}
+
 function sameOrder(a: Order, b: Order): boolean {
   return a.jobId === b.jobId
     && a.providerId === b.providerId
     && a.question === b.question
+    && a.payFrom === b.payFrom
     && a.budget.asset === b.budget.asset
     && a.budget.symbol === b.budget.symbol
     && a.budget.amount === b.budget.amount;

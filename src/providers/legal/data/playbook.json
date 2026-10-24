@@ -1,0 +1,14 @@
+[
+  {
+    "id": "uncapped-indemnity",
+    "needle": "unlimited indemnification",
+    "label": "uncapped indemnity",
+    "detail": "The playbook rejects unlimited indemnification. Cap it or delete it."
+  },
+  {
+    "id": "perpetual-nda",
+    "needle": "perpetual confidentiality",
+    "label": "perpetual confidentiality",
+    "detail": "The playbook rejects perpetual NDA terms. Set a survival period."
+  }
+]

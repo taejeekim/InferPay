@@ -1,7 +1,8 @@
 import type { ConfigError } from "../config.ts";
+import type { ForestRow, Roster } from "../roster.ts";
 import type { Decision, Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
-import type { NumberCheck } from "../providers/types.ts";
+import type { Check } from "../providers/types.ts";
 
 export function railsLine(rails: { readonly payment: string; readonly inference: string }): string {
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
@@ -10,9 +11,9 @@ export function railsLine(rails: { readonly payment: string; readonly inference:
 export function progressLine(progress: Progress): string {
   switch (progress.step) {
     case "decide":
-      return line("decide", decisionText(progress.decision));
+      return decideBlock(progress.decision);
     case "pay":
-      return line("pay", payText(progress));
+      return payBlock(progress);
     case "answer":
       return [line("answer", progress.answer.text), ...checkLines(progress.answer.checks)].join("\n");
     case "rate":
@@ -28,9 +29,11 @@ export function progressLine(progress: Progress): string {
 
 export function providersTable(listings: readonly Listing[]): string {
   const rows = [
-    ["ID", "SPECIALTY", "PRICE", "JOBS", "RATING"],
+    ["ID", "OWNER", "PAY TO", "SPECIALTY", "PRICE", "JOBS", "RATING"],
     ...listings.map((listing) => [
       listing.id,
+      listing.owner,
+      listing.payTo,
       listing.specialty,
       `${listing.price.amount} ${listing.price.symbol}`,
       String(listing.reputation.completedJobs),
@@ -48,7 +51,7 @@ export function jobText(view: JobView): string {
     const label = event.type.padEnd(18);
     switch (event.type) {
       case "opened":
-        return `${label}${time}  ${event.order.providerId}  quote ${event.quote.amount} ${event.quote.symbol}  budget ${event.order.budget.amount} ${event.order.budget.symbol}`;
+        return `${label}${time}  ${event.order.providerId}  quote ${event.quote.amount} ${event.quote.symbol}  budget ${event.order.budget.amount} ${event.order.budget.symbol}  ${event.order.payFrom} -> ${event.payTo}`;
       case "payment-intended":
         return `${label}${time}  key ${event.key}`;
       case "payment-pending":
@@ -107,42 +110,100 @@ export function failureText(reason: FailReason): string {
 
 export function usageText(): string {
   return [
+    "inferpay wallets",
     "inferpay providers",
-    "inferpay ask <question> --budget <amount>",
+    "inferpay ask <question> --budget <amount> [--from <bot>]",
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
   ].join("\n");
 }
 
-function decisionText(decision: Decision): string {
-  if (decision.kind === "outsource") return `outsource to ${decision.providerId} (${decision.reason})`;
-  if (decision.kind === "decline") return `declined. ${decision.reason}`;
-  return `answer locally (${decision.reason})`;
+export function unknownBotText(roster: Roster, raw: string): string {
+  const names = roster.forest().filter((row) => row.role !== "specialist").map((row) => row.bot);
+  return `Unknown bot ${raw}. Kyle's bots: ${names.join(", ")}.`;
 }
 
-function payText(progress: Extract<Progress, { step: "pay" }>): string {
-  const where = `(job ${progress.jobId}, key ${progress.key}, correlation ${progress.correlationId ?? "none"})`;
-  const flag = `transfer ${progress.transfer}`;
-  if (progress.status === "uncertain") {
-    return `uncertain ${where} ${flag}. Nothing was charged twice.`;
+export function walletsTable(roster: Roster): string {
+  const rows = [
+    ["PERSON", "PARENT", "BOT", "ACCOUNT", "ROLE"],
+    ...roster.forest().map((row) => [row.personId, row.parent, row.bot, row.account, roleLabel(row.role)]),
+  ];
+  return table(rows);
+}
+
+function roleLabel(role: ForestRow["role"]): string {
+  switch (role) {
+    case "default-payer":
+      return "default payer";
+    case "payer":
+      return "payer";
+    case "specialist":
+      return "specialist";
+    default: {
+      const unreachable: never = role;
+      return unreachable;
+    }
   }
-  if (progress.status === "pending") return `pending ${where} ${flag}`;
-  if (progress.status === "rejected") return `rejected ${where} ${flag}`;
-  const money = `${progress.amount.amount} ${progress.amount.symbol} -> ${progress.recipient}`;
-  return `settled ${money} ${where} ${flag}`;
 }
 
-function rateText(rating: number, checks: readonly NumberCheck[]): string {
-  const mismatches = checks.filter((check) => check.verdict === "mismatch").length;
-  if (mismatches === 0) return `${rating}/5`;
-  return `${rating}/5 (${mismatches} of ${checks.length} figures needed correction)`;
+function decideBlock(decision: Decision): string {
+  if (decision.kind === "outsource") {
+    return [line("decide", `outsource to ${decision.providerId}`), field("why", decision.reason)].join("\n");
+  }
+  if (decision.kind === "decline") {
+    return [line("decide", "declined"), field("why", decision.reason)].join("\n");
+  }
+  return [line("decide", "answer locally"), field("why", decision.reason)].join("\n");
 }
 
-function checkLines(checks: readonly NumberCheck[]): string[] {
+function payBlock(progress: Extract<Progress, { step: "pay" }>): string {
+  const money = `${progress.amount.amount} ${progress.amount.symbol}`;
+  const rows = [
+    line("pay", `${progress.status}  ${money}`),
+    field("from", progress.payer),
+    field("to", progress.recipient),
+    field("via", "Intents grant"),
+  ];
+  if (progress.status === "pending" || progress.status === "uncertain") {
+    rows.push(field("job", progress.jobId));
+    rows.push(field("key", progress.key));
+    if (progress.correlationId) rows.push(field("corr", progress.correlationId));
+  }
+  if (progress.status === "uncertain") rows.push(field("note", "Nothing was charged twice."));
+  if (progress.transfer === "skipped" && progress.status === "settled") {
+    rows.push(field("note", "already paid, transfer skipped"));
+  }
+  return rows.join("\n");
+}
+
+function field(name: string, value: string): string {
+  return line("", `${name.padEnd(8)}${value}`);
+}
+
+function rateText(rating: number, checks: readonly Check[]): string {
+  const penalties = checks.filter((check) => check.verdict === "mismatch" || check.verdict === "raised").length;
+  if (penalties === 0) return `${rating}/5`;
+  return `${rating}/5 (${penalties} of ${checks.length} checks needed correction)`;
+}
+
+function checkLines(checks: readonly Check[]): string[] {
   return checks.map((check, index) => line(index === 0 ? "checks" : "", checkText(check)));
 }
 
-function checkText(check: NumberCheck): string {
+function checkText(check: Check): string {
+  if (check.kind === "flag") {
+    const label = check.label.padEnd(26);
+    if (check.verdict === "raised") return `raised    ${label}${check.detail}`;
+    return `clear     ${label}${check.detail}`;
+  }
+  if (check.kind === "fact") {
+    const label = check.label.padEnd(26);
+    if (check.verdict === "match") return `match     ${label}${check.claimed}   (${check.source})`;
+    if (check.verdict === "mismatch") {
+      return `mismatch  ${label}${check.claimed}   ref ${check.reference} (${check.source})`;
+    }
+    return `unverifiable  ${label}${check.claimed}`;
+  }
   const label = check.label.padEnd(26);
   const claimed = formatFigure(check.claimed, check.unit);
   if (check.verdict === "match") return `match     ${label}${claimed}   (${check.source})`;

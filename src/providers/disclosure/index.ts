@@ -1,4 +1,4 @@
-import { parseProviderId } from "../../domain.ts";
+import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
 import { crossValidate, parseChecks, parseClaims, TOLERANCE_PCT } from "./crossValidate.ts";
@@ -6,6 +6,8 @@ import { loadFacts } from "./facts.ts";
 
 const providerId = parseProviderId("disclosure");
 if (!providerId) throw new Error("disclosure id failed its check");
+const quoteNear = parseDecimalAmount("0.02");
+if (!quoteNear) throw new Error("disclosure price failed its check");
 
 const CLAIM_PARAMETERS = {
   type: "object",
@@ -32,6 +34,7 @@ const CLAIM_PARAMETERS = {
 };
 
 export const disclosure: Provider = {
+  quoteNear,
   describe: {
     id: providerId,
     name: "Disclosure analyst",

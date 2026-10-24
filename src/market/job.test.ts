@@ -96,16 +96,33 @@ test("fold walks crash points and plan names the missing step", () => {
   assert.equal(plan(scored.state).kind, "done");
 });
 
-test("a settled receipt with a different key is corrupt", () => {
+test("a settled receipt must match the key, the recipient, and the quote", () => {
   const world = fixture();
-  const other = parseIdempotencyKey("other-key");
-  assert.ok(other);
-  const wrong = fold([
+  const otherKey = must(parseIdempotencyKey("other-key"), "key");
+  const otherPay = must(parseAccountId("legal.stella.near"), "recipient");
+  const otherAmount = must(parseDecimalAmount("0.03"), "amount");
+  const matching = fold([opened(world), intended(world), settled(world)]);
+  assert.equal(matching.ok, true);
+  assert.equal(fold([
     opened(world),
     intended(world),
-    { type: "payment-settled", at: world.at, receipt: { ...world.receipt, key: other } },
-  ]);
-  assert.equal(wrong.ok, false);
+    { type: "payment-settled", at: world.at, receipt: { ...world.receipt, key: otherKey } },
+  ]).ok, false);
+  assert.equal(fold([
+    opened(world),
+    intended(world),
+    { type: "payment-settled", at: world.at, receipt: { ...world.receipt, recipient: otherPay } },
+  ]).ok, false);
+  assert.equal(fold([
+    opened(world),
+    intended(world),
+    { type: "payment-settled", at: world.at, receipt: { ...world.receipt, amount: { ...world.quote, amount: otherAmount } } },
+  ]).ok, false);
+  assert.equal(fold([
+    opened(world),
+    intended(world),
+    { type: "payment-settled", at: world.at, receipt: { ...world.receipt, amount: { ...world.quote, symbol: "USD" } } },
+  ]).ok, false);
 });
 
 test("reputation counts finished jobs and averages only ratings", () => {
@@ -130,20 +147,21 @@ function state(result: ReturnType<typeof fold>): JobState {
 }
 
 function fixture() {
-  const asset = must(parseAssetId("usdc"), "asset");
-  const quote = must(parseDecimalAmount("0.25"), "quote");
-  const budget = must(parseDecimalAmount("0.50"), "budget");
-  const price = (amount: typeof quote): Price => ({ asset, symbol: "USDC", amount });
+  const asset = must(parseAssetId("nep141:wrap.near"), "asset");
+  const quote = must(parseDecimalAmount("0.02"), "quote");
+  const budget = must(parseDecimalAmount("0.10"), "budget");
+  const price = (amount: typeof quote): Price => ({ asset, symbol: "NEAR", amount });
   const order: Order = {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure"), "provider"),
     question: "Does the filing match?",
     budget: price(budget),
+    payFrom: must(parseAccountId("researcher.kyle.near"), "payFrom"),
   };
   const key = must(parseIdempotencyKey("mock_key"), "key");
   const correlation = must(parseCorrelationId("mock-7f3a"), "correlation");
   const at = must(parseIsoTime("2026-10-24T14:02:11.000Z"), "time");
-  const payTo = must(parseAccountId("disclosure.mock"), "payTo");
+  const payTo = must(parseAccountId("disclosure.david.near"), "payTo");
   const model = must(parseModelId("stub"), "model");
   const receipt: PaymentReceipt = { key, correlationId: correlation, amount: price(quote), recipient: payTo, rail: "mock" };
   const answer: Answer = {

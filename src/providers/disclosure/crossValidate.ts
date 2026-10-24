@@ -37,8 +37,16 @@ const claimSchema = z.object({
 });
 
 const checkSchema = z.discriminatedUnion("verdict", [
-  z.object({ verdict: z.literal("match"), label: z.string(), claimed: z.number(), unit: z.string(), source: z.string() }),
   z.object({
+    kind: z.literal("number"),
+    verdict: z.literal("match"),
+    label: z.string(),
+    claimed: z.number(),
+    unit: z.string(),
+    source: z.string(),
+  }),
+  z.object({
+    kind: z.literal("number"),
     verdict: z.literal("mismatch"),
     label: z.string(),
     claimed: z.number(),
@@ -47,7 +55,13 @@ const checkSchema = z.discriminatedUnion("verdict", [
     deltaPct: z.number(),
     source: z.string(),
   }),
-  z.object({ verdict: z.literal("unverifiable"), label: z.string(), claimed: z.number(), unit: z.string() }),
+  z.object({
+    kind: z.literal("number"),
+    verdict: z.literal("unverifiable"),
+    label: z.string(),
+    claimed: z.number(),
+    unit: z.string(),
+  }),
 ]);
 
 export function parseClaims(raw: unknown): readonly ClaimedFigure[] | null {
@@ -77,16 +91,17 @@ function checkOne(
 ): NumberCheck {
   const fact = facts.find((item) => sameKey(item, claim));
   if (!fact) {
-    return { verdict: "unverifiable", label: claim.label, claimed: claim.claimed, unit: claim.unit };
+    return { kind: "number", verdict: "unverifiable", label: claim.label, claimed: claim.claimed, unit: claim.unit };
   }
   const claimed = normalize(claim.claimed, claim.unit);
   const reference = normalize(fact.value, fact.unit);
   if (!claimed || !reference || claimed.unit !== reference.unit) {
-    return { verdict: "unverifiable", label: claim.label, claimed: claim.claimed, unit: claim.unit };
+    return { kind: "number", verdict: "unverifiable", label: claim.label, claimed: claim.claimed, unit: claim.unit };
   }
   const delta = percentDelta(claimed.value, reference.value);
   if (Math.abs(delta) <= tolerancePct) {
     return {
+      kind: "number",
       verdict: "match",
       label: claim.label,
       claimed: claim.claimed,
@@ -95,6 +110,7 @@ function checkOne(
     };
   }
   return {
+    kind: "number",
     verdict: "mismatch",
     label: claim.label,
     claimed: claim.claimed,

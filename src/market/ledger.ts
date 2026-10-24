@@ -63,7 +63,12 @@ export function createFileLedger(root: string): Ledger {
         if (!name.endsWith(".jsonl")) continue;
         const jobId = parseJobId(name.slice(0, -".jsonl".length));
         if (!jobId) continue;
-        rows.push({ jobId, events: await readEvents(join(jobs, name)) });
+        try {
+          rows.push({ jobId, events: await readEvents(join(jobs, name)) });
+        } catch (error) {
+          if (error instanceof LedgerReadError) continue;
+          throw error;
+        }
       }
       return rows;
     },
@@ -93,10 +98,39 @@ const orderSchema = z.object({
   providerId: z.string(),
   question: z.string(),
   budget: priceSchema,
+  payFrom: z.string(),
 });
 
-const checkSchema = z.discriminatedUnion("verdict", [
+const checkSchema = z.union([
   z.object({
+    kind: z.literal("flag"),
+    verdict: z.enum(["raised", "clear"]),
+    label: z.string(),
+    detail: z.string(),
+  }),
+  z.object({
+    kind: z.literal("fact"),
+    verdict: z.literal("match"),
+    label: z.string(),
+    claimed: z.string(),
+    source: z.string(),
+  }),
+  z.object({
+    kind: z.literal("fact"),
+    verdict: z.literal("mismatch"),
+    label: z.string(),
+    claimed: z.string(),
+    reference: z.string(),
+    source: z.string(),
+  }),
+  z.object({
+    kind: z.literal("fact"),
+    verdict: z.literal("unverifiable"),
+    label: z.string(),
+    claimed: z.string(),
+  }),
+  z.object({
+    kind: z.literal("number"),
     verdict: z.literal("match"),
     label: z.string(),
     claimed: z.number(),
@@ -104,6 +138,7 @@ const checkSchema = z.discriminatedUnion("verdict", [
     source: z.string(),
   }),
   z.object({
+    kind: z.literal("number"),
     verdict: z.literal("mismatch"),
     label: z.string(),
     claimed: z.number(),
@@ -113,6 +148,7 @@ const checkSchema = z.discriminatedUnion("verdict", [
     source: z.string(),
   }),
   z.object({
+    kind: z.literal("number"),
     verdict: z.literal("unverifiable"),
     label: z.string(),
     claimed: z.number(),
@@ -184,7 +220,12 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
       return {
         type: "fulfilled",
         at,
-        answer: { ...event.answer, model: event.answer.model },
+        answer: {
+          text: event.answer.text,
+          checks: event.answer.checks,
+          model: event.answer.model,
+          inference: event.answer.inference,
+        },
       };
     }
     case "rated":
@@ -199,8 +240,17 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
 
 function brandOrder(order: z.infer<typeof orderSchema>) {
   const budget = brandPrice(order.budget);
-  if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !budget) return null;
-  return { jobId: order.jobId, providerId: order.providerId, question: order.question, budget };
+  if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !isAccountId(order.payFrom) || !budget) return null;
+  return { jobId: order.jobId, providerId: order.providerId, question: order.question, budget, payFrom: order.payFrom };
+}
+
+function isJson(line: string): boolean {
+  try {
+    JSON.parse(line);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function brandPrice(price: z.infer<typeof priceSchema>) {
@@ -242,7 +292,7 @@ async function readEvents(path: string): Promise<readonly JobEvent[]> {
       continue;
     }
     // A crash can leave a partial last line. Dropping that line lets the next run resume from the last complete event.
-    if (index === lines.length - 1) continue;
+    if (index === lines.length - 1 && !isJson(line)) continue;
     throw new LedgerReadError(`ledger line ${index + 1} is not a job event`);
   }
   return events;
