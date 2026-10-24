@@ -1,0 +1,306 @@
+import { open, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { z } from "zod";
+import {
+  isAccountId,
+  isAssetId,
+  isCorrelationId,
+  isDecimalAmount,
+  isIdempotencyKey,
+  isIsoTime,
+  isJobId,
+  isModelId,
+  isProviderId,
+  isStars,
+  parseJobId,
+  type JobId,
+} from "../domain.ts";
+import type { JobEvent } from "./job.ts";
+
+export class LedgerReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LedgerReadError";
+  }
+}
+
+export interface Ledger {
+  read(jobId: JobId): Promise<readonly JobEvent[]>;
+  append(jobId: JobId, event: JobEvent): Promise<void>;
+  appendIfAbsent(jobId: JobId, event: JobEvent): Promise<boolean>;
+  lock(jobId: JobId): Promise<{ release(): Promise<void> } | null>;
+  all(): Promise<readonly { jobId: JobId; events: readonly JobEvent[] }[]>;
+}
+
+export function createFileLedger(root: string): Ledger {
+  const jobs = join(root, "jobs");
+  return {
+    async read(jobId) {
+      return readEvents(join(jobs, `${jobId}.jsonl`));
+    },
+    async append(jobId, event) {
+      await writeLine(join(jobs, `${jobId}.jsonl`), event);
+    },
+    async appendIfAbsent(jobId, event) {
+      const events = await readEvents(join(jobs, `${jobId}.jsonl`));
+      if (events.some((item) => item.type === event.type)) return false;
+      await writeLine(join(jobs, `${jobId}.jsonl`), event);
+      return true;
+    },
+    lock(jobId) {
+      return lockJob(join(jobs, `${jobId}.lock`));
+    },
+    async all() {
+      let names: string[];
+      try {
+        names = await readdir(jobs);
+      } catch (error) {
+        if (isErrno(error, "ENOENT")) return [];
+        throw error;
+      }
+      const rows: { jobId: JobId; events: readonly JobEvent[] }[] = [];
+      for (const name of names) {
+        if (!name.endsWith(".jsonl")) continue;
+        const jobId = parseJobId(name.slice(0, -".jsonl".length));
+        if (!jobId) continue;
+        rows.push({ jobId, events: await readEvents(join(jobs, name)) });
+      }
+      return rows;
+    },
+  };
+}
+
+export function parseJobEvent(line: string): JobEvent | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const parsed = eventSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return brandEvent(parsed.data);
+}
+
+const priceSchema = z.object({
+  asset: z.string(),
+  symbol: z.string().min(1),
+  amount: z.string(),
+});
+
+const orderSchema = z.object({
+  jobId: z.string(),
+  providerId: z.string(),
+  question: z.string(),
+  budget: priceSchema,
+});
+
+const checkSchema = z.discriminatedUnion("verdict", [
+  z.object({
+    verdict: z.literal("match"),
+    label: z.string(),
+    claimed: z.number(),
+    unit: z.string(),
+    source: z.string(),
+  }),
+  z.object({
+    verdict: z.literal("mismatch"),
+    label: z.string(),
+    claimed: z.number(),
+    unit: z.string(),
+    reference: z.number(),
+    deltaPct: z.number(),
+    source: z.string(),
+  }),
+  z.object({
+    verdict: z.literal("unverifiable"),
+    label: z.string(),
+    claimed: z.number(),
+    unit: z.string(),
+  }),
+]);
+
+const answerSchema = z.object({
+  text: z.string(),
+  checks: z.array(checkSchema),
+  model: z.string(),
+  inference: z.enum(["near-ai", "stub"]),
+});
+
+const receiptSchema = z.object({
+  key: z.string(),
+  correlationId: z.string(),
+  amount: priceSchema,
+  recipient: z.string(),
+  rail: z.enum(["mock", "near-intents"]),
+});
+
+const eventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("opened"), at: z.string(), order: orderSchema, quote: priceSchema, payTo: z.string() }),
+  z.object({ type: z.literal("payment-intended"), at: z.string(), key: z.string() }),
+  z.object({
+    type: z.literal("payment-pending"),
+    at: z.string(),
+    correlationId: z.string().nullable(),
+    uncertain: z.boolean(),
+  }),
+  z.object({ type: z.literal("payment-settled"), at: z.string(), receipt: receiptSchema }),
+  z.object({ type: z.literal("payment-rejected"), at: z.string(), reason: z.string() }),
+  z.object({ type: z.literal("fulfil-failed"), at: z.string(), reason: z.string(), retryable: z.boolean() }),
+  z.object({ type: z.literal("fulfilled"), at: z.string(), answer: answerSchema }),
+  z.object({ type: z.literal("rated"), at: z.string(), rating: z.number() }),
+]);
+
+type ParsedEvent = z.infer<typeof eventSchema>;
+
+function brandEvent(event: ParsedEvent): JobEvent | null {
+  const at = isIsoTime(event.at) ? event.at : null;
+  if (!at) return null;
+  switch (event.type) {
+    case "opened": {
+      const order = brandOrder(event.order);
+      const quote = brandPrice(event.quote);
+      if (!order || !quote || !isAccountId(event.payTo)) return null;
+      return { type: "opened", at, order, quote, payTo: event.payTo };
+    }
+    case "payment-intended":
+      if (!isIdempotencyKey(event.key)) return null;
+      return { type: "payment-intended", at, key: event.key };
+    case "payment-pending": {
+      if (event.correlationId !== null && !isCorrelationId(event.correlationId)) return null;
+      return { type: "payment-pending", at, correlationId: event.correlationId, uncertain: event.uncertain };
+    }
+    case "payment-settled": {
+      const receipt = brandReceipt(event.receipt);
+      if (!receipt) return null;
+      return { type: "payment-settled", at, receipt };
+    }
+    case "payment-rejected":
+      return { type: "payment-rejected", at, reason: event.reason };
+    case "fulfil-failed":
+      return { type: "fulfil-failed", at, reason: event.reason, retryable: event.retryable };
+    case "fulfilled": {
+      if (!isModelId(event.answer.model)) return null;
+      return {
+        type: "fulfilled",
+        at,
+        answer: { ...event.answer, model: event.answer.model },
+      };
+    }
+    case "rated":
+      if (!isStars(event.rating)) return null;
+      return { type: "rated", at, rating: event.rating };
+    default: {
+      const unreachable: never = event;
+      return unreachable;
+    }
+  }
+}
+
+function brandOrder(order: z.infer<typeof orderSchema>) {
+  const budget = brandPrice(order.budget);
+  if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !budget) return null;
+  return { jobId: order.jobId, providerId: order.providerId, question: order.question, budget };
+}
+
+function brandPrice(price: z.infer<typeof priceSchema>) {
+  if (!isAssetId(price.asset) || !isDecimalAmount(price.amount)) return null;
+  return { asset: price.asset, symbol: price.symbol, amount: price.amount };
+}
+
+function brandReceipt(receipt: z.infer<typeof receiptSchema>) {
+  const amount = brandPrice(receipt.amount);
+  if (!isIdempotencyKey(receipt.key) || !isCorrelationId(receipt.correlationId) || !isAccountId(receipt.recipient) || !amount) {
+    return null;
+  }
+  return {
+    key: receipt.key,
+    correlationId: receipt.correlationId,
+    amount,
+    recipient: receipt.recipient,
+    rail: receipt.rail,
+  };
+}
+
+async function readEvents(path: string): Promise<readonly JobEvent[]> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return [];
+    throw error;
+  }
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  const events: JobEvent[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === undefined || line.length === 0) continue;
+    const event = parseJobEvent(line);
+    if (event) {
+      events.push(event);
+      continue;
+    }
+    // A crash can leave a partial last line. Dropping that line lets the next run resume from the last complete event.
+    if (index === lines.length - 1) continue;
+    throw new LedgerReadError(`ledger line ${index + 1} is not a job event`);
+  }
+  return events;
+}
+
+async function writeLine(path: string, event: JobEvent): Promise<void> {
+  await mkdir(join(path, ".."), { recursive: true });
+  const handle = await open(path, "a");
+  try {
+    await handle.write(`${JSON.stringify(event)}\n`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function lockJob(path: string): Promise<{ release(): Promise<void> } | null> {
+  await mkdir(join(path, ".."), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await open(path, "wx");
+      try {
+        await handle.writeFile(String(process.pid));
+      } finally {
+        await handle.close();
+      }
+      return { release: () => rm(path, { force: true }) };
+    } catch (error) {
+      if (!isErrno(error, "EEXIST")) throw error;
+      const owner = await readPid(path);
+      if (owner !== null && isAlive(owner)) return null;
+      await rm(path, { force: true });
+    }
+  }
+  return null;
+}
+
+async function readPid(path: string): Promise<number | null> {
+  try {
+    const text = await readFile(path, "utf8");
+    const pid = Number(text.trim());
+    return Number.isInteger(pid) ? pid : null;
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return null;
+    throw error;
+  }
+}
+
+function isAlive(pid: number): boolean {
+  if (pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return isErrno(error, "EPERM");
+  }
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
