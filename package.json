@@ -1,0 +1,30 @@
+{
+  "name": "inferpay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent-to-agent inference marketplace. Consumers pay providers through NEAR Intents and receive only the answer.",
+  "type": "module",
+  "bin": {
+    "inferpay": "bin/inferpay.js"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test $(find src -name '*.test.ts' -print)",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "dependencies": {
+    "@near-intents-agent-api/sdk": "^0.7.1",
+    "openai": "^7.43.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0"
+  }
+}
