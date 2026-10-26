@@ -11,6 +11,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "demo": "node bin/inferpay.js demo",
     "test": "node --test $(find src -name '*.test.ts' -print)",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
