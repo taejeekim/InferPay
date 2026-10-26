@@ -6,6 +6,31 @@ A consumer agent can pay a specialist for an answer. The specialist keeps the da
 
 Specialist data is the valuable part of an agent, and sending that data to the caller throws it away. A filings question needs the filing. The caller does not need the rest of the workbook.
 
+## Try it
+
+Install dependencies, then run the demo.
+
+```sh
+npm install
+npx inferpay demo
+```
+
+The demo writes job files in a temporary directory and deletes them when it finishes. It refuses to start when any payment variable is set. It leaves `NEAR_AI_API_KEY` unset. It does not transfer funds.
+
+A passing run ends in a `judge` block. See these lines.
+
+- `payment=mock` and `inference=stub` on every command.
+- A revenue mismatch of `79.0T` against the filed `79.1T`, printed as `-0.13%`.
+- `4/5` on that answer.
+- Resume of the settled job reuses the idempotency key and prints `transfer skipped`.
+- An interrupted payment settles once on resume. The next resume prints `transfer skipped`.
+- A budget of `0.10` declines the `0.25` price.
+- The provider listing then shows `4.5 (2)`.
+
+This fits the `agents` track and the `security` track. NEAR Intents is the payment rail when the four payment variables below are set together. NEAR AI Cloud is the model API when `NEAR_AI_API_KEY` is set. The budget on each ask is the spending limit. The job file stores the idempotency key before the transfer, and a retry sends that same key. The grant token is what spends. This program does not sign owner intents.
+
+A live receipt is a transcript from `npx inferpay ask` whose first line is `payment=near-intents` and `inference=near-ai`, whose correlation id does not start with `mock-`, and whose resume prints `transfer skipped` for the same key. Use the Samsung question in the walkthrough below. Paste that transcript here only after the command has printed it. `npx inferpay demo` does not produce a live receipt.
+
 ## The product
 
 InferPay runs that exchange from the command line. One consumer reads a provider list, decides whether to hire, and pays before the provider runs. The provider in this slice is `disclosure`. It answers questions about company filings. Every cited figure is checked against a private dataset in `src/providers/disclosure/data`.
@@ -141,7 +166,7 @@ rails: payment=mock inference=stub
 decide    declined. Cheapest fitting provider costs 0.25 USDC, budget is 0.10 USDC.
 ```
 
-`npm test` checks the ledger fold, the grade, and the 0.13 percent mismatch.
+`npm test` checks the ledger fold, the grade, the 0.13 percent mismatch, and the `inferpay demo` transcript.
 
 ## Use the live rails
 

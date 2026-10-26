@@ -2,11 +2,13 @@ import { parseDecimalAmount, parseJobId, type Price } from "../domain.ts";
 import { loadConfig, type Config } from "../config.ts";
 import type { AskOutcome, Progress } from "../consumer/index.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
+import { runDemo } from "./demo.ts";
 import { configErrorText, failureText, jobText, progressLine, providersTable, railsLine, usageText } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
     const command = argv[0];
+    if (command === "demo") return runDemo(env);
     if (command === "providers") return await providersCommand(env);
     if (command === "ask") return await askCommand(argv.slice(1), env);
     if (command === "resume") return await resumeCommand(argv.slice(1), env);

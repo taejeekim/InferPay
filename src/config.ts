@@ -43,7 +43,7 @@ export type ConfigError =
   | { readonly kind: "partial-payment-env"; readonly present: string[]; readonly missing: string[] }
   | { readonly kind: "invalid"; readonly variable: string; readonly detail: string };
 
-const PAYMENT_ENV = [
+export const PAYMENT_ENV = [
   "NEAR_INTENTS_AGENT_API_KEY",
   "INFERPAY_AGENT_ID",
   "INFERPAY_GRANT_TOKEN",

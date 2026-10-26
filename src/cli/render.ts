@@ -107,6 +107,7 @@ export function failureText(reason: FailReason): string {
 
 export function usageText(): string {
   return [
+    "inferpay demo",
     "inferpay providers",
     "inferpay ask <question> --budget <amount>",
     "inferpay resume <jobId>",
