@@ -82,6 +82,7 @@ test("a signer the report does not list is unverified", () => {
   assert.deepEqual(foreign, { ok: true, signers: [otherSigner] });
   const result = checkCall(call(), foreign, signature);
   assert.equal(result.verdict === "unverified" && result.reason, "signer-not-in-report");
+  assert.equal(result.verdict === "unverified" && result.detail, `${signer} is not among the report's signers: ${otherSigner}`);
 });
 
 test("a signature that does not recover to its claimed address is unverified", () => {

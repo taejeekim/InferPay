@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { ModelId } from "../domain.ts";
 import type { InferenceConfig } from "../config.ts";
-import { createAttestor, type Attestor, type CallAttestation, type ReportEvidence } from "./attest.ts";
+import { createAttestor, type CallAttestation } from "./attest.ts";
 import type { Inference, InferenceResult, InferenceTask, RoleAttestation } from "./index.ts";
 
 const NEAR_AI_BASE_URL = "https://cloud-api.near.ai/v1";
@@ -32,21 +32,22 @@ export function createNearAi(config: Extract<InferenceConfig, { kind: "near-ai" 
         },
       });
       const model = task.role === "consumer" ? config.consumerModel : config.providerModel;
-      const record = async (completionId: string, report: ReportEvidence): Promise<CallAttestation> => {
+      // NEAR AI requires the report to be fetched before the completion it vouches for.
+      const report = await attestor.preflight(model);
+      const record = async (completionId: string): Promise<CallAttestation> => {
         const exchange: Exchange = last ?? { requestBody: null, responseBody: new Uint8Array() };
         const attestation = await attestor.attest({ model, completionId, ...exchange }, report);
         attested.push({ role: task.role, attestation });
         return attestation;
       };
-      return complete(client, attestor, record, model, task, config.apiKey.reveal());
+      return complete(client, record, model, task, config.apiKey.reveal());
     },
   };
 }
 
 async function complete<TOut>(
   client: OpenAI,
-  attestor: Attestor,
-  record: (completionId: string, report: ReportEvidence) => Promise<CallAttestation>,
+  record: (completionId: string) => Promise<CallAttestation>,
   model: ModelId,
   task: InferenceTask<TOut>,
   apiKey: string,
@@ -59,13 +60,11 @@ async function complete<TOut>(
   const toolResults: { name: string; result: unknown }[] = [];
   const attestation: CallAttestation[] = [];
   try {
-    // NEAR AI requires the report to be fetched before the completion it vouches for.
-    const report = await attestor.preflight(model);
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = { model, messages };
       if (tools.length > 0) params.tools = tools;
       const completion = await client.chat.completions.create(params);
-      attestation.push(await record(completion.id, report));
+      attestation.push(await record(completion.id));
       const message = completion.choices[0]?.message;
       if (!message) return { ok: false, reason: "transport", detail: "near ai returned no message" };
       const calls = message.tool_calls ?? [];

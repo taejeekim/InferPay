@@ -94,7 +94,7 @@ export function readReport(raw: unknown, model: ModelId, nonce: string): ReportE
   const bound = candidates.filter((item) => {
     if (item.request_nonce !== nonce || item.intel_quote === undefined) return false;
     const reportData = Buffer.from(item.intel_quote, "hex").subarray(REPORT_DATA_OFFSET, REPORT_DATA_OFFSET + 64).toString("hex");
-    return reportData === `${addressHex(item.signing_address).padEnd(64, "0")}${nonce}`;
+    return reportData === `${stripHex(item.signing_address).padEnd(64, "0")}${nonce}`;
   });
   if (bound.length === 0) {
     return {
@@ -137,14 +137,14 @@ export function checkCall(call: CapturedCall, report: ReportEvidence, signature:
     );
   }
   if (signature.text !== signedText(call.model, call.requestBody, call.responseBody)) {
-    return unverified("hash-mismatch", mismatchDetail({ ...call, requestBody: call.requestBody }, signature.text));
+    return unverified("hash-mismatch", mismatchDetail(call, call.requestBody, signature.text));
   }
   const recovered = recoverSigner(signature.text, signature.signature);
   if (recovered === null || recovered !== normalizeAddress(signature.signingAddress)) {
     return unverified("bad-signature", `signature does not recover to ${signature.signingAddress}`);
   }
   if (!report.signers.includes(recovered)) {
-    return unverified("signer-not-in-report", `${recovered} is not a signer in the attestation report for ${call.model}`);
+    return unverified("signer-not-in-report", `${recovered} is not among the report's signers: ${report.signers.join(", ")}`);
   }
   return { verdict: "verified", model: call.model, completionId: call.completionId, signer: recovered };
 }
@@ -154,7 +154,7 @@ export function signedText(model: ModelId, requestBody: Uint8Array, responseBody
 }
 
 export function recoverSigner(text: string, signatureHex: string): string | null {
-  const raw = Buffer.from(addressHex(signatureHex), "hex");
+  const raw = Buffer.from(stripHex(signatureHex), "hex");
   const v = raw[64];
   if (raw.length !== 65 || v === undefined) return null;
   const message = Buffer.from(text, "utf8");
@@ -231,11 +231,11 @@ export function createAttestor(deps: { readonly baseUrl: string; readonly apiKey
   };
 }
 
-function mismatchDetail(call: CapturedCall & { readonly requestBody: Uint8Array }, signed: string): string {
+function mismatchDetail(call: CapturedCall, requestBody: Uint8Array, signed: string): string {
   const [signedRequest, signedResponse] = signed.split(":").slice(-2);
   const parts: string[] = [];
   if (!signed.startsWith(`${call.model}:`)) parts.push("model");
-  if (signedRequest !== sha256(call.requestBody)) parts.push("request hash");
+  if (signedRequest !== sha256(requestBody)) parts.push("request hash");
   if (signedResponse !== sha256(call.responseBody)) parts.push("response hash");
   return `signed text differs from what we hashed: ${parts.join(", ") || "format"}`;
 }
@@ -245,10 +245,10 @@ function sha256(bytes: Uint8Array): string {
 }
 
 function normalizeAddress(address: string): string {
-  return `0x${addressHex(address)}`;
+  return `0x${stripHex(address)}`;
 }
 
-function addressHex(value: string): string {
+function stripHex(value: string): string {
   return value.toLowerCase().replace(/^0x/, "");
 }
 
