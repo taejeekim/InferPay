@@ -328,16 +328,18 @@ test("the buyer verifies against the root it read from chain and says where it r
   });
 });
 
-test("the root on chain decides, not the one the shop holds: honest evidence against another root is forged", async () => {
+test("a shop whose data no longer seals to its root on chain turns the order down before any payment or rating", async () => {
   await withRoot(async (root) => {
     const chain = fakeChain({ [DISCLOSURE]: nearOf("0.09"), [LEGAL]: nearOf("0.09"), [INSURANCE]: nearOf("0.09") });
     await publish(chain, realShops().map((shop) => (shop.account === INSURANCE ? { ...shop, declared: commitment("ee", 3) } : shop)));
-    const text = await askOn(chain, root, MRI);
-    assert.match(text, /^checks {4}0 of 1 verified by the buyer against the shop's committed root, 1 FORGED$/m);
-    assert.match(text, /^rate {6}1\/5 /m);
-    const [call] = ratingCalls(chain);
-    const posted = JSON.parse(Object.values((call?.args as { data: Record<string, { inferpay: { ratings: Record<string, string> } }> }).data[RESEARCHER]?.inferpay.ratings ?? {})[0] ?? "");
-    assert.deepEqual([posted.stars, posted.verified, posted.unproven, posted.forged, posted.root], [1, 0, 0, 1, "ee".repeat(32)]);
+    const { config, runtime } = await runtimeOn(chain, root);
+    const amount = parseDecimalAmount("0.10");
+    assert.ok(amount);
+    const outcome = await runtime.consumer.ask(MRI, { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer });
+    assert.deepEqual(outcome, { kind: "failed", reason: { kind: "stale-commitment", providerId: "insurance" } });
+    assert.deepEqual(ratingCalls(chain), []);
+    assert.deepEqual((await readdir(root)).filter((name) => name !== "jobs"), []);
+    assert.deepEqual((await readdir(join(root, "jobs"))).filter((name) => name.endsWith(".jsonl")), []);
   });
 });
 

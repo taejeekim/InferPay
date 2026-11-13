@@ -146,6 +146,8 @@ export function failureText(reason: FailReason): string {
       return `Unknown job ${reason.jobId}.`;
     case "over-budget":
       return `Offer ${reason.offer.amount} ${reason.offer.symbol} is above budget ${reason.budget.amount} ${reason.budget.symbol}.`;
+    case "stale-commitment":
+      return `${reason.providerId} turned the order down before payment: its dataset no longer seals to the root it published. The shop publishes again with: npx inferpay testnet setup`;
     case "offer-refused":
       return `${reason.providerId} refused ${reason.offer.amount} ${reason.offer.symbol}.`;
     case "order-conflict":
