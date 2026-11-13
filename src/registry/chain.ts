@@ -29,6 +29,8 @@ export function createChainRegistry(deps: {
         receiver: SOCIAL_DB,
         yocto: SOCIAL_DEPOSIT.toString(),
         actions: [socialSet(rating.rater, ratingValue(rating))],
+        // Writing the same value under the same key twice leaves SocialDB as it was.
+        idempotent: true,
       });
       if (sent.kind === "no-credential") return { kind: "failed", reason: `no saved key for ${rating.rater}` };
       if (sent.kind === "key-reused") return { kind: "failed", reason: `the rating of ${rating.jobId} was already signed by another account` };

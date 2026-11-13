@@ -21,6 +21,8 @@ export type Outgoing = {
   readonly receiver: AccountId;
   readonly yocto: string;
   readonly actions: readonly Action[];
+  // True when landing twice changes nothing on chain. Only then may a used nonce count as proof the stored bytes are dead.
+  readonly idempotent: boolean;
 };
 
 export type Sent =
@@ -42,8 +44,11 @@ export async function sendOnce(deps: OutboxDeps, out: Outgoing): Promise<Sent> {
   if (seen.kind !== "unknown") return { kind: "sent", tx: stored, result: seen };
 
   const again = await deps.chain.broadcast(stored, "FINAL");
-  if (again.kind !== "refused" || again.never !== "expired") return { kind: "sent", tx: stored, result: again };
-  // Expired is permanent, so the stored bytes can no longer land. Ask once more in case they landed before expiring.
+  // A used nonce can also mean these bytes landed and the archival node has not caught up, so it retires them only
+  // for an idempotent write.
+  const dead = again.kind === "refused" && (again.never === "expired" || (again.never === "nonce-used" && out.idempotent));
+  if (!dead) return { kind: "sent", tx: stored, result: again };
+  // The stored bytes can no longer land. Ask once more in case they landed before the chain refused them.
   const last = await deps.chain.status(stored);
   if (last.kind === "unknown") return signAndSend(deps, out);
   return { kind: "sent", tx: stored, result: last };

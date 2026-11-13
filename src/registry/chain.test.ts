@@ -445,6 +445,18 @@ test("a crash after the rating was signed or broadcast keeps the local rating, a
   }
 });
 
+test("a signed rating whose nonce another transaction took is signed again, because posting it twice changes nothing", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    await askOn(chain, root, MRI, "after-sign");
+    chain.failNext = { kind: "refused", reason: "nonce 4 is not above the access key's nonce", never: "nonce-used" };
+    const resumed = await resumeOn(chain, root);
+    assert.match(resumed, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx5$/m);
+    assert.equal(chain.signed.size, 5);
+    assert.equal(ratingCalls(chain).length, 1);
+  });
+});
+
 test("a rating that cannot reach the chain stays pending with a resume hint, and resume posts it", async () => {
   await withRoot(async (root) => {
     const chain = await published();

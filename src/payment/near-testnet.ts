@@ -46,6 +46,7 @@ async function settle(deps: OutboxDeps, transfer: Transfer): Promise<PaymentStat
     receiver: transfer.recipient,
     yocto,
     actions: [actions.transfer(BigInt(yocto))],
+    idempotent: false,
   });
   if (sent.kind === "key-reused") return { kind: "rejected", reason: `key ${transfer.key} already signed a different transfer` };
   if (sent.kind === "no-credential") {
