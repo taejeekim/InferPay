@@ -17,6 +17,10 @@ export function railsLine(rails: { readonly payment: string; readonly inference:
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
 }
 
+export function liarLine(shop: string): string {
+  return line("hook", `INFERPAY_TEST_LIAR=${shop}: this shop reports every check in its own favour and forges the evidence`);
+}
+
 export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
   switch (progress.step) {
     case "decide":
@@ -141,6 +145,11 @@ export function usageText(): string {
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
     "inferpay testnet setup [--root <name>.testnet]",
+    "",
+    "test hooks, set in the environment:",
+    "  INFERPAY_TEST_LIAR=<shop id>   that shop reports every check in its own favour and forges the evidence;",
+    "                                 the buyer should mark the check FORGED and rate the shop 1/5",
+    "  INFERPAY_TEST_CRASH=after-sign|after-broadcast   near-testnet only: exit mid-payment, then resume",
   ].join("\n");
 }
 
@@ -468,7 +477,7 @@ function proofRows(check: BuyerCheck): string[] {
   const rows = [`${check.status === "forged" ? "FORGED" : "unproven"}  ${check.check.verdict}  ${checkLabel(check)}`];
   rows.push(`  ${check.status === "forged" ? forgeryText(check.forgery, check.check) : unprovenText(check)}`);
   if (check.check.evidence !== null) rows.push(...evidenceRows(check.check.evidence));
-  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  root      ${check.forgery.opensTo}`);
+  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  opens to  ${check.forgery.opensTo}`);
   return rows;
 }
 

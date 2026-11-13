@@ -4,9 +4,11 @@ import {
   parseAssetId,
   parseModelId,
   parseParentAccount,
+  parseProviderId,
   secret,
   type AssetId,
   type ModelId,
+  type ProviderId,
   type Secret,
 } from "./domain.ts";
 import { resolveRoster, type Roster } from "./roster.ts";
@@ -41,6 +43,8 @@ export type Config = {
   readonly near: { readonly asset: AssetId; readonly symbol: "NEAR" };
   readonly payment: PaymentConfig;
   readonly inference: InferenceConfig;
+  // A test hook: the shop that forges its evidence, so a run can show the buyer catching it.
+  readonly liar: ProviderId | null;
 };
 
 export type ConfigError =
@@ -131,6 +135,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   const resolved = resolveRoster(root);
   if (!resolved.ok) return invalid("INFERPAY_ROOT_ACCOUNT", resolved.detail);
 
+  const liar = filled(env.INFERPAY_TEST_LIAR) ? parseProviderId(env.INFERPAY_TEST_LIAR) : null;
+  if (filled(env.INFERPAY_TEST_LIAR) && (liar === null || resolved.roster.shop(liar) === null)) {
+    const shops = resolved.roster.forest().filter((row) => row.role === "specialist").map((row) => row.bot);
+    return invalid("INFERPAY_TEST_LIAR", `expected a shop id: ${shops.join(", ")}`);
+  }
+
   return {
     ok: true,
     value: {
@@ -139,6 +149,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       near: { asset, symbol: "NEAR" },
       payment,
       inference,
+      liar,
     },
   };
 }

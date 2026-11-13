@@ -3,7 +3,7 @@ import { isAccountId, type AccountId } from "../domain.ts";
 import { buildTree, isHash, leafHash, rootFrom, type Hash, type Step } from "./merkle.ts";
 import type { ClauseClaim, Entry, FactClaim, FigureClaim } from "./rules.ts";
 
-export { canonical, leafHash } from "./merkle.ts";
+export { canonical, leafHash, parseHash } from "./merkle.ts";
 export type { Hash, Step } from "./merkle.ts";
 export * from "./rules.ts";
 

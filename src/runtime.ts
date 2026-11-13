@@ -4,6 +4,7 @@ import { createInference, type Inference, type RoleAttestation } from "./inferen
 import { createFileLedger, createMarketplace, type Marketplace } from "./market/index.ts";
 import { createPaymentRail, type PaymentRail } from "./payment/index.ts";
 import { bindProviders, PROVIDERS } from "./providers/index.ts";
+import { lying } from "./providers/liar.ts";
 import type { Config } from "./config.ts";
 
 export type Runtime = {
@@ -14,7 +15,8 @@ export type Runtime = {
 };
 
 export async function createRuntime(config: Config): Promise<Runtime> {
-  const bound = bindProviders(PROVIDERS, config.roster, config.near);
+  const shops = PROVIDERS.map((provider) => (provider.describe.id === config.liar ? lying(provider) : provider));
+  const bound = bindProviders(shops, config.roster, config.near);
   if (!bound.ok) {
     throw new Error(`providers do not match the roster. missing: ${bound.missing.join(", ")}. extra: ${bound.extra.join(", ")}`);
   }

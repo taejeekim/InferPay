@@ -4,7 +4,7 @@ import type { AskOutcome, Progress } from "../consumer/index.ts";
 import type { AccountId } from "../domain.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
-import { attestLines, configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { attestLines, configErrorText, failureText, jobText, liarLine, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -134,6 +134,7 @@ async function boot(env: NodeJS.ProcessEnv): Promise<{ runtime: Runtime; config:
   }
   const runtime = await createRuntime(config.value);
   process.stdout.write(`${railsLine(runtime.rails)}\n`);
+  if (config.value.liar !== null) process.stdout.write(`${liarLine(config.value.liar)}\n`);
   return { runtime, config: config.value };
 }
 
