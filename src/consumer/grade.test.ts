@@ -10,7 +10,7 @@ test("grade scores checks the way a buyer can recompute", () => {
   assert.equal(grade(answer([match("operating profit"), mismatch("revenue")])), 4);
   assert.equal(grade(answer([mismatch("a"), mismatch("b"), mismatch("c"), mismatch("d"), mismatch("e")])), 1);
   assert.equal(grade(answer([{ kind: "number", verdict: "unverifiable", label: "capex", claimed: 1, unit: "KRW T" }])), 5);
-  assert.equal(grade(answer([{ kind: "flag", verdict: "raised", label: "uncapped indemnity", detail: "cap it" }])), 4);
+  assert.equal(grade(answer([{ kind: "flag", verdict: "raised", label: "uncapped indemnity", detail: "cap it" }])), 5);
   assert.equal(grade(answer([{ kind: "flag", verdict: "clear", label: "term", detail: "ok" }])), 5);
   assert.equal(grade(answer([{ kind: "fact", verdict: "match", label: "decimals", claimed: "24", source: "NEAR protocol" }])), 5);
   assert.equal(grade(answer([{ kind: "fact", verdict: "mismatch", label: "decimals", claimed: "18", reference: "24", source: "NEAR protocol" }])), 4);

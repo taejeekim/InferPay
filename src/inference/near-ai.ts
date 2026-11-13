@@ -15,7 +15,7 @@ export function createNearAi(config: Extract<InferenceConfig, { kind: "near-ai" 
       const sdk = await import("openai");
       const client = new sdk.default({ apiKey: config.apiKey.reveal(), baseURL: NEAR_AI_BASE_URL });
       const model = task.role === "consumer" ? config.consumerModel : config.providerModel;
-      return complete(client, model, task);
+      return complete(client, model, task, config.apiKey.reveal());
     },
   };
 }
@@ -24,6 +24,7 @@ async function complete<TOut>(
   client: OpenAI,
   model: ModelId,
   task: InferenceTask<TOut>,
+  apiKey: string,
 ): Promise<InferenceResult<TOut>> {
   const messages: Message[] = [
     { role: "system", content: task.system },
@@ -65,8 +66,9 @@ async function complete<TOut>(
       return { ok: true, value, model };
     }
     return { ok: false, reason: "unparseable-output", detail: "model did not finish" };
-  } catch {
-    return { ok: false, reason: "transport", detail: "near ai request failed" };
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : String(error)).split(apiKey).join("[redacted]");
+    return { ok: false, reason: "transport", detail: `near ai request failed: ${message}` };
   }
 }
 

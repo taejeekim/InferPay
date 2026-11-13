@@ -40,9 +40,12 @@ export async function decide(
 }
 
 function parseDecision(raw: string, affordable: readonly Listing[]): Decision | null {
+  const open = raw.indexOf("{");
+  const close = raw.lastIndexOf("}");
+  if (open === -1 || close < open) return null;
   let data: unknown;
   try {
-    data = JSON.parse(raw);
+    data = JSON.parse(raw.slice(open, close + 1));
   } catch {
     return null;
   }
