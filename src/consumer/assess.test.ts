@@ -13,7 +13,7 @@ test("an assessment survives a code fence and surrounding prose", async () => {
   const raw = [
     "Here is my assessment.",
     "```json",
-    '{"answer":" Probably covered. ","confidence":0.2,"missing":["the policy schedule"," "],"coverage":{"insurance":0.9,"legal":0,"unlisted":1}}',
+    '{"answer":" Probably\\ncovered. ","confidence":0.2,"missing":["the policy\\n  schedule"," "],"coverage":{"insurance":0.9,"legal":0,"unlisted":1}}',
     "```",
   ].join("\n");
   const result = await assess(replying(raw), "Does this policy cover an outpatient MRI?", SHOPS);

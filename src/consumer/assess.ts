@@ -7,7 +7,7 @@ import { percentOf, type Percent, type SelfAssessment } from "./decide.ts";
 type Shop = Pick<Listing, "id" | "routingHint">;
 
 const assessmentSchema = z.object({
-  answer: z.string().trim().min(1),
+  answer: z.string().transform(oneLine).pipe(z.string().min(1)),
   confidence: z.number(),
   missing: z.array(z.string()).default([]),
   coverage: z.record(z.string(), z.number()).default({}),
@@ -52,8 +52,13 @@ function parseAssessment(raw: string, shops: readonly Shop[]): SelfAssessment | 
     if (covered === null) return null;
     coverage.set(shop.id, covered);
   }
-  const missing = parsed.data.missing.map((fact) => fact.trim()).filter((fact) => fact.length > 0);
+  const missing = parsed.data.missing.map(oneLine).filter((fact) => fact.length > 0);
   return { answer: parsed.data.answer, confidence, missing, coverage };
+}
+
+// The CLI prints these in one column, so a line break from the model would split the block.
+function oneLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
 }
 
 function assessSystem(shops: readonly Shop[]): string {
