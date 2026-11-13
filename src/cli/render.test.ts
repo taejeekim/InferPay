@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAssetId, parseDecimalAmount, parseProviderId, type Price } from "../domain.ts";
+import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseProviderId, type Price } from "../domain.ts";
 import { decide, percentOf } from "../consumer/decide.ts";
-import { progressLine } from "./render.ts";
+import { resolveRoster } from "../roster.ts";
+import { progressLine, railsLine, walletsTable } from "./render.ts";
 
 test("when the shop is no better than the buyer, the decide block shows a reservation at or below zero", () => {
   const insurance = must(parseProviderId("insurance"));
@@ -51,11 +52,46 @@ test("an amount finer than a thousandth prints up to six decimals", () => {
   assert.match(block, /net \+0\.01031$/m);
 });
 
+const HASH = "CYvHqXWvDNtEaQnfuoNyMP7LBUkAZLxwbyunhT2Qs5Mp";
+
+function pay(correlation: string | null) {
+  return {
+    step: "pay" as const,
+    transfer: "called" as const,
+    status: "settled" as const,
+    amount: { asset: must(parseAssetId("nep141:wrap.near")), symbol: "NEAR", amount: must(parseDecimalAmount("0.02")) },
+    payer: must(parseAccountId("clerk.kyle.inferpay.testnet")),
+    recipient: must(parseAccountId("insurance.ban.inferpay.testnet")),
+    correlationId: correlation === null ? null : must(parseCorrelationId(correlation)),
+    key: must(parseIdempotencyKey("nt_key")),
+    jobId: must(parseJobId("job_01M7BGGX58BF3B8VB4ADYKXYZA")),
+  };
+}
+
+test("a testnet payment names the rail and links the transaction", () => {
+  assert.equal(railsLine({ payment: "near-testnet", inference: "stub" }), "rails: payment=near-testnet inference=stub");
+  const block = progressLine(pay(HASH), "near-testnet");
+  assert.match(block, /via +NEAR testnet transfer/);
+  assert.match(block, new RegExp(`tx +https://testnet\\.nearblocks\\.io/txns/${HASH}`));
+  assert.doesNotMatch(progressLine(pay("mock-ab12"), "mock"), /tx +http/);
+});
+
+test("on the testnet rail the wallets table shows each live balance", () => {
+  const resolved = resolveRoster(must(parseParentAccount("inferpay.testnet")));
+  assert.ok(resolved.ok);
+  const clerk = must(parseAccountId("clerk.kyle.inferpay.testnet"));
+  const text = walletsTable(resolved.roster, new Map([[clerk, 579_955_000_000_000_000_000_000n]]));
+  assert.match(text, /clerk\.kyle\.inferpay\.testnet +payer +0\.5799 NEAR/);
+  assert.match(text, /writer\.kyle\.inferpay\.testnet +payer +not created/);
+  assert.match(text, /spend cap/);
+  assert.doesNotMatch(walletsTable(resolved.roster, null), /BALANCE/);
+});
+
 function near(amount: string): Price {
   return { asset: must(parseAssetId("nep141:wrap.near")), symbol: "NEAR", amount: must(parseDecimalAmount(amount)) };
 }
 
 function must<T>(value: T | null): T {
-  if (value === null) throw new Error("fixture");
+  if (value === null) throw new Error("fixture failed its check");
   return value;
 }

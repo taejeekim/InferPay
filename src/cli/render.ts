@@ -6,6 +6,9 @@ import type { FailReason, JobView, Listing } from "../market/index.ts";
 import type { Check } from "../providers/types.ts";
 import type { PaymentRail } from "../payment/index.ts";
 import { penalizes } from "../consumer/grade.ts";
+import type { AccountId } from "../domain.ts";
+import { txUrl } from "../near/explorer.ts";
+import { formatNear } from "../payment/units.ts";
 
 export function railsLine(rails: { readonly payment: string; readonly inference: string }): string {
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
@@ -133,12 +136,22 @@ export function unknownBotText(roster: Roster, raw: string): string {
   return `Unknown bot ${raw}. Kyle's bots: ${names.join(", ")}.`;
 }
 
-export function walletsTable(roster: Roster): string {
+export function walletsTable(roster: Roster, balances: ReadonlyMap<AccountId, bigint | null> | null): string {
+  if (balances === null) {
+    return table([
+      ["PERSON", "PARENT", "BOT", "ACCOUNT", "ROLE"],
+      ...roster.forest().map((row) => [row.personId, row.parent, row.bot, row.account, roleLabel(row.role)]),
+    ]);
+  }
   const rows = [
-    ["PERSON", "PARENT", "BOT", "ACCOUNT", "ROLE"],
-    ...roster.forest().map((row) => [row.personId, row.parent, row.bot, row.account, roleLabel(row.role)]),
+    ["PERSON", "PARENT", "BOT", "ACCOUNT", "ROLE", "BALANCE"],
+    ...roster.forest().map((row) => {
+      const balance = balances.get(row.account) ?? null;
+      return [row.personId, row.parent, row.bot, row.account, roleLabel(row.role), balance === null ? "not created" : `${formatNear(balance)} NEAR`];
+    }),
   ];
-  return table(rows);
+  const cap = "spend cap: a native NEAR transfer needs a full-access key, so each bot's on-chain spend cap is its own sub-account balance.";
+  return `${table(rows)}\n\n${cap}`;
 }
 
 function roleLabel(role: ForestRow["role"]): string {
@@ -266,9 +279,10 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     line("pay", `${progress.status}  ${money}`),
     field("from", progress.payer),
     field("to", progress.recipient),
-    field("via", rail === "mock" ? "mock receipt (no NEAR moved)" : "Intents grant"),
+    field("via", viaText(rail)),
     field("job", progress.jobId),
   ];
+  if (rail === "near-testnet" && progress.correlationId) rows.push(field("tx", txUrl(progress.correlationId)));
   if (progress.status === "pending" || progress.status === "uncertain") {
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
@@ -278,6 +292,21 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     rows.push(field("note", "already paid, transfer skipped"));
   }
   return rows.join("\n");
+}
+
+function viaText(rail: PaymentRail["kind"]): string {
+  switch (rail) {
+    case "mock":
+      return "mock receipt (no NEAR moved)";
+    case "near-intents":
+      return "Intents grant";
+    case "near-testnet":
+      return "NEAR testnet transfer";
+    default: {
+      const unreachable: never = rail;
+      return unreachable;
+    }
+  }
 }
 
 function field(name: string, value: string): string {

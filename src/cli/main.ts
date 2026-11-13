@@ -1,6 +1,7 @@
 import { parseDecimalAmount, parseJobId, toUnits, type Price } from "../domain.ts";
 import { loadConfig, type Config } from "../config.ts";
 import type { AskOutcome, Progress } from "../consumer/index.ts";
+import type { AccountId } from "../domain.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
 import { configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
@@ -26,8 +27,17 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Pro
 async function walletsCommand(env: NodeJS.ProcessEnv): Promise<number> {
   const booted = await boot(env);
   if (!booted) return 1;
-  process.stdout.write(`${walletsTable(booted.config.roster)}\n`);
+  process.stdout.write(`${walletsTable(booted.config.roster, await liveBalances(booted.config))}\n`);
   return 0;
+}
+
+async function liveBalances(config: Config): Promise<ReadonlyMap<AccountId, bigint | null> | null> {
+  if (config.payment.kind !== "near-testnet") return null;
+  const { createNearClient } = await import("../near/client.ts");
+  const client = createNearClient();
+  const rows = config.roster.forest();
+  const balances = await Promise.all(rows.map((row) => client.balance(row.account)));
+  return new Map(rows.map((row, index) => [row.account, balances[index] ?? null]));
 }
 
 async function providersCommand(env: NodeJS.ProcessEnv): Promise<number> {
