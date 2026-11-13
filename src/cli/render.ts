@@ -124,6 +124,7 @@ export function usageText(): string {
     "inferpay ask <question> --budget <amount> [--from <bot>]",
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
+    "inferpay testnet setup [--root <name>.testnet]",
   ].join("\n");
 }
 

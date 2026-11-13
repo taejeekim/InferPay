@@ -2,6 +2,7 @@ import { parseDecimalAmount, parseJobId, toUnits, type Price } from "../domain.t
 import { loadConfig, type Config } from "../config.ts";
 import type { AskOutcome, Progress } from "../consumer/index.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
+import { testnetCommand } from "./testnet.ts";
 import { configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
@@ -12,6 +13,7 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Pro
     if (command === "ask") return await askCommand(argv.slice(1), env);
     if (command === "resume") return await resumeCommand(argv.slice(1), env);
     if (command === "job") return await jobCommand(argv.slice(1), env);
+    if (command === "testnet") return await testnetCommand(argv.slice(1), env);
     process.stderr.write(`${usageText()}\n`);
     return 2;
   } catch (error) {
