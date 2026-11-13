@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -77,6 +77,47 @@ test("ask pays the named Kyle bot", async () => {
     assert.match(stdout.text(), /from    clerk\.kyle\.near/);
     assert.match(stdout.text(), /to      insurance\.ban\.near/);
     assert.match(stdout.text(), /via     Intents grant/);
+  } finally {
+    stdout.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("off-script questions fail before any payment or job file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  try {
+    for (const question of ["Schedule a meeting on Monday", "Is Apple revenue up?", "What is the capital of France?"]) {
+      const stdout = capture(process.stdout);
+      const stderr = capture(process.stderr);
+      let code: number;
+      try {
+        code = await main(["ask", question, "--budget", "0.10"], { INFERPAY_DATA_DIR: root });
+      } finally {
+        stdout.restore();
+        stderr.restore();
+      }
+      assert.equal(code, 1, question);
+      assert.doesNotMatch(stdout.text(), /settled/, question);
+      assert.match(stderr.text(), /No NEAR moved/, question);
+    }
+    const written = await readdir(join(root, "jobs")).catch(() => []);
+    assert.deepEqual(written, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the cosmetic surgery question routes to insurance and finds the exclusion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  const stdout = capture(process.stdout);
+  try {
+    const code = await main(
+      ["ask", "does this policy cover cosmetic surgery", "--budget", "0.10"],
+      { INFERPAY_DATA_DIR: root },
+    );
+    assert.equal(code, 0);
+    assert.match(stdout.text(), /to      insurance\.ban\./);
+    assert.match(stdout.text(), /excluded/);
   } finally {
     stdout.restore();
     await rm(root, { recursive: true, force: true });

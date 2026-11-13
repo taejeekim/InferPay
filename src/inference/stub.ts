@@ -1,166 +1,148 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { z } from "zod";
 import { parseModelId } from "../domain.ts";
 import type { Inference } from "./index.ts";
-
-const fixtureSchema = z.object({
-  output: z.string(),
-  toolCalls: z.array(z.object({ name: z.string(), arguments: z.unknown() })),
-});
 
 const parsedStubModel = parseModelId("stub");
 if (!parsedStubModel) throw new Error("stub model id failed its check");
 const stubModel = parsedStubModel;
 
-type Recording = {
-  readonly task: string;
-  readonly test: RegExp;
+type Fixture = {
   readonly output: string;
   readonly toolCalls: readonly { readonly name: string; readonly arguments: unknown }[];
 };
 
-const RECORDINGS: readonly Recording[] = [
-  {
-    task: "consumer.route",
-    test: /indemnif|nda|clause|playbook|legal/i,
-    output: "{\"kind\":\"outsource\",\"providerId\":\"legal\",\"reason\":\"needs the private clause playbook the consumer does not hold\"}",
-    toolCalls: [],
-  },
-  {
-    task: "consumer.route",
-    test: /mri|copay|insurance|coverage|policy schedule|outpatient/i,
-    output: "{\"kind\":\"outsource\",\"providerId\":\"insurance\",\"reason\":\"needs the private policy schedule the consumer does not hold\"}",
-    toolCalls: [],
-  },
-  {
-    task: "consumer.route",
-    test: /samsung|filing|q3\s*2025|operating profit|capex|revenue|earnings/i,
-    output: "{\"kind\":\"outsource\",\"providerId\":\"disclosure\",\"reason\":\"needs filing figures the consumer does not hold\"}",
-    toolCalls: [],
-  },
-  {
-    task: "disclosure.answer",
-    test: /capex/i,
-    output: "Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.",
-    toolCalls: [{
-      name: "cross_validate_numbers",
-      arguments: {
-        claims: [{
-          label: "capex Q3 2025",
+type Recording = {
+  readonly question: string;
+  readonly tasks: { readonly [taskName: string]: Fixture };
+};
+
+function route(providerId: string, reason: string): Fixture {
+  return { output: JSON.stringify({ kind: "outsource", providerId, reason }), toolCalls: [] };
+}
+
+const LEGAL_ROUTE = route("legal", "needs the private clause playbook the consumer does not hold");
+const INSURANCE_ROUTE = route("insurance", "needs the private policy schedule the consumer does not hold");
+const DISCLOSURE_ROUTE = route("disclosure", "needs filing figures the consumer does not hold");
+
+// The revenue claim of 79.0 against a filed 79.1 is deliberate. It shows the cross-check catching a model error.
+const SAMSUNG_OPERATING_PROFIT: Fixture = {
+  output: "Operating profit matches across both documents: KRW 12.1T.",
+  toolCalls: [{
+    name: "cross_validate_numbers",
+    arguments: {
+      claims: [
+        {
+          label: "operating profit Q3 2025",
           company: "Samsung Electronics",
           period: "Q3 2025",
-          metric: "capex",
-          claimed: 1,
+          metric: "operating profit",
+          claimed: 12.1,
           unit: "KRW T",
-        }],
-      },
-    }],
+        },
+        {
+          label: "revenue Q3 2025",
+          company: "Samsung Electronics",
+          period: "Q3 2025",
+          metric: "revenue",
+          claimed: 79.0,
+          unit: "KRW T",
+        },
+      ],
+    },
+  }],
+};
+
+const RECORDINGS: readonly Recording[] = [
+  {
+    question: "What was Samsung's Q3 2025 operating profit?",
+    tasks: { "consumer.route": DISCLOSURE_ROUTE, "disclosure.answer": SAMSUNG_OPERATING_PROFIT },
   },
   {
-    task: "disclosure.answer",
-    test: /samsung|filing|q3\s*2025|operating profit|revenue|earnings/i,
-    output: "Operating profit matches across both documents: KRW 12.1T.",
-    toolCalls: [{
-      name: "cross_validate_numbers",
-      arguments: {
-        claims: [
-          {
-            label: "operating profit Q3 2025",
-            company: "Samsung Electronics",
-            period: "Q3 2025",
-            metric: "operating profit",
-            claimed: 12.1,
-            unit: "KRW T",
+    question: "Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?",
+    tasks: { "consumer.route": DISCLOSURE_ROUTE, "disclosure.answer": SAMSUNG_OPERATING_PROFIT },
+  },
+  {
+    question: "What was Samsung's Q3 2025 capex?",
+    tasks: {
+      "consumer.route": DISCLOSURE_ROUTE,
+      "disclosure.answer": {
+        output: "Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.",
+        toolCalls: [{
+          name: "cross_validate_numbers",
+          arguments: {
+            claims: [{
+              label: "capex Q3 2025",
+              company: "Samsung Electronics",
+              period: "Q3 2025",
+              metric: "capex",
+              claimed: 1,
+              unit: "KRW T",
+            }],
           },
-          {
-            label: "revenue Q3 2025",
-            company: "Samsung Electronics",
-            period: "Q3 2025",
-            metric: "revenue",
-            claimed: 79.0,
-            unit: "KRW T",
+        }],
+      },
+    },
+  },
+  {
+    question: "Does this NDA's unlimited indemnification clause fail our playbook?",
+    tasks: {
+      "consumer.route": LEGAL_ROUTE,
+      "legal.answer": {
+        output: "The unlimited indemnification clause fails the playbook.",
+        toolCalls: [{
+          name: "flag_clauses",
+          arguments: {
+            clauses: [{
+              label: "indemnity",
+              text: "The receiving party shall provide unlimited indemnification for any claim.",
+            }],
           },
-        ],
-      },
-    }],
-  },
-  {
-    task: "legal.answer",
-    test: /indemnif|nda|clause|playbook|legal/i,
-    output: "The unlimited indemnification clause fails the playbook.",
-    toolCalls: [{
-      name: "flag_clauses",
-      arguments: {
-        clauses: [{
-          label: "indemnity",
-          text: "The receiving party shall provide unlimited indemnification for any claim.",
         }],
       },
-    }],
+    },
   },
   {
-    task: "insurance.answer",
-    test: /cosmetic/i,
-    output: "Cosmetic surgery is excluded under this policy.",
-    toolCalls: [{
-      name: "lookup_coverage",
-      arguments: {
-        claims: [{
-          label: "cosmetic surgery",
-          topic: "cosmetic-surgery",
-          claimed: "excluded",
+    question: "Does this policy cover an outpatient MRI?",
+    tasks: {
+      "consumer.route": INSURANCE_ROUTE,
+      "insurance.answer": {
+        output: "Outpatient MRI is covered at a 20 percent copay.",
+        toolCalls: [{
+          name: "lookup_coverage",
+          arguments: { claims: [{ label: "outpatient MRI", topic: "outpatient-mri", claimed: "covered" }] },
         }],
       },
-    }],
+    },
   },
   {
-    task: "insurance.answer",
-    test: /mri|copay|outpatient|coverage|insurance|policy/i,
-    output: "Outpatient MRI is covered at a 20 percent copay.",
-    toolCalls: [{
-      name: "lookup_coverage",
-      arguments: {
-        claims: [{
-          label: "outpatient MRI",
-          topic: "outpatient-mri",
-          claimed: "covered",
+    question: "Does this policy cover cosmetic surgery?",
+    tasks: {
+      "consumer.route": INSURANCE_ROUTE,
+      "insurance.answer": {
+        output: "Cosmetic surgery is excluded under this policy.",
+        toolCalls: [{
+          name: "lookup_coverage",
+          arguments: { claims: [{ label: "cosmetic surgery", topic: "cosmetic-surgery", claimed: "excluded" }] },
         }],
       },
-    }],
+    },
   },
 ];
 
-const KNOWN_QUESTIONS = [
-  "What was Samsung's Q3 2025 operating profit?",
-  "Does this NDA's unlimited indemnification clause fail our playbook?",
-  "Does this policy cover an outpatient MRI?",
-];
+const BY_QUESTION = new Map(RECORDINGS.map((recording) => [normalize(recording.question), recording]));
 
-export function createStubInference(fixtures: string): Inference {
+// Providers receive the paid question as their input, so one key serves routing and answering.
+function normalize(question: string): string {
+  return question.trim().replace(/\s+/g, " ").toLowerCase().replace(/[?.!]+$/, "");
+}
+
+export function createStubInference(): Inference {
   return {
     kind: "stub",
     async run(task) {
-      const hash = createHash("sha256").update(task.input).digest("hex");
-      const hashed = join(fixtures, task.name, `${hash}.json`);
-      const fromFile = await readFirst([hashed]);
-      const recording = RECORDINGS.find((item) => item.task === task.name && item.test.test(task.input));
-      const rawText = fromFile ?? (recording === undefined ? null : JSON.stringify({
-        output: recording.output,
-        toolCalls: recording.toolCalls,
-      }));
-      if (rawText === null) return { ok: false, reason: "no-fixture", detail: missingFixture(task.name) };
-      let raw: unknown;
-      try {
-        raw = JSON.parse(rawText);
-      } catch {
-        return { ok: false, reason: "unparseable-output", detail: "fixture is not json" };
-      }
-      const fixture = fixtureSchema.safeParse(raw);
-      if (!fixture.success) return { ok: false, reason: "unparseable-output", detail: "fixture failed its check" };
+      const fixture = BY_QUESTION.get(normalize(task.input))?.tasks[task.name];
+      if (fixture === undefined) return { ok: false, reason: "no-fixture", detail: unrecordedQuestion() };
       const toolResults: { name: string; result: unknown }[] = [];
-      for (const call of fixture.data.toolCalls) {
+      for (const call of fixture.toolCalls) {
         const found = task.tools.find((item) => item.name === call.name);
         if (!found) {
           toolResults.push({ name: call.name, result: { error: "unknown tool" } });
@@ -169,25 +151,18 @@ export function createStubInference(fixtures: string): Inference {
         const invoked = found.invoke(call.arguments);
         toolResults.push({ name: call.name, result: invoked.ok ? invoked.result : { error: invoked.error } });
       }
-      const value = task.parseOutput(fixture.data.output, toolResults);
+      const value = task.parseOutput(fixture.output, toolResults);
       if (value === null) return { ok: false, reason: "unparseable-output", detail: "output failed its check" };
       return { ok: true, value, model: stubModel };
     },
   };
 }
 
-async function readFirst(paths: readonly string[]): Promise<string | null> {
-  for (const path of paths) {
-    try {
-      return await readFile(path, "utf8");
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function missingFixture(task: string): string {
-  const examples = KNOWN_QUESTIONS.map((question) => `  npx inferpay ask "${question}" --budget 0.10`).join("\n");
-  return `${task} has no recording for this question. Try one of:\n${examples}`;
+function unrecordedQuestion(): string {
+  const examples = RECORDINGS.map((recording) => `  npx inferpay ask "${recording.question}" --budget 0.10`).join("\n");
+  return [
+    "No NEAR moved. The stub replays only these recorded questions:",
+    examples,
+    "Set NEAR_AI_API_KEY to ask anything.",
+  ].join("\n");
 }

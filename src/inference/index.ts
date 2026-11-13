@@ -55,6 +55,6 @@ export interface Inference {
 }
 
 export function createInference(config: InferenceConfig): Inference {
-  if (config.kind === "stub") return createStubInference(config.fixtures);
+  if (config.kind === "stub") return createStubInference();
   return createNearAi(config);
 }

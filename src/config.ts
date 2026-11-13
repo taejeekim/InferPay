@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
   parseAssetId,
@@ -22,7 +21,7 @@ export type PaymentConfig =
     };
 
 export type InferenceConfig =
-  | { readonly kind: "stub"; readonly fixtures: string }
+  | { readonly kind: "stub" }
   | {
       readonly kind: "near-ai";
       readonly apiKey: Secret;
@@ -88,8 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       }
     : { kind: "mock", root: dataDir, chaos };
 
-  const fixtures = fileURLToPath(new URL("./inference/fixtures/", import.meta.url));
-  let inference: InferenceConfig = { kind: "stub", fixtures };
+  let inference: InferenceConfig = { kind: "stub" };
   if (filled(env.NEAR_AI_API_KEY)) {
     const consumerModel = parseModelId(filled(env.NEAR_AI_CONSUMER_MODEL) ? String(env.NEAR_AI_CONSUMER_MODEL) : DEFAULT_CONSUMER_MODEL);
     const providerModel = parseModelId(filled(env.NEAR_AI_PROVIDER_MODEL) ? String(env.NEAR_AI_PROVIDER_MODEL) : DEFAULT_PROVIDER_MODEL);
