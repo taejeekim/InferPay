@@ -37,6 +37,7 @@ const ACCOUNT_ID_MIN = 2;
 const ACCOUNT_ID_MAX = 64;
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const FRACTION_DIGITS = 18;
+const UNITS_PER_WHOLE = 10n ** BigInt(FRACTION_DIGITS);
 
 export function secret(value: string): Secret {
   return {
@@ -150,19 +151,27 @@ export function newJobId(now = Date.now()): JobId {
 
 export function compareSameAsset(a: Price, b: Price): -1 | 0 | 1 | "different-asset" {
   if (a.asset !== b.asset) return "different-asset";
-  const left = scaled(a.amount);
-  const right = scaled(b.amount);
+  const left = toUnits(a.amount);
+  const right = toUnits(b.amount);
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
 }
 
-function scaled(amount: DecimalAmount): bigint {
+// One unit is 1e-18 of the asset, the smallest step a DecimalAmount can carry.
+export function toUnits(amount: DecimalAmount): bigint {
   const parts = amount.split(".");
   const whole = parts[0] ?? "0";
   const frac = parts[1] ?? "";
   const padded = frac.padEnd(FRACTION_DIGITS, "0");
-  return BigInt(whole) * 10n ** BigInt(FRACTION_DIGITS) + BigInt(padded);
+  return BigInt(whole) * UNITS_PER_WHOLE + BigInt(padded);
+}
+
+export function fromUnits(units: bigint): DecimalAmount | null {
+  if (units < 0n) return null;
+  const frac = (units % UNITS_PER_WHOLE).toString().padStart(FRACTION_DIGITS, "0").replace(/0+$/, "");
+  const whole = (units / UNITS_PER_WHOLE).toString();
+  return parseDecimalAmount(frac.length === 0 ? whole : `${whole}.${frac}`);
 }
 
 function ulid(now: number): string {

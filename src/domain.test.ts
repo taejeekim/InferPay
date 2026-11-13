@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compareSameAsset,
+  fromUnits,
   newJobId,
   parseAccountId,
   parseAssetId,
   parseDecimalAmount,
   parseParentAccount,
   secret,
+  toUnits,
 } from "./domain.ts";
 
 test("a secret serializes as redacted and still reveals to its caller", () => {
@@ -43,6 +45,23 @@ test("prices in different assets are not ordered", () => {
     ),
     "different-asset",
   );
+});
+
+test("an amount converts to units of 1e-18 and back in its shortest form", () => {
+  const cases: readonly (readonly [string, bigint, string])[] = [
+    ["0.02", 20_000_000_000_000_000n, "0.02"],
+    ["0.020", 20_000_000_000_000_000n, "0.02"],
+    ["3", 3_000_000_000_000_000_000n, "3"],
+    ["0.000000000000000001", 1n, "0.000000000000000001"],
+    ["0", 0n, "0"],
+  ];
+  for (const [text, units, shortest] of cases) {
+    const amount = parseDecimalAmount(text);
+    assert.ok(amount, text);
+    assert.equal(toUnits(amount), units, text);
+    assert.equal(fromUnits(units), shortest, text);
+  }
+  assert.equal(fromUnits(-1n), null);
 });
 
 test("a parent account contains a dot", () => {
