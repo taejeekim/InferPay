@@ -1,18 +1,7 @@
 import { isCorrelationId, isIdempotencyKey, type CorrelationId } from "../domain.ts";
 import type { PaymentConfig } from "../config.ts";
 import type { PaymentRail, PaymentStatus, Transfer } from "./index.ts";
-
-const NEAR_DECIMALS = 24;
-
-// The API counts integer atomic units. NEAR has 24 decimal places, so a domain amount of 0.02 is sent as 2e22 yoctoNEAR.
-export function decimalToAtomic(symbol: string, amount: string): string | null {
-  if (symbol !== "NEAR") return null;
-  const match = /^(0|[1-9]\d*)(?:\.(\d{1,24}))?$/.exec(amount);
-  if (!match) return null;
-  const whole = match[1] ?? "0";
-  const fraction = (match[2] ?? "").padEnd(NEAR_DECIMALS, "0");
-  return (BigInt(whole) * 10n ** BigInt(NEAR_DECIMALS) + BigInt(fraction)).toString();
-}
+import { decimalToAtomic } from "./units.ts";
 
 export type WireStatus = {
   readonly status: string;

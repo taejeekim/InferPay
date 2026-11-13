@@ -1,14 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseAccountId, parseAssetId, parseDecimalAmount, parseIdempotencyKey } from "../domain.ts";
-import { decimalToAtomic, mapThrown, mapWireStatus, type WireStatus } from "./near-intents.ts";
-
-test("0.02 NEAR is 2e22 yoctoNEAR", () => {
-  assert.equal(decimalToAtomic("NEAR", "0.02"), "20000000000000000000000");
-  assert.equal(decimalToAtomic("NEAR", "1"), "1000000000000000000000000");
-  assert.equal(decimalToAtomic("NEAR", "0.0200000000000000000000001"), null);
-  assert.equal(decimalToAtomic("USDC", "0.25"), null);
-});
+import { mapThrown, mapWireStatus, type WireStatus } from "./near-intents.ts";
 
 test("transfer statuses stay inside PaymentStatus", () => {
   const transfer = {
