@@ -8,6 +8,7 @@ import { assess } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
 import { grade, tally } from "./grade.ts";
 import { verifyChecks, type BuyerCheck } from "./verify.ts";
+import { runTask, type TaskOutcome, type TaskProgress } from "./task.ts";
 
 export { LOCAL_FLOOR } from "./decide.ts";
 export type { Decision, Option, PricedOption } from "./decide.ts";
@@ -39,11 +40,17 @@ export interface ConsumerAgent {
     onProgress?: (progress: Progress) => void,
   ): Promise<AskOutcome>;
   resume(jobId: JobId, onProgress?: (progress: Progress) => void): Promise<AskOutcome>;
+  task(
+    task: string,
+    opts: { readonly budget: Price; readonly buyer: BuyerSeat },
+    onProgress?: (progress: TaskProgress) => void,
+  ): Promise<TaskOutcome>;
 }
 
 export function createConsumerAgent(deps: { readonly market: Marketplace; readonly inference: Inference }): ConsumerAgent {
   const { market, inference } = deps;
-  return {
+  const agent: ConsumerAgent = {
+    task: (task, opts, onProgress) => runTask({ inference, market, ask: agent.ask }, task, opts, onProgress),
     async ask(question, { budget, buyer }, onProgress) {
       const listings = await market.listings();
       const assessed = await assess(inference, question, listings);
@@ -83,6 +90,7 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       return { kind: "outsourced", job: outcome.job, rating };
     },
   };
+  return agent;
 }
 
 export function fromUnfinished(outcome: Exclude<HireOutcome, { kind: "completed" }>): AskOutcome {

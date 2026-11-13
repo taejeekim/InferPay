@@ -57,7 +57,7 @@ function parseAssessment(raw: string, shops: readonly Shop[]): SelfAssessment | 
 }
 
 // The CLI prints these in one column, so a line break from the model would split the block.
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 

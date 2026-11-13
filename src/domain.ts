@@ -6,6 +6,7 @@ export type Brand<T, Name extends string> = T & { readonly [brand]: Name };
 
 export type ProviderId = Brand<string, "ProviderId">;
 export type JobId = Brand<string, "JobId">;
+export type TaskId = Brand<string, "TaskId">;
 export type IdempotencyKey = Brand<string, "IdempotencyKey">;
 export type CorrelationId = Brand<string, "CorrelationId">;
 export type AccountId = Brand<string, "AccountId">;
@@ -147,6 +148,16 @@ export function newJobId(now = Date.now()): JobId {
   const id = `job_${ulid(now)}`;
   if (!isJobId(id)) throw new Error("minted job id failed its check");
   return id;
+}
+
+export function newTaskId(now = Date.now()): TaskId {
+  const id = `task_${ulid(now)}`;
+  if (!isTaskId(id)) throw new Error("minted task id failed its check");
+  return id;
+}
+
+function isTaskId(value: string): value is TaskId {
+  return /^task_[0-9A-HJKMNP-TV-Z]{26}$/.test(value);
 }
 
 export function compareSameAsset(a: Price, b: Price): -1 | 0 | 1 | "different-asset" {
