@@ -22,7 +22,7 @@ const CLAUSE_PARAMETERS = {
         required: ["label", "text"],
         properties: {
           label: { type: "string" },
-          text: { type: "string" },
+          text: { type: "string", description: "The clause quoted word for word from the question." },
         },
       },
     },

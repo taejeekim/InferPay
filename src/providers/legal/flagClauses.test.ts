@@ -13,6 +13,14 @@ test("unlimited indemnification raises a playbook flag", () => {
   assert.equal(checks[0]?.label, "uncapped indemnity");
 });
 
+test("a reworded uncapped indemnity still raises the flag", () => {
+  const checks = flagClauses(
+    [{ label: "indemnity", text: "The receiving party shall indemnify the discloser without limit." }],
+    loadPlaybook(),
+  );
+  assert.equal(checks[0]?.verdict, "raised");
+});
+
 test("an ordinary clause stays clear", () => {
   const checks = flagClauses(
     [{ label: "term", text: "This agreement lasts twelve months." }],

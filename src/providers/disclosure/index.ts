@@ -1,7 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { crossValidate, parseChecks, parseClaims, TOLERANCE_PCT } from "./crossValidate.ts";
+import { crossValidate, parseChecks, parseClaims, TOLERANCE_PCT, type DisclosureFact } from "./crossValidate.ts";
 import { loadFacts } from "./facts.ts";
 
 const providerId = parseProviderId("disclosure");
@@ -9,29 +9,32 @@ if (!providerId) throw new Error("disclosure id failed its check");
 const quoteNear = parseDecimalAmount("0.02");
 if (!quoteNear) throw new Error("disclosure price failed its check");
 
-const CLAIM_PARAMETERS = {
-  type: "object",
-  additionalProperties: false,
-  required: ["claims"],
-  properties: {
-    claims: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "company", "period", "metric", "claimed", "unit"],
-        properties: {
-          label: { type: "string" },
-          company: { type: "string" },
-          period: { type: "string" },
-          metric: { type: "string" },
-          claimed: { type: "number" },
-          unit: { type: "string" },
+function claimParameters(facts: readonly DisclosureFact[]) {
+  const values = (key: "company" | "period" | "metric" | "unit") => [...new Set(facts.map((fact) => fact[key]))];
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["claims"],
+    properties: {
+      claims: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "company", "period", "metric", "claimed", "unit"],
+          properties: {
+            label: { type: "string" },
+            company: { type: "string", enum: values("company") },
+            period: { type: "string", enum: values("period") },
+            metric: { type: "string", enum: values("metric") },
+            claimed: { type: "number" },
+            unit: { type: "string", enum: values("unit") },
+          },
         },
       },
     },
-  },
-};
+  };
+}
 
 export const disclosure: Provider = {
   quoteNear,
@@ -52,7 +55,7 @@ async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<
   const validate = tool({
     name: "cross_validate_numbers",
     description: "Check cited figures against filed disclosures. Pass every number the answer will cite.",
-    parameters: CLAIM_PARAMETERS,
+    parameters: claimParameters(facts),
     parseArgs: parseClaims,
     run: (args) => crossValidate(args, facts, TOLERANCE_PCT),
   });

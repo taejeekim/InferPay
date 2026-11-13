@@ -92,5 +92,5 @@ export function lookupCoverage(
 }
 
 function norm(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value.trim().toLowerCase().replace(/\s*(%|percent)$/, "").replace(/\s+/g, " ");
 }

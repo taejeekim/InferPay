@@ -9,26 +9,31 @@ if (!providerId) throw new Error("insurance id failed its check");
 const quoteNear = parseDecimalAmount("0.02");
 if (!quoteNear) throw new Error("insurance price failed its check");
 
-const FACT_PARAMETERS = {
-  type: "object",
-  additionalProperties: false,
-  required: ["claims"],
-  properties: {
-    claims: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "topic", "claimed"],
-        properties: {
-          label: { type: "string" },
-          topic: { type: "string" },
-          claimed: { type: "string" },
+function factParameters(topics: readonly string[]) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["claims"],
+    properties: {
+      claims: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "topic", "claimed"],
+          properties: {
+            label: { type: "string" },
+            topic: { type: "string", enum: topics },
+            claimed: {
+              type: "string",
+              description: "The value you state, in one or two words: covered, excluded, or a percent such as 15.",
+            },
+          },
         },
       },
     },
-  },
-};
+  };
+}
 
 export const insurance: Provider = {
   quoteNear,
@@ -49,7 +54,7 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
   const lookup = tool({
     name: "lookup_coverage",
     description: "Check cited coverage claims against the private policy schedule. Pass every claim you cite.",
-    parameters: FACT_PARAMETERS,
+    parameters: factParameters(unique(facts.map((fact) => fact.topic))),
     parseArgs: parseFactClaims,
     run: (args) => lookupCoverage(args, facts),
   });
@@ -83,4 +88,8 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
       inference: inference.kind,
     },
   };
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

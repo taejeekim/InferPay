@@ -4,14 +4,14 @@ import { z } from "zod";
 
 export type PlaybookRule = {
   readonly id: string;
-  readonly needle: string;
+  readonly all: readonly RegExp[];
   readonly label: string;
   readonly detail: string;
 };
 
 const ruleSchema = z.object({
   id: z.string(),
-  needle: z.string(),
+  all: z.array(z.string().min(1)).min(1),
   label: z.string(),
   detail: z.string(),
 });
@@ -29,6 +29,6 @@ export function loadPlaybook(): readonly PlaybookRule[] {
   }
   const parsed = z.array(ruleSchema).safeParse(raw);
   if (!parsed.success) throw new Error("legal playbook failed its check");
-  cached = parsed.data;
+  cached = parsed.data.map((rule) => ({ ...rule, all: rule.all.map((source) => new RegExp(source, "i")) }));
   return cached;
 }

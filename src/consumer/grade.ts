@@ -2,7 +2,7 @@ import { isStars, type Stars } from "../domain.ts";
 import type { Answer, Check } from "../providers/types.ts";
 
 export function grade(answer: Answer): Stars {
-  const score = answer.checks.length === 0
+  const score = answer.checks.every((check) => check.verdict === "unverifiable")
     ? 3
     : Math.max(1, 5 - answer.checks.filter(penalizes).length);
   if (!isStars(score)) throw new Error("grade left the 1..5 range");

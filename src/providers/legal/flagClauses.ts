@@ -34,8 +34,7 @@ export function flagClauses(
   rules: readonly PlaybookRule[],
 ): readonly FlagCheck[] {
   return clauses.map((clause) => {
-    const haystack = clause.text.toLowerCase();
-    const hit = rules.find((rule) => haystack.includes(rule.needle.toLowerCase()));
+    const hit = rules.find((rule) => rule.all.every((term) => term.test(clause.text)));
     if (!hit) {
       return {
         kind: "flag",
