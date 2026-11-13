@@ -171,7 +171,7 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
   }
-  if (progress.status === "uncertain") rows.push(field("note", "Nothing was charged twice."));
+  if (progress.status === "uncertain") rows.push(field("note", "resume retries with the same key, so this transfer cannot be paid twice"));
   if (progress.transfer === "skipped" && progress.status === "settled") {
     rows.push(field("note", "already paid, transfer skipped"));
   }

@@ -84,6 +84,36 @@ test("ask pays the named Kyle bot", async () => {
   }
 });
 
+test("an uncertain payment prints its job id and the retry-key note once, and resume settles it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  const first = capture(process.stdout);
+  let jobId: string | undefined;
+  try {
+    const code = await main(
+      ["ask", "What was Samsung's Q3 2025 operating profit?", "--budget", "0.50"],
+      { INFERPAY_DATA_DIR: root, INFERPAY_MOCK_CHAOS: "uncertain-once" },
+    );
+    assert.equal(code, 0);
+    const text = first.text();
+    assert.match(text, /uncertain {2}0\.02 NEAR/);
+    assert.equal(text.match(/^ {10}job {5}job_/gm)?.length, 1);
+    assert.match(text, /same key, so this transfer cannot be paid twice/);
+    jobId = text.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+  } finally {
+    first.restore();
+  }
+  const second = capture(process.stdout);
+  try {
+    assert.ok(jobId);
+    const code = await main(["resume", jobId], { INFERPAY_DATA_DIR: root, INFERPAY_MOCK_CHAOS: "uncertain-once" });
+    assert.equal(code, 0);
+    assert.match(second.text(), /settled {2}0\.02 NEAR/);
+  } finally {
+    second.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("off-script questions fail before any payment or job file", async () => {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   try {
