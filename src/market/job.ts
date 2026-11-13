@@ -6,6 +6,8 @@ export type Order = {
   readonly jobId: JobId;
   readonly providerId: ProviderId;
   readonly question: string;
+  // What the buyer offers to pay. The shop charges this, or its list price when the offer is higher.
+  readonly offer: Price;
   readonly budget: Price;
   readonly payFrom: AccountId;
 };

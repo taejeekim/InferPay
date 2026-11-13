@@ -8,6 +8,8 @@ const providerId = parseProviderId("legal");
 if (!providerId) throw new Error("legal id failed its check");
 const quoteNear = parseDecimalAmount("0.03");
 if (!quoteNear) throw new Error("legal price failed its check");
+const floorNear = parseDecimalAmount("0.02");
+if (!floorNear) throw new Error("legal floor failed its check");
 
 const CLAUSE_PARAMETERS = {
   type: "object",
@@ -31,6 +33,7 @@ const CLAUSE_PARAMETERS = {
 
 export const legal: Provider = {
   quoteNear,
+  floorNear,
   describe: {
     id: providerId,
     name: "Legal playbook",

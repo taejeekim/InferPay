@@ -8,6 +8,8 @@ const providerId = parseProviderId("insurance");
 if (!providerId) throw new Error("insurance id failed its check");
 const quoteNear = parseDecimalAmount("0.02");
 if (!quoteNear) throw new Error("insurance price failed its check");
+const floorNear = parseDecimalAmount("0.012");
+if (!floorNear) throw new Error("insurance floor failed its check");
 
 function factParameters(topics: readonly string[]) {
   return {
@@ -37,6 +39,7 @@ function factParameters(topics: readonly string[]) {
 
 export const insurance: Provider = {
   quoteNear,
+  floorNear,
   describe: {
     id: providerId,
     name: "Insurance coverage",

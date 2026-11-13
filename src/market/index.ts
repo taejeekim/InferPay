@@ -11,7 +11,7 @@ import type { Inference } from "../inference/index.ts";
 import type { PaymentRail, PaymentReceipt } from "../payment/index.ts";
 import type { Answer, PaidOrder } from "../providers/types.ts";
 import type { AccountId, IsoTime, Price } from "../domain.ts";
-import type { BoundProvider } from "../providers/index.ts";
+import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
 import { fold, plan, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
 import { createFileLedger, LedgerReadError, type Ledger } from "./ledger.ts";
@@ -36,7 +36,8 @@ export type Listing = ProviderListing & { readonly reputation: Reputation };
 export type FailReason =
   | { readonly kind: "unknown-provider"; readonly providerId: ProviderId }
   | { readonly kind: "unknown-job"; readonly jobId: JobId }
-  | { readonly kind: "over-budget"; readonly quote: Price; readonly budget: Price }
+  | { readonly kind: "over-budget"; readonly offer: Price; readonly budget: Price }
+  | { readonly kind: "offer-refused"; readonly providerId: ProviderId; readonly offer: Price }
   | { readonly kind: "order-conflict"; readonly jobId: JobId }
   | { readonly kind: "job-busy"; readonly jobId: JobId }
   | { readonly kind: "corrupt-ledger"; readonly jobId: JobId; readonly detail: string }
@@ -81,8 +82,11 @@ export type RateResult =
   | { readonly kind: "unchanged"; readonly reputation: Reputation }
   | { readonly kind: "rejected"; readonly reason: "different-stars"; readonly reputation: Reputation };
 
+export type CounterReply = "accepted" | "refused";
+
 export interface Marketplace {
   listings(): Promise<readonly Listing[]>;
+  counter(providerId: ProviderId, offer: Price): Promise<CounterReply>;
   hire(order: Order, onProgress?: (progress: MarketProgress) => void): Promise<HireOutcome>;
   rate(job: CompletedJob, rating: Stars): Promise<RateResult>;
   job(jobId: JobId): Promise<JobView | null>;
@@ -115,6 +119,12 @@ export function createMarketplace(deps: {
         ...bound.listing,
         reputation: reputationOf(states.get(bound.listing.id) ?? []),
       }));
+    },
+
+    async counter(providerId, offer) {
+      const bound = providers.find((item) => item.listing.id === providerId);
+      if (!bound || priceFor(bound, offer) === null) return "refused";
+      return "accepted";
     },
 
     async hire(order, onProgress) {
@@ -179,17 +189,15 @@ export function createMarketplace(deps: {
     if (events.length === 0) {
       const bound = providers.find((item) => item.listing.id === order.providerId);
       if (!bound) return fail(order.jobId, { kind: "unknown-provider", providerId: order.providerId });
-      const cmp = compareSameAsset(bound.listing.price, order.budget);
+      const cmp = compareSameAsset(order.offer, order.budget);
       if (cmp === "different-asset" || cmp > 0) {
-        return fail(order.jobId, { kind: "over-budget", quote: bound.listing.price, budget: order.budget });
+        return fail(order.jobId, { kind: "over-budget", offer: order.offer, budget: order.budget });
       }
-      await ledger.append(order.jobId, {
-        type: "opened",
-        at: clock(),
-        order,
-        quote: bound.listing.price,
-        payTo: bound.listing.payTo,
-      });
+      const quote = priceFor(bound, order.offer);
+      if (quote === null) {
+        return fail(order.jobId, { kind: "offer-refused", providerId: order.providerId, offer: order.offer });
+      }
+      await ledger.append(order.jobId, { type: "opened", at: clock(), order, quote, payTo: bound.listing.payTo });
       events = await ledger.read(order.jobId);
     } else {
       const existing = fold(events);
@@ -335,9 +343,12 @@ function sameOrder(a: Order, b: Order): boolean {
     && a.providerId === b.providerId
     && a.question === b.question
     && a.payFrom === b.payFrom
-    && a.budget.asset === b.budget.asset
-    && a.budget.symbol === b.budget.symbol
-    && a.budget.amount === b.budget.amount;
+    && samePrice(a.offer, b.offer)
+    && samePrice(a.budget, b.budget);
+}
+
+function samePrice(a: Price, b: Price): boolean {
+  return a.asset === b.asset && a.symbol === b.symbol && a.amount === b.amount;
 }
 
 async function readOrThrow(ledger: Ledger, jobId: JobId): Promise<readonly JobEvent[]> {

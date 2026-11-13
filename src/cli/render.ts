@@ -90,7 +90,9 @@ export function failureText(reason: FailReason): string {
     case "unknown-job":
       return `Unknown job ${reason.jobId}.`;
     case "over-budget":
-      return `Quote ${reason.quote.amount} ${reason.quote.symbol} is above budget ${reason.budget.amount} ${reason.budget.symbol}.`;
+      return `Offer ${reason.offer.amount} ${reason.offer.symbol} is above budget ${reason.budget.amount} ${reason.budget.symbol}.`;
+    case "offer-refused":
+      return `${reason.providerId} refused ${reason.offer.amount} ${reason.offer.symbol}.`;
     case "order-conflict":
       return `Job ${reason.jobId} was opened with a different order.`;
     case "job-busy":

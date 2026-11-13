@@ -8,6 +8,8 @@ const providerId = parseProviderId("disclosure");
 if (!providerId) throw new Error("disclosure id failed its check");
 const quoteNear = parseDecimalAmount("0.02");
 if (!quoteNear) throw new Error("disclosure price failed its check");
+const floorNear = parseDecimalAmount("0.018");
+if (!floorNear) throw new Error("disclosure floor failed its check");
 
 function claimParameters(facts: readonly DisclosureFact[]) {
   const values = (key: "company" | "period" | "metric" | "unit") => [...new Set(facts.map((fact) => fact[key]))];
@@ -38,6 +40,7 @@ function claimParameters(facts: readonly DisclosureFact[]) {
 
 export const disclosure: Provider = {
   quoteNear,
+  floorNear,
   describe: {
     id: providerId,
     name: "Disclosure analyst",

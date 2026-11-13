@@ -100,6 +100,8 @@ export type Fulfilment =
 
 export interface Provider {
   readonly quoteNear: DecimalAmount;
+  // The lowest price the shop accepts. It stays out of the listing, so a buyer learns it only by making an offer.
+  readonly floorNear: DecimalAmount;
   readonly describe: Omit<ProviderListing, "price" | "owner" | "payTo">;
   fulfil(paid: PaidOrder, deps: { readonly inference: Inference }): Promise<Fulfilment>;
 }

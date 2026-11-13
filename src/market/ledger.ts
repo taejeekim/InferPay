@@ -97,6 +97,7 @@ const orderSchema = z.object({
   jobId: z.string(),
   providerId: z.string(),
   question: z.string(),
+  offer: priceSchema,
   budget: priceSchema,
   payFrom: z.string(),
 });
@@ -239,9 +240,10 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
 }
 
 function brandOrder(order: z.infer<typeof orderSchema>) {
+  const offer = brandPrice(order.offer);
   const budget = brandPrice(order.budget);
-  if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !isAccountId(order.payFrom) || !budget) return null;
-  return { jobId: order.jobId, providerId: order.providerId, question: order.question, budget, payFrom: order.payFrom };
+  if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !isAccountId(order.payFrom) || !offer || !budget) return null;
+  return { jobId: order.jobId, providerId: order.providerId, question: order.question, offer, budget, payFrom: order.payFrom };
 }
 
 function isJson(line: string): boolean {

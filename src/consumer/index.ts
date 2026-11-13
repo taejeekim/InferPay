@@ -39,8 +39,11 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       onProgress?.({ step: "decide", decision: routed.decision });
       if (routed.decision.kind === "answer-locally") return answerLocally(inference, question, routed.decision);
       if (routed.decision.kind === "decline") return { kind: "declined", reason: routed.decision.reason };
+      const providerId = routed.decision.providerId;
+      const listing = listings.find((item) => item.id === providerId);
+      if (!listing) return { kind: "failed", reason: { kind: "unknown-provider", providerId } };
       const outcome = await market.hire(
-        { jobId: newJobId(), providerId: routed.decision.providerId, question, budget, payFrom: buyer.account },
+        { jobId: newJobId(), providerId, question, offer: listing.price, budget, payFrom: buyer.account },
         (progress) => onProgress?.(progress),
       );
       if (outcome.kind !== "completed") return fromUnfinished(outcome);

@@ -1,4 +1,4 @@
-import type { AssetId, ProviderId } from "../domain.ts";
+import { compareSameAsset, type AssetId, type Price, type ProviderId } from "../domain.ts";
 import type { Roster } from "../roster.ts";
 import { disclosure } from "./disclosure/index.ts";
 import { insurance } from "./insurance/index.ts";
@@ -7,7 +7,15 @@ import type { Provider, ProviderListing } from "./types.ts";
 
 export const PROVIDERS = [disclosure, legal, insurance] satisfies readonly Provider[];
 
-export type BoundProvider = { readonly provider: Provider; readonly listing: ProviderListing };
+export type BoundProvider = { readonly provider: Provider; readonly listing: ProviderListing; readonly floor: Price };
+
+// A shop sells at any offer from its floor up, and never charges more than its list price.
+export function priceFor(bound: BoundProvider, offer: Price): Price | null {
+  const againstFloor = compareSameAsset(offer, bound.floor);
+  if (againstFloor === "different-asset" || againstFloor === -1) return null;
+  if (compareSameAsset(offer, bound.listing.price) === 1) return bound.listing.price;
+  return { ...bound.listing.price, amount: offer.amount };
+}
 
 export type Bindings =
   | { readonly ok: true; readonly providers: readonly BoundProvider[] }
@@ -32,6 +40,7 @@ export function bindProviders(
         owner: seat.parent,
         payTo: seat.account,
       },
+      floor: { asset: near.asset, symbol: near.symbol, amount: provider.floorNear },
     });
   }
   return { ok: true, providers: bound };

@@ -72,7 +72,7 @@ test("an uncertain transfer settles on resume with the same key", async () => {
   }
 });
 
-test("a quote above the budget writes no job file", async () => {
+test("an offer above the budget writes no job file", async () => {
   const { market, order, root } = await harness("none");
   try {
     const tight = { ...order, budget: price("0.01") };
@@ -82,6 +82,67 @@ test("a quote above the budget writes no job file", async () => {
     assert.equal(outcome.reason.kind, "over-budget");
     const names = await readdir(join(root, "jobs")).catch(() => []);
     assert.deepEqual(names, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a counter-offer at the shop's floor is accepted, and the job pays the agreed price", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const offer = price("0.015");
+    assert.equal(await market.counter(order.providerId, offer), "accepted");
+    const done = await market.hire({ ...order, offer });
+    assert.equal(done.kind, "completed");
+    if (done.kind !== "completed") return;
+    assert.equal(done.job.paid.amount.amount, "0.015");
+    const view = await market.job(order.jobId);
+    const opened = view?.events[0];
+    assert.equal(opened?.type, "opened");
+    if (opened?.type !== "opened") return;
+    assert.equal(opened.quote.amount, "0.015");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an offer below the shop's floor is refused and writes no job file", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const offer = price("0.0149");
+    assert.equal(await market.counter(order.providerId, offer), "refused");
+    const outcome = await market.hire({ ...order, offer });
+    assert.equal(outcome.kind, "failed");
+    if (outcome.kind !== "failed") return;
+    assert.equal(outcome.reason.kind, "offer-refused");
+    const names = await readdir(join(root, "jobs")).catch(() => []);
+    assert.deepEqual(names, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an offer above the list price pays the list price", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const done = await market.hire({ ...order, offer: price("0.05") });
+    assert.equal(done.kind, "completed");
+    if (done.kind !== "completed") return;
+    assert.equal(done.job.paid.amount.amount, "0.02");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a second hire with a different offer conflicts", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const done = await market.hire(order);
+    assert.equal(done.kind, "completed");
+    const again = await market.hire({ ...order, offer: price("0.015") });
+    assert.equal(again.kind, "failed");
+    if (again.kind !== "failed") return;
+    assert.equal(again.reason.kind, "order-conflict");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -198,6 +259,7 @@ async function harness(
         owner: must(parseParentAccount("david.inferpay.near")),
         payTo: must(parseAccountId("disclosure.david.inferpay.near")),
       },
+      floor: price("0.015"),
     }],
     clock: fixedClock,
   });
@@ -207,6 +269,7 @@ async function harness(
 function sampleProvider(fulfil?: Provider["fulfil"]): Provider {
   return {
     quoteNear: must(parseDecimalAmount("0.02")),
+    floorNear: must(parseDecimalAmount("0.015")),
     describe: {
       id: must(parseProviderId("disclosure")),
       name: "Disclosure analyst",
@@ -222,6 +285,7 @@ function sampleOrder() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure")),
     question: "Does the filing match?",
+    offer: price("0.02"),
     budget: price("0.10"),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),
   };
