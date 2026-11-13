@@ -1,4 +1,5 @@
 import { compareSameAsset, type AccountId, type CorrelationId, type IdempotencyKey, type IsoTime, type JobId, type Price, type ProviderId, type Stars } from "../domain.ts";
+import type { PinnedCommitment } from "../commitment/index.ts";
 import type { Answer } from "../providers/types.ts";
 import type { PaymentReceipt, Transfer } from "../payment/index.ts";
 
@@ -10,6 +11,8 @@ export type Order = {
   readonly offer: Price;
   readonly budget: Price;
   readonly payFrom: AccountId;
+  // The shop's root as the buyer read it before paying. Every check in the answer is verified against this one.
+  readonly commitment: PinnedCommitment;
 };
 
 export type JobEvent =

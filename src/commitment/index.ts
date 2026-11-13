@@ -1,8 +1,9 @@
 import { z } from "zod";
-import type { AccountId } from "../domain.ts";
+import { isAccountId, type AccountId } from "../domain.ts";
 import { buildTree, isHash, leafHash, rootFrom, type Hash, type Step } from "./merkle.ts";
 import type { ClauseClaim, Entry, FactClaim, FigureClaim } from "./rules.ts";
 
+export { canonical, leafHash } from "./merkle.ts";
 export type { Hash, Step } from "./merkle.ts";
 export * from "./rules.ts";
 
@@ -31,12 +32,12 @@ export type AssertedCheck =
 
 export type CommitmentSource =
   | { readonly kind: "listing" }
-  | { readonly kind: "chain"; readonly contract: AccountId; readonly key: string; readonly block: number };
+  | { readonly kind: "chain"; readonly contract: AccountId; readonly account: AccountId; readonly block: number };
 
 // The commitment a buyer fixed before it paid, so a shop cannot publish a new root once it has seen the question.
 export type PinnedCommitment =
   | { readonly status: "published"; readonly commitment: Commitment; readonly source: CommitmentSource }
-  | { readonly status: "missing"; readonly contract: AccountId; readonly key: string };
+  | { readonly status: "missing"; readonly contract: AccountId; readonly account: AccountId };
 
 export type Dataset<E extends Entry> = {
   readonly commitment: Commitment;
@@ -134,6 +135,20 @@ export const commitmentSchema = z.object({
   root: hashSchema,
   leaves: z.number().int().positive(),
 });
+
+const accountSchema = z.custom<AccountId>((value) => typeof value === "string" && isAccountId(value));
+
+export const pinnedCommitmentSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("published"),
+    commitment: commitmentSchema,
+    source: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("listing") }),
+      z.object({ kind: z.literal("chain"), contract: accountSchema, account: accountSchema, block: z.number().int() }),
+    ]),
+  }),
+  z.object({ status: z.literal("missing"), contract: accountSchema, account: accountSchema }),
+]);
 
 export function parseAssertedChecks(raw: unknown): readonly AssertedCheck[] | null {
   const parsed = z.array(assertedCheckSchema).safeParse(raw);

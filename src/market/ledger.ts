@@ -15,6 +15,7 @@ import {
   parseJobId,
   type JobId,
 } from "../domain.ts";
+import { assertedCheckSchema, pinnedCommitmentSchema } from "../commitment/index.ts";
 import type { JobEvent } from "./job.ts";
 import { UNVERIFIED_REASONS, type CallAttestation } from "../inference/attest.ts";
 
@@ -101,62 +102,8 @@ const orderSchema = z.object({
   offer: priceSchema,
   budget: priceSchema,
   payFrom: z.string(),
+  commitment: pinnedCommitmentSchema,
 });
-
-const checkSchema = z.union([
-  z.object({
-    kind: z.literal("flag"),
-    verdict: z.enum(["raised", "clear"]),
-    label: z.string(),
-    detail: z.string(),
-  }),
-  z.object({
-    kind: z.literal("fact"),
-    verdict: z.literal("match"),
-    label: z.string(),
-    claimed: z.string(),
-    source: z.string(),
-  }),
-  z.object({
-    kind: z.literal("fact"),
-    verdict: z.literal("mismatch"),
-    label: z.string(),
-    claimed: z.string(),
-    reference: z.string(),
-    source: z.string(),
-  }),
-  z.object({
-    kind: z.literal("fact"),
-    verdict: z.literal("unverifiable"),
-    label: z.string(),
-    claimed: z.string(),
-  }),
-  z.object({
-    kind: z.literal("number"),
-    verdict: z.literal("match"),
-    label: z.string(),
-    claimed: z.number(),
-    unit: z.string(),
-    source: z.string(),
-  }),
-  z.object({
-    kind: z.literal("number"),
-    verdict: z.literal("mismatch"),
-    label: z.string(),
-    claimed: z.number(),
-    unit: z.string(),
-    reference: z.number(),
-    deltaPct: z.number(),
-    source: z.string(),
-  }),
-  z.object({
-    kind: z.literal("number"),
-    verdict: z.literal("unverifiable"),
-    label: z.string(),
-    claimed: z.number(),
-    unit: z.string(),
-  }),
-]);
 
 const attestationSchema = z.discriminatedUnion("verdict", [
   z.object({ verdict: z.literal("verified"), model: z.string(), completionId: z.string(), signer: z.string() }),
@@ -171,7 +118,7 @@ const attestationSchema = z.discriminatedUnion("verdict", [
 
 const answerSchema = z.object({
   text: z.string(),
-  checks: z.array(checkSchema),
+  checks: z.array(assertedCheckSchema),
   model: z.string(),
   inference: z.enum(["near-ai", "stub"]),
   // Jobs answered before attestation existed made no checked calls.
@@ -263,7 +210,15 @@ function brandOrder(order: z.infer<typeof orderSchema>) {
   const offer = brandPrice(order.offer);
   const budget = brandPrice(order.budget);
   if (!isJobId(order.jobId) || !isProviderId(order.providerId) || !isAccountId(order.payFrom) || !offer || !budget) return null;
-  return { jobId: order.jobId, providerId: order.providerId, question: order.question, offer, budget, payFrom: order.payFrom };
+  return {
+    jobId: order.jobId,
+    providerId: order.providerId,
+    question: order.question,
+    offer,
+    budget,
+    payFrom: order.payFrom,
+    commitment: order.commitment,
+  };
 }
 
 function isJson(line: string): boolean {

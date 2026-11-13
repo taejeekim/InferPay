@@ -1,24 +1,19 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-
-export type PlaybookRule = {
-  readonly id: string;
-  readonly all: readonly RegExp[];
-  readonly label: string;
-  readonly detail: string;
-};
+import { saltSchema, sealDataset, type Dataset, type Rule } from "../../commitment/index.ts";
 
 const ruleSchema = z.object({
   id: z.string(),
   all: z.array(z.string().min(1)).min(1),
   label: z.string(),
   detail: z.string(),
+  salt: saltSchema,
 });
 
-let cached: readonly PlaybookRule[] | null = null;
+let cached: Dataset<Rule> | null = null;
 
-export function loadPlaybook(): readonly PlaybookRule[] {
+export function loadPlaybook(): Dataset<Rule> {
   if (cached) return cached;
   const path = fileURLToPath(new URL("./data/playbook.json", import.meta.url));
   let raw: unknown;
@@ -29,6 +24,6 @@ export function loadPlaybook(): readonly PlaybookRule[] {
   }
   const parsed = z.array(ruleSchema).safeParse(raw);
   if (!parsed.success) throw new Error("legal playbook failed its check");
-  cached = parsed.data.map((rule) => ({ ...rule, all: rule.all.map((source) => new RegExp(source, "i")) }));
+  cached = sealDataset(parsed.data.map(({ salt, ...rule }) => ({ entry: { kind: "rule", ...rule }, salt })));
   return cached;
 }

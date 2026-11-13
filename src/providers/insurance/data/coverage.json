@@ -2,16 +2,19 @@
   {
     "topic": "outpatient-mri",
     "value": "covered",
-    "source": "Policy schedule §4.2. Outpatient MRI is covered at 20% copay."
+    "source": "Policy schedule §4.2. Outpatient MRI is covered at 20% copay.",
+    "salt": "c2820c363f28424d6f529b46d086e8e272e20f43820a7532b143a296ed52d470"
   },
   {
     "topic": "cosmetic-surgery",
     "value": "excluded",
-    "source": "Policy schedule §9.1. Cosmetic procedures are excluded."
+    "source": "Policy schedule §9.1. Cosmetic procedures are excluded.",
+    "salt": "da3121ec3c96b98070f9a3b62dac8d0f7866e25ea80f37b7aaecdfeadb065831"
   },
   {
     "topic": "mri-copay",
     "value": "20",
-    "source": "Policy schedule §4.2. Outpatient MRI copay is 20 percent."
+    "source": "Policy schedule §4.2. Outpatient MRI copay is 20 percent.",
+    "salt": "5a927035662b4f89f4742c4b089283dae6b093d223f4064234f412d8b9abbb6a"
   }
 ]

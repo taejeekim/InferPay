@@ -3,12 +3,14 @@ import { formatUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
 import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
-import type { Check } from "../providers/types.ts";
+import { canonical, leafHash, type AssertedCheck, type Evidence, type Hash, type PinnedCommitment } from "../commitment/index.ts";
 import type { PaymentRail } from "../payment/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
-import { penalizes } from "../consumer/grade.ts";
+import { tally } from "../consumer/grade.ts";
+import { verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
-import { txUrl } from "../near/explorer.ts";
+import { accountUrl, txUrl } from "../near/explorer.ts";
+import { commitmentKey } from "../registry/keys.ts";
 import { formatNear } from "../payment/units.ts";
 
 export function railsLine(rails: { readonly payment: string; readonly inference: string }): string {
@@ -22,13 +24,11 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
     case "pay":
       return payBlock(progress, rail);
     case "answer":
-      return [
-        line("answer", progress.answer.text),
-        ...checkLines(progress.answer.checks),
-        ...attestLines("specialist", progress.answer.attestation),
-      ].join("\n");
+      return [line("answer", progress.answer.text), ...attestLines("specialist", progress.answer.attestation)].join("\n");
+    case "verify":
+      return checksBlock(progress.checks, progress.commitment, rail).join("\n");
     case "rate":
-      return line("rate", rateText(progress.rating, progress.answer.checks));
+      return line("rate", rateText(progress.rating, progress.checks));
     case "pending":
       return line("pending", `${progress.jobId} is waiting on payment. Run: npx inferpay resume ${progress.jobId}`);
     default: {
@@ -61,12 +61,16 @@ export function providersTable(listings: readonly Listing[]): string {
 }
 
 export function jobText(view: JobView): string {
+  const under = (row: string): string => `${"".padEnd(18)}${row}`;
   return view.events.map((event) => {
     const time = `${event.at.slice(11, 19)} UTC`;
     const label = event.type.padEnd(18);
     switch (event.type) {
       case "opened":
-        return `${label}${time}  ${event.order.providerId}  quote ${event.quote.amount} ${event.quote.symbol}  budget ${event.order.budget.amount} ${event.order.budget.symbol}  ${event.order.payFrom} -> ${event.payTo}`;
+        return [
+          `${label}${time}  ${event.order.providerId}  quote ${event.quote.amount} ${event.quote.symbol}  budget ${event.order.budget.amount} ${event.order.budget.symbol}  ${event.order.payFrom} -> ${event.payTo}`,
+          ...pinnedRows(event.order.commitment).map(under),
+        ].join("\n");
       case "payment-intended":
         return `${label}${time}  key ${event.key}`;
       case "payment-pending":
@@ -80,7 +84,8 @@ export function jobText(view: JobView): string {
       case "fulfilled":
         return [
           `${label}${time}  ${event.answer.checks.length} checks`,
-          ...attestLines("specialist", event.answer.attestation).map((row) => `${"".padEnd(18)}${row}`),
+          ...attestLines("specialist", event.answer.attestation).map(under),
+          ...verifyChecks(event.answer.checks, view.order.commitment).flatMap(proofRows).map(under),
         ].join("\n");
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
@@ -337,38 +342,147 @@ function field(name: string, value: string): string {
   return line("", `${name.padEnd(8)}${value}`);
 }
 
-function rateText(rating: number, checks: readonly Check[]): string {
-  const penalties = checks.filter(penalizes).length;
-  if (penalties === 0) return `${rating}/5`;
-  return `${rating}/5 (${penalties} of ${checks.length} checks needed correction)`;
+function rateText(rating: number, checks: readonly BuyerCheck[]): string {
+  const counts = tally(checks);
+  if (counts.forged > 0) return `${rating}/5  (forged evidence sets the rating to 1)`;
+  const reasons: string[] = [];
+  if (counts.mismatches > 0) reasons.push(`${plural(counts.mismatches, "mismatch", "mismatches")} among ${plural(counts.verified, "verified check", "verified checks")}`);
+  if (counts.unbacked > 0) reasons.push(`${plural(counts.unbacked, "claim", "claims")} the shop could not back`);
+  if (counts.verified === 0) reasons.push("nothing verified, so at most 3");
+  return reasons.length === 0 ? `${rating}/5` : `${rating}/5  (${reasons.join("; ")})`;
 }
 
-function checkLines(checks: readonly Check[]): string[] {
-  return checks.map((check, index) => line(index === 0 ? "checks" : "", checkText(check)));
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
-function checkText(check: Check): string {
-  if (check.kind === "flag") {
-    const label = check.label.padEnd(26);
-    if (check.verdict === "raised") return `raised    ${label}${check.detail}`;
-    return `clear     ${label}${check.detail}`;
+const STATUS = 10;
+const VERDICT = 14;
+
+export function checksBlock(checks: readonly BuyerCheck[], pinned: PinnedCommitment, rail: PaymentRail["kind"]): string[] {
+  if (checks.length === 0) return [line("checks", "none: the shop sent nothing to verify")];
+  const counts = tally(checks);
+  const headline = [`${counts.verified} of ${checks.length} verified by the buyer against the shop's committed root`];
+  if (counts.unproven > 0) headline.push(`${counts.unproven} unproven`);
+  if (counts.forged > 0) headline.push(`${counts.forged} FORGED`);
+  const width = checks.reduce((max, check) => Math.max(max, checkLabel(check).length), 0) + 2;
+  return [
+    line("checks", headline.join(", ")),
+    ...checks.flatMap((check) => checkRows(check, width)).map((row) => line("", row)),
+    ...commitmentRows(pinned, rail).map((row) => line("", row)),
+  ];
+}
+
+function checkLabel(check: BuyerCheck): string {
+  if (check.status === "verified") return check.kind === "flag" ? check.entry.label : check.claim.label;
+  return check.check.claim.label;
+}
+
+function checkRows(check: BuyerCheck, width: number): string[] {
+  const head = (status: string, verdict: string, rest: string): string => (
+    `${status.padEnd(STATUS)}${verdict.padEnd(VERDICT)}${checkLabel(check).padEnd(width)}${rest}`.trimEnd()
+  );
+  const under = (text: string): string => `${"".padEnd(STATUS)}${text}`;
+  if (check.status === "unproven") {
+    return [head("unproven", check.check.verdict, claimedText(check.check)), under(unprovenText(check))];
   }
+  if (check.status === "forged") {
+    return [head("FORGED", check.check.verdict, claimedText(check.check)), under(forgeryText(check.forgery, check.check))];
+  }
+  if (check.kind === "flag") return [head("verified", check.verdict, ""), under(check.entry.detail)];
   if (check.kind === "fact") {
-    const label = check.label.padEnd(26);
-    if (check.verdict === "match") return `match     ${label}${check.claimed}   (${check.source})`;
-    if (check.verdict === "mismatch") {
-      return `mismatch  ${label}${check.claimed}   ref ${check.reference} (${check.source})`;
+    const ref = check.verdict === "mismatch" ? `   ref ${check.entry.value}` : "";
+    return [head("verified", check.verdict, `${check.claim.claimed}${ref}`), under(check.entry.source)];
+  }
+  const claimed = formatFigure(check.claim.claimed, check.claim.unit);
+  if (check.verdict === "match") return [head("verified", check.verdict, claimed), under(check.entry.source)];
+  const signed = check.deltaPct < 0 ? check.deltaPct.toFixed(2) : `+${check.deltaPct.toFixed(2)}`;
+  return [
+    head("verified", check.verdict, `${claimed}   ref ${formatFigure(check.entry.value, check.entry.unit)} (${signed}%)`),
+    under(check.entry.source),
+  ];
+}
+
+function claimedText(check: AssertedCheck): string {
+  if (check.kind === "number") return formatFigure(check.claim.claimed, check.claim.unit);
+  if (check.kind === "fact") return check.claim.claimed;
+  return "";
+}
+
+function unprovenText(check: Extract<BuyerCheck, { status: "unproven" }>): string {
+  if (check.why === "no-commitment") return "the shop's word only: it has published no root to check this against";
+  if (check.check.kind === "flag") return "the shop's word only: it says no playbook rule matched, and an absence carries no proof";
+  return "the shop's word only: it says it holds no entry for this, and an absence carries no proof";
+}
+
+function forgeryText(forgery: Forgery, check: AssertedCheck): string {
+  switch (forgery.kind) {
+    case "no-evidence":
+      return `the shop said ${check.verdict} and sent no evidence`;
+    case "wrong-root":
+      return `the shop said ${check.verdict}, but its evidence does not open to the committed root`;
+    case "wrong-entry":
+      return `the shop said ${check.verdict}, but the entry it proved is not about this claim`;
+    case "wrong-verdict":
+      return `the shop said ${check.verdict}, but the entry it proved gives ${forgery.recomputed}`;
+    default: {
+      const unreachable: never = forgery;
+      return unreachable;
     }
-    return `unverifiable  ${label}${check.claimed}`;
   }
-  const label = check.label.padEnd(26);
-  const claimed = formatFigure(check.claimed, check.unit);
-  if (check.verdict === "match") return `match     ${label}${claimed}   (${check.source})`;
-  if (check.verdict === "mismatch") {
-    const signed = check.deltaPct < 0 ? check.deltaPct.toFixed(2) : `+${check.deltaPct.toFixed(2)}`;
-    return `mismatch  ${label}${claimed}   ref ${formatFigure(check.reference, check.unit)} (${signed}%)`;
+}
+
+function commitmentRows(pinned: PinnedCommitment, rail: PaymentRail["kind"]): string[] {
+  const row = (name: string, value: string): string => `${name.padEnd(STATUS)}${value}`;
+  if (pinned.status === "missing") {
+    return [row("root", `none: ${pinned.account} has published no commitment in SocialDB ${pinned.contract}`)];
   }
-  return `unverifiable  ${label}${claimed}`;
+  const { commitment, source } = pinned;
+  const root = row("root", `${shortHash(commitment.root)}  ${plural(commitment.leaves, "leaf", "leaves")}  ${commitment.scheme}`);
+  if (source.kind === "listing") {
+    const why = rail === "mock" ? "because the mock rail has no chain" : "because this rail publishes no commitment";
+    return [root, row("from", `the shop's listing, ${why}`)];
+  }
+  return [
+    root,
+    row("from", `NEAR testnet, written at block ${source.block} and read before paying`),
+    row("key", `${commitmentKey(source.account)} in SocialDB ${source.contract}`),
+    row("link", accountUrl(source.account)),
+  ];
+}
+
+function pinnedRows(pinned: PinnedCommitment): string[] {
+  if (pinned.status === "missing") return [`commitment none on chain for ${pinned.account}`];
+  const { commitment, source } = pinned;
+  const from = source.kind === "listing"
+    ? "from the shop's listing"
+    : `from ${commitmentKey(source.account)} in SocialDB ${source.contract}, block ${source.block}`;
+  return [`commitment ${commitment.root}`, `           ${plural(commitment.leaves, "leaf", "leaves")}, ${commitment.scheme}, ${from}`];
+}
+
+// Every value a reader needs to recompute the leaf and walk it to the root by hand.
+function proofRows(check: BuyerCheck): string[] {
+  if (check.status === "verified") {
+    return [`verified  ${check.verdict}  ${checkLabel(check)}`, ...evidenceRows(check), "  root      equals the commitment above"];
+  }
+  const rows = [`${check.status === "forged" ? "FORGED" : "unproven"}  ${check.check.verdict}  ${checkLabel(check)}`];
+  rows.push(`  ${check.status === "forged" ? forgeryText(check.forgery, check.check) : unprovenText(check)}`);
+  if (check.check.evidence !== null) rows.push(...evidenceRows(check.check.evidence));
+  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  root      ${check.forgery.opensTo}`);
+  return rows;
+}
+
+function evidenceRows(evidence: Evidence): string[] {
+  return [
+    `  entry     ${canonical(evidence.entry)}`,
+    `  salt      ${evidence.salt}`,
+    `  leaf      ${leafHash(evidence.entry, evidence.salt)}`,
+    ...evidence.path.map((step) => `  ${step.side.padEnd(10)}${step.hash}`),
+  ];
+}
+
+function shortHash(hash: Hash): string {
+  return `${hash.slice(0, 12)}…${hash.slice(-4)}`;
 }
 
 function formatFigure(value: number, unit: string): string {

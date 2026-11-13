@@ -1,7 +1,8 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { lookupCoverage, parseFactChecks, parseFactClaims } from "./lookup.ts";
+import { parseAssertedChecks } from "../../commitment/index.ts";
+import { lookupCoverage, parseFactClaims } from "./lookup.ts";
 import { loadCoverage } from "./schedule.ts";
 
 const providerId = parseProviderId("insurance");
@@ -47,19 +48,20 @@ export const insurance: Provider = {
     routingHint:
       "Answers coverage questions from a private policy schedule the caller does not hold. Use for MRI, copay, and exclusions.",
   },
+  commitment: () => loadCoverage().commitment,
   fulfil(paid, deps) {
     return answerInsurance(paid, deps.inference);
   },
 };
 
 async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
-  const facts = loadCoverage();
+  const data = loadCoverage();
   const lookup = tool({
     name: "lookup_coverage",
     description: "Check cited coverage claims against the private policy schedule. Pass every claim you cite.",
-    parameters: factParameters(unique(facts.map((fact) => fact.topic))),
+    parameters: factParameters(unique(data.entries.map((fact) => fact.topic))),
     parseArgs: parseFactClaims,
-    run: (args) => lookupCoverage(args, facts),
+    run: (args) => lookupCoverage(args, data),
   });
   const result = await inference.run({
     name: "insurance.answer",
@@ -76,7 +78,7 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
       const text = raw.trim();
       const last = [...toolResults].reverse().find((item) => item.name === "lookup_coverage");
       if (text.length === 0 || !last) return null;
-      const checks = parseFactChecks(last.result);
+      const checks = parseAssertedChecks(last.result);
       if (!checks) return null;
       return { text, checks };
     },

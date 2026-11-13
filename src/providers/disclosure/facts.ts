@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import type { DisclosureFact } from "./crossValidate.ts";
+import { saltSchema, sealDataset, type Dataset, type Figure } from "../../commitment/index.ts";
 
 const factSchema = z.object({
   company: z.string(),
@@ -10,11 +10,12 @@ const factSchema = z.object({
   value: z.number(),
   unit: z.string(),
   source: z.string(),
+  salt: saltSchema,
 });
 
-let cached: readonly DisclosureFact[] | null = null;
+let cached: Dataset<Figure> | null = null;
 
-export function loadFacts(): readonly DisclosureFact[] {
+export function loadFacts(): Dataset<Figure> {
   if (cached) return cached;
   const path = fileURLToPath(new URL("./data/samsung-q3-2025.json", import.meta.url));
   let raw: unknown;
@@ -25,6 +26,6 @@ export function loadFacts(): readonly DisclosureFact[] {
   }
   const parsed = z.array(factSchema).safeParse(raw);
   if (!parsed.success) throw new Error("disclosure dataset failed its check");
-  cached = parsed.data;
+  cached = sealDataset(parsed.data.map(({ salt, ...fact }) => ({ entry: { kind: "figure", ...fact }, salt })));
   return cached;
 }

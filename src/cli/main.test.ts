@@ -284,9 +284,36 @@ test("a shop's net rises after a good rating and falls after a poor one", async 
   await withDataDir(async (root) => {
     const first = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
     assert.match(first.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.70 = quality 0\.56 {2}net \+0\.036$/m);
-    assert.match(first.out, /^rate {6}3\/5$/m);
+    assert.match(first.out, /^rate {6}3\/5 {2}\(1 claim the shop could not back; nothing verified, so at most 3\)$/m);
     const second = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
     assert.match(second.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.63 = quality 0\.50 {2}net \+0\.030$/m);
+  });
+});
+
+test("on the mock rail the buyer verifies each check against the listed root, and job prints the full proof", async () => {
+  await withDataDir(async (root) => {
+    const asked = await ask(root, "What was Samsung's Q3 2025 operating profit?", "0.10");
+    assert.equal(asked.code, 0);
+    assert.match(asked.out, /^checks {4}2 of 2 verified by the buyer against the shop's committed root$/m);
+    assert.match(asked.out, /^ {10}verified {2}match {9}operating profit Q3 2025 {2}12\.2T KRW$/m);
+    assert.match(asked.out, /^ {10}verified {2}mismatch {6}revenue Q3 2025 {11}86\.0T KRW {3}ref 86\.1T KRW \(-0\.12%\)$/m);
+    assert.match(asked.out, /^ {10}from {6}the shop's listing, because the mock rail has no chain$/m);
+    assert.match(asked.out, /^rate {6}4\/5 {2}\(1 mismatch among 2 verified checks\)$/m);
+    const short = asked.out.match(/^ {10}root {6}([0-9a-f]{12})…([0-9a-f]{4}) {2}2 leaves/m);
+    assert.ok(short);
+    const jobId = asked.out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+    assert.ok(jobId);
+    const stdout = capture(process.stdout);
+    try {
+      assert.equal(await main(["job", jobId], { INFERPAY_DATA_DIR: root }), 0);
+      const full = stdout.text().match(/commitment ([0-9a-f]{64})$/m)?.[1];
+      assert.ok(full);
+      assert.ok(full.startsWith(short[1] ?? "x") && full.endsWith(short[2] ?? "x"));
+      assert.match(stdout.text(), /^ {20}salt {6}[0-9a-f]{64}$/m);
+      assert.match(stdout.text(), /^ {20}leaf {6}[0-9a-f]{64}$/m);
+    } finally {
+      stdout.restore();
+    }
   });
 });
 

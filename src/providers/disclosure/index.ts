@@ -1,7 +1,8 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { crossValidate, parseChecks, parseClaims, TOLERANCE_PCT, type DisclosureFact } from "./crossValidate.ts";
+import { parseAssertedChecks, type Figure } from "../../commitment/index.ts";
+import { crossValidate, parseClaims } from "./crossValidate.ts";
 import { loadFacts } from "./facts.ts";
 
 const providerId = parseProviderId("disclosure");
@@ -11,7 +12,7 @@ if (!quoteNear) throw new Error("disclosure price failed its check");
 const floorNear = parseDecimalAmount("0.018");
 if (!floorNear) throw new Error("disclosure floor failed its check");
 
-function claimParameters(facts: readonly DisclosureFact[]) {
+function claimParameters(facts: readonly Figure[]) {
   const values = (key: "company" | "period" | "metric" | "unit") => [...new Set(facts.map((fact) => fact[key]))];
   return {
     type: "object",
@@ -48,19 +49,20 @@ export const disclosure: Provider = {
     routingHint:
       "Answers questions about company filings and earnings releases. Every cited figure is checked against filed disclosures.",
   },
+  commitment: () => loadFacts().commitment,
   fulfil(paid, deps) {
     return answerDisclosure(paid, deps.inference);
   },
 };
 
 async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
-  const facts = loadFacts();
+  const data = loadFacts();
   const validate = tool({
     name: "cross_validate_numbers",
     description: "Check cited figures against filed disclosures. Pass every number the answer will cite.",
-    parameters: claimParameters(facts),
+    parameters: claimParameters(data.entries),
     parseArgs: parseClaims,
-    run: (args) => crossValidate(args, facts, TOLERANCE_PCT),
+    run: (args) => crossValidate(args, data),
   });
   const result = await inference.run({
     name: "disclosure.answer",
@@ -77,7 +79,7 @@ async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<
       const text = raw.trim();
       const last = [...toolResults].reverse().find((item) => item.name === "cross_validate_numbers");
       if (text.length === 0 || !last) return null;
-      const checks = parseChecks(last.result);
+      const checks = parseAssertedChecks(last.result);
       if (!checks) return null;
       return { text, checks };
     },

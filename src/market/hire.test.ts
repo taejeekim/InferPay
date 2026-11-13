@@ -15,6 +15,7 @@ import {
   parseStars,
   type Price,
 } from "../domain.ts";
+import { parseCommitment, SCHEME, type Commitment } from "../commitment/index.ts";
 import type { Inference } from "../inference/index.ts";
 import { createMockRail } from "../payment/mock.ts";
 import type { Answer, Provider } from "../providers/types.ts";
@@ -206,6 +207,21 @@ test("a second hire waits while the first still holds the job", async () => {
   }
 });
 
+test("a second hire that pins a different root conflicts", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const done = await market.hire(order);
+    assert.equal(done.kind, "completed");
+    const other = must(parseCommitment({ scheme: SCHEME, root: "cd".repeat(32), leaves: 1 }));
+    const again = await market.hire({ ...order, commitment: { ...order.commitment, commitment: other } });
+    assert.equal(again.kind, "failed");
+    if (again.kind !== "failed") return;
+    assert.equal(again.reason.kind, "order-conflict");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a second hire with a different payer conflicts", async () => {
   const { market, order, root } = await harness("none");
   try {
@@ -259,6 +275,7 @@ async function harness(
         price: price("0.02"),
         owner: must(parseParentAccount("david.inferpay.near")),
         payTo: must(parseAccountId("disclosure.david.inferpay.near")),
+        declared: provider.commitment(),
       },
       floor: price("0.015"),
     }],
@@ -277,6 +294,7 @@ function sampleProvider(fulfil?: Provider["fulfil"]): Provider {
       specialty: "Disclosure analysis, number cross-check",
       routingHint: "filings",
     },
+    commitment: sampleCommitment,
     fulfil: fulfil ?? (async () => ({ ok: true, answer: sampleAnswer() })),
   };
 }
@@ -289,7 +307,12 @@ function sampleOrder() {
     offer: price("0.02"),
     budget: price("0.10"),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),
+    commitment: { status: "published" as const, commitment: sampleCommitment(), source: { kind: "listing" as const } },
   };
+}
+
+function sampleCommitment(): Commitment {
+  return must(parseCommitment({ scheme: SCHEME, root: "ab".repeat(32), leaves: 1 }));
 }
 
 function sampleAnswer(): Answer {

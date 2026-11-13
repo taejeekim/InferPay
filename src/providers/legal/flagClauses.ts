@@ -1,53 +1,23 @@
 import { z } from "zod";
-import type { FlagCheck } from "../types.ts";
-import type { PlaybookRule } from "./playbook.ts";
+import {
+  clauseClaimSchema,
+  ruleHits,
+  type AssertedCheck,
+  type ClauseClaim,
+  type Dataset,
+  type Rule,
+} from "../../commitment/index.ts";
 
-type ClaimedClause = {
-  readonly label: string;
-  readonly text: string;
-};
-
-const clauseSchema = z.object({
-  label: z.string(),
-  text: z.string(),
-});
-
-export function parseClauses(raw: unknown): readonly ClaimedClause[] | null {
-  const parsed = z.object({ clauses: z.array(clauseSchema) }).safeParse(raw);
+export function parseClauses(raw: unknown): readonly ClauseClaim[] | null {
+  const parsed = z.object({ clauses: z.array(clauseClaimSchema) }).safeParse(raw);
   if (!parsed.success) return null;
   return parsed.data.clauses;
 }
 
-export function parseFlags(raw: unknown): readonly FlagCheck[] | null {
-  const parsed = z.array(z.object({
-    kind: z.literal("flag"),
-    verdict: z.enum(["raised", "clear"]),
-    label: z.string(),
-    detail: z.string(),
-  })).safeParse(raw);
-  if (!parsed.success) return null;
-  return parsed.data;
-}
-
-export function flagClauses(
-  clauses: readonly ClaimedClause[],
-  rules: readonly PlaybookRule[],
-): readonly FlagCheck[] {
-  return clauses.map((clause) => {
-    const hit = rules.find((rule) => rule.all.every((term) => term.test(clause.text)));
-    if (!hit) {
-      return {
-        kind: "flag",
-        verdict: "clear",
-        label: clause.label,
-        detail: "No playbook rule matched this clause.",
-      };
-    }
-    return {
-      kind: "flag",
-      verdict: "raised",
-      label: hit.label,
-      detail: hit.detail,
-    };
+export function flagClauses(clauses: readonly ClauseClaim[], playbook: Dataset<Rule>): readonly AssertedCheck[] {
+  return clauses.map((claim) => {
+    const hit = playbook.entries.find((rule) => ruleHits(rule, claim.text));
+    if (!hit) return { kind: "flag", claim, verdict: "clear", evidence: null };
+    return { kind: "flag", claim, verdict: "raised", evidence: playbook.prove(hit) };
   });
 }

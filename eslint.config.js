@@ -45,7 +45,12 @@ const disclosureInternals = {
   message: "Import a specialist through its src/providers/<id>/index.ts.",
 };
 
-function restricted({ sdk, openai, near = true }) {
+const shops = {
+  group: ["**/providers/*/**", "**/providers/index", "**/providers/index.ts"],
+  message: "Buyer code verifies a shop from its public evidence. Import src/commitment, not a shop.",
+};
+
+function restricted({ sdk, openai, near = true, buyer = false }) {
   const paths = [];
   if (near) {
     paths.push(
@@ -65,7 +70,7 @@ function restricted({ sdk, openai, near = true }) {
       message: "Import openai only from src/inference/near-ai.ts.",
     });
   }
-  return ["error", { paths, patterns: [marketInternals, disclosureInternals] }];
+  return ["error", { paths, patterns: buyer ? [marketInternals, disclosureInternals, shops] : [marketInternals, disclosureInternals] }];
 }
 
 const paidCasts = [
@@ -90,6 +95,13 @@ const seatCasts = [
   },
 ];
 
+const verifiedCasts = [
+  {
+    selector: "TSAsExpression > TSTypeReference[typeName.name='VerifiedCheck']",
+    message: "Construct VerifiedCheck only in src/consumer/verify.ts.",
+  },
+];
+
 export default tseslint.config(
   { ignores: ["node_modules/**", ".inferpay/**", "dist/**"] },
   ...tseslint.configs.recommended,
@@ -97,6 +109,10 @@ export default tseslint.config(
     files: ["src/**/*.ts"],
     ignores: ["src/payment/near-intents.ts", "src/inference/near-ai.ts", "src/near/client.ts"],
     rules: { "no-restricted-imports": restricted({ sdk: true, openai: true }) },
+  },
+  {
+    files: ["src/consumer/**/*.ts"],
+    rules: { "no-restricted-imports": restricted({ sdk: true, openai: true, buyer: true }) },
   },
   {
     files: ["src/near/client.ts"],
@@ -112,15 +128,19 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.ts"],
-    ignores: ["src/market/index.ts", "src/roster.ts"],
-    rules: { "no-restricted-syntax": ["error", ...paidCasts, ...seatCasts] },
+    ignores: ["src/market/index.ts", "src/roster.ts", "src/consumer/verify.ts"],
+    rules: { "no-restricted-syntax": ["error", ...paidCasts, ...seatCasts, ...verifiedCasts] },
   },
   {
     files: ["src/market/index.ts"],
-    rules: { "no-restricted-syntax": ["error", ...seatCasts] },
+    rules: { "no-restricted-syntax": ["error", ...seatCasts, ...verifiedCasts] },
   },
   {
     files: ["src/roster.ts"],
-    rules: { "no-restricted-syntax": ["error", ...paidCasts] },
+    rules: { "no-restricted-syntax": ["error", ...paidCasts, ...verifiedCasts] },
+  },
+  {
+    files: ["src/consumer/verify.ts"],
+    rules: { "no-restricted-syntax": ["error", ...paidCasts, ...seatCasts] },
   },
 );

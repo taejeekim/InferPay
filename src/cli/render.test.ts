@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseModelId, parseProviderId, type Price } from "../domain.ts";
+import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseModelId, parseProviderId, parseStars, type Price } from "../domain.ts";
+import { sealDataset, type AssertedCheck, type Entry, type Figure, type PinnedCommitment } from "../commitment/index.ts";
+import { parseHash } from "../commitment/merkle.ts";
 import { decide, percentOf } from "../consumer/decide.ts";
+import { verifyChecks } from "../consumer/verify.ts";
 import type { CallAttestation } from "../inference/attest.ts";
 import { resolveRoster } from "../roster.ts";
 import { attestLines, progressLine, railsLine, walletsTable } from "./render.ts";
@@ -116,6 +119,83 @@ test("an unverified call prints its reason and claims no match", () => {
 
 test("a role with no live calls prints nothing", () => {
   assert.deepEqual(attestLines("buyer", []), []);
+});
+
+const PROFIT: Figure = {
+  kind: "figure",
+  company: "Samsung Electronics",
+  period: "Q3 2025",
+  metric: "operating profit",
+  value: 12.2,
+  unit: "KRW T",
+  source: "Samsung Electronics Q3 2025 earnings release",
+};
+const REVENUE: Figure = { ...PROFIT, metric: "revenue", value: 86.1 };
+const SHOP = sealDataset<Entry>([PROFIT, REVENUE].map((entry, index) => ({ entry, salt: must(parseHash(`0${index + 1}`.repeat(32))) })));
+const LISTED: PinnedCommitment = { status: "published", commitment: SHOP.commitment, source: { kind: "listing" } };
+
+function figure(entry: Figure, claimed: number, verdict: "match" | "mismatch" | "unverifiable", evidence = SHOP.prove(entry)): AssertedCheck {
+  const claim = { label: `${entry.metric} Q3 2025`, company: entry.company, period: entry.period, metric: entry.metric, claimed, unit: "KRW T" };
+  return { kind: "number", claim, verdict, evidence: verdict === "unverifiable" ? null : evidence };
+}
+
+function verifyBlock(checks: readonly AssertedCheck[], pinned: PinnedCommitment, rail: "mock" | "near-testnet"): string[] {
+  return progressLine({ step: "verify", checks: verifyChecks(checks, pinned), commitment: pinned }, rail).split("\n");
+}
+
+test("the checks block marks each verified check, shows the entry it rests on, and says the root came from the listing", () => {
+  const root = SHOP.commitment.root;
+  assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match"), figure(REVENUE, 86, "mismatch")], LISTED, "mock"), [
+    "checks    2 of 2 verified by the buyer against the shop's committed root",
+    "          verified  match         operating profit Q3 2025  12.2T KRW",
+    "                    Samsung Electronics Q3 2025 earnings release",
+    "          verified  mismatch      revenue Q3 2025           86.0T KRW   ref 86.1T KRW (-0.12%)",
+    "                    Samsung Electronics Q3 2025 earnings release",
+    `          root      ${root.slice(0, 12)}…${root.slice(-4)}  2 leaves  inferpay-merkle-sha256-v1`,
+    "          from      the shop's listing, because the mock rail has no chain",
+  ]);
+});
+
+test("an unproven check and a forged one are labelled, and neither prints as a match", () => {
+  const rewritten = { ...SHOP.prove(REVENUE), entry: { ...REVENUE, value: 86 } };
+  const block = verifyBlock([figure(PROFIT, 1, "unverifiable"), figure(REVENUE, 86, "match", rewritten)], LISTED, "mock");
+  assert.deepEqual(block.slice(0, 5), [
+    "checks    0 of 2 verified by the buyer against the shop's committed root, 1 unproven, 1 FORGED",
+    "          unproven  unverifiable  operating profit Q3 2025  1.0T KRW",
+    "                    the shop's word only: it says it holds no entry for this, and an absence carries no proof",
+    "          FORGED    match         revenue Q3 2025           86.0T KRW",
+    "                    the shop said match, but its evidence does not open to the committed root",
+  ]);
+  assert.equal(
+    progressLine({ step: "rate", rating: must(parseStars(1)), checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED) }, "mock"),
+    "rate      1/5  (forged evidence sets the rating to 1)",
+  );
+});
+
+test("a root read from chain names its block, its SocialDB key, and a link to the shop's account", () => {
+  const account = must(parseAccountId("disclosure.david.inferpay.testnet"));
+  const contract = must(parseAccountId("v1.social08.testnet"));
+  const pinned: PinnedCommitment = { status: "published", commitment: SHOP.commitment, source: { kind: "chain", contract, account, block: 277573383 } };
+  assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match")], pinned, "near-testnet").slice(3), [
+    `          root      ${SHOP.commitment.root.slice(0, 12)}…${SHOP.commitment.root.slice(-4)}  2 leaves  inferpay-merkle-sha256-v1`,
+    "          from      NEAR testnet, written at block 277573383 and read before paying",
+    "          key       disclosure.david.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet",
+    "          link      https://testnet.nearblocks.io/address/disclosure.david.inferpay.testnet",
+  ]);
+  const missing = verifyBlock([figure(PROFIT, 12.2, "match")], { status: "missing", contract, account }, "near-testnet");
+  assert.deepEqual(missing, [
+    "checks    0 of 1 verified by the buyer against the shop's committed root, 1 unproven",
+    "          unproven  match         operating profit Q3 2025  12.2T KRW",
+    "                    the shop's word only: it has published no root to check this against",
+    "          root      none: disclosure.david.inferpay.testnet has published no commitment in SocialDB v1.social08.testnet",
+  ]);
+});
+
+test("no line of a checks block is wider than 110 columns", () => {
+  const blocks = [
+    verifyBlock([figure(PROFIT, 12.2, "match"), figure(REVENUE, 86, "mismatch"), figure(PROFIT, 1, "unverifiable")], LISTED, "mock"),
+  ];
+  for (const row of blocks.flat()) assert.ok(row.length <= 110, row);
 });
 
 function near(amount: string): Price {

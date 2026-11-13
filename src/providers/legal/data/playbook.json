@@ -6,7 +6,8 @@
       "indemn"
     ],
     "label": "uncapped indemnity",
-    "detail": "The playbook rejects unlimited indemnification. Cap it or delete it."
+    "detail": "The playbook rejects unlimited indemnification. Cap it or delete it.",
+    "salt": "884184166bbcb2516eb6ea309c538747c1be981e9d723eb970b09352dc087607"
   },
   {
     "id": "perpetual-nda",
@@ -15,6 +16,7 @@
       "confidential"
     ],
     "label": "perpetual confidentiality",
-    "detail": "The playbook rejects perpetual NDA terms. Set a survival period."
+    "detail": "The playbook rejects perpetual NDA terms. Set a survival period.",
+    "salt": "594e8850617127ad05da9626696775661a18d08f2d398e446c78c873e7ec2e22"
   }
 ]

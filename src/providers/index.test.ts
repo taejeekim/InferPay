@@ -28,6 +28,17 @@ test("a shop refuses below its floor, takes an offer up to its list price, and n
   assert.equal(priceFor(insurance, otherAsset), null);
 });
 
+// These are the roots published on testnet. A salt or an entry that changed would no longer open to them, and
+// every buyer would call the shop's evidence forged until the shop published again.
+test("each shop's dataset and stored salts seal to the root it published", () => {
+  const roots = Object.fromEntries(PROVIDERS.map((provider) => [provider.describe.id, provider.commitment()]));
+  assert.deepEqual(roots, {
+    disclosure: { scheme: "inferpay-merkle-sha256-v1", root: "a4c9ebe62bca0698da105b2b7cadcd6097a276a236bce104186f01b81423a7dc", leaves: 2 },
+    legal: { scheme: "inferpay-merkle-sha256-v1", root: "9af83af60095a9c6126fa6686e8602fdb84c43c2994cb8c77690809ea98fc4d5", leaves: 2 },
+    insurance: { scheme: "inferpay-merkle-sha256-v1", root: "99404ff0e1372995542c5791014482b6fdea69eb01bac101ecde19c441404f95", leaves: 3 },
+  });
+});
+
 function boundShops() {
   const roster = resolveRoster(must(parseParentAccount("inferpay.testnet")));
   assert.ok(roster.ok);

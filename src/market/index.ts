@@ -11,6 +11,7 @@ import type { Inference } from "../inference/index.ts";
 import type { PaymentRail, PaymentReceipt } from "../payment/index.ts";
 import type { Answer, PaidOrder } from "../providers/types.ts";
 import type { AccountId, IsoTime, Price } from "../domain.ts";
+import { canonical, type PinnedCommitment } from "../commitment/index.ts";
 import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
 import { fold, plan, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
@@ -24,6 +25,8 @@ export type CompletedJob = Brand<
     readonly jobId: JobId;
     readonly providerId: ProviderId;
     readonly question: string;
+    readonly payFrom: AccountId;
+    readonly commitment: PinnedCommitment;
     readonly paid: PaymentReceipt;
     readonly answer: Answer;
     readonly rating: Stars | null;
@@ -31,7 +34,10 @@ export type CompletedJob = Brand<
   "CompletedJob"
 >;
 
-export type Listing = ProviderListing & { readonly reputation: Reputation };
+export type Listing = Omit<ProviderListing, "declared"> & {
+  readonly reputation: Reputation;
+  readonly commitment: PinnedCommitment;
+};
 
 export type FailReason =
   | { readonly kind: "unknown-provider"; readonly providerId: ProviderId }
@@ -115,10 +121,14 @@ export function createMarketplace(deps: {
         bucket.push(folded.state);
         states.set(id, bucket);
       }
-      return providers.map((bound) => ({
-        ...bound.listing,
-        reputation: reputationOf(states.get(bound.listing.id) ?? []),
-      }));
+      return providers.map((bound) => {
+        const { declared, ...listing } = bound.listing;
+        return {
+          ...listing,
+          reputation: reputationOf(states.get(listing.id) ?? []),
+          commitment: { status: "published", commitment: declared, source: { kind: "listing" } },
+        };
+      });
     },
 
     async counter(providerId, offer) {
@@ -343,6 +353,7 @@ function sameOrder(a: Order, b: Order): boolean {
     && a.providerId === b.providerId
     && a.question === b.question
     && a.payFrom === b.payFrom
+    && canonical(a.commitment) === canonical(b.commitment)
     && samePrice(a.offer, b.offer)
     && samePrice(a.budget, b.budget);
 }
@@ -399,6 +410,8 @@ function completedJob(state: JobState): CompletedJob | null {
     jobId: state.order.jobId,
     providerId: state.order.providerId,
     question: state.order.question,
+    payFrom: state.order.payFrom,
+    commitment: state.order.commitment,
     paid: state.receipt,
     answer: state.answer,
     rating: state.phase === "rated" ? state.rating : null,
@@ -411,6 +424,8 @@ function isCompletedJob(value: {
   jobId: JobId;
   providerId: ProviderId;
   question: string;
+  payFrom: AccountId;
+  commitment: PinnedCommitment;
   paid: PaymentReceipt;
   answer: Answer;
   rating: Stars | null;

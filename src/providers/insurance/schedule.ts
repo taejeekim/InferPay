@@ -1,22 +1,18 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-
-export type CoverageFact = {
-  readonly topic: string;
-  readonly value: string;
-  readonly source: string;
-};
+import { saltSchema, sealDataset, type Dataset, type Fact } from "../../commitment/index.ts";
 
 const factSchema = z.object({
   topic: z.string(),
   value: z.string(),
   source: z.string(),
+  salt: saltSchema,
 });
 
-let cached: readonly CoverageFact[] | null = null;
+let cached: Dataset<Fact> | null = null;
 
-export function loadCoverage(): readonly CoverageFact[] {
+export function loadCoverage(): Dataset<Fact> {
   if (cached) return cached;
   const path = fileURLToPath(new URL("./data/coverage.json", import.meta.url));
   let raw: unknown;
@@ -27,6 +23,6 @@ export function loadCoverage(): readonly CoverageFact[] {
   }
   const parsed = z.array(factSchema).safeParse(raw);
   if (!parsed.success) throw new Error("insurance dataset failed its check");
-  cached = parsed.data;
+  cached = sealDataset(parsed.data.map(({ salt, ...fact }) => ({ entry: { kind: "fact", ...fact }, salt })));
   return cached;
 }

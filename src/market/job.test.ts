@@ -13,6 +13,7 @@ import {
   parseStars,
   type Price,
 } from "../domain.ts";
+import { parseCommitment, SCHEME } from "../commitment/index.ts";
 import type { PaymentReceipt } from "../payment/index.ts";
 import type { Answer } from "../providers/types.ts";
 import { fold, plan, reputationOf, type JobEvent, type JobState, type Order } from "./job.ts";
@@ -158,6 +159,11 @@ function fixture() {
     offer: price(quote),
     budget: price(budget),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near"), "payFrom"),
+    commitment: {
+      status: "published",
+      commitment: must(parseCommitment({ scheme: SCHEME, root: "ab".repeat(32), leaves: 1 }), "commitment"),
+      source: { kind: "listing" },
+    },
   };
   const key = must(parseIdempotencyKey("mock_key"), "key");
   const correlation = must(parseCorrelationId("mock-7f3a"), "correlation");

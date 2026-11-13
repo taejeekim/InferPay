@@ -39,6 +39,7 @@ export function bindProviders(
         price: { asset: near.asset, symbol: near.symbol, amount: provider.quoteNear },
         owner: seat.parent,
         payTo: seat.account,
+        declared: provider.commitment(),
       },
       floor: { asset: near.asset, symbol: near.symbol, amount: provider.floorNear },
     });

@@ -1,40 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseModelId } from "../domain.ts";
-import type { Answer, Check } from "../providers/types.ts";
-import { grade } from "./grade.ts";
+import { sealDataset, type AssertedCheck, type Fact, type PinnedCommitment } from "../commitment/index.ts";
+import { parseHash } from "../commitment/merkle.ts";
+import { grade, tally } from "./grade.ts";
+import { verifyChecks } from "./verify.ts";
 
-test("grade scores checks the way a buyer can recompute", () => {
-  assert.equal(grade(answer([])), 3);
-  assert.equal(grade(answer([match("operating profit")])), 5);
-  assert.equal(grade(answer([match("operating profit"), mismatch("revenue")])), 4);
-  assert.equal(grade(answer([mismatch("a"), mismatch("b"), mismatch("c"), mismatch("d"), mismatch("e")])), 1);
-  assert.equal(grade(answer([{ kind: "number", verdict: "unverifiable", label: "capex", claimed: 1, unit: "KRW T" }])), 3);
-  assert.equal(grade(answer([{ kind: "flag", verdict: "raised", label: "uncapped indemnity", detail: "cap it" }])), 5);
-  assert.equal(grade(answer([{ kind: "flag", verdict: "clear", label: "term", detail: "ok" }])), 5);
-  assert.equal(grade(answer([{ kind: "fact", verdict: "match", label: "decimals", claimed: "24", source: "NEAR protocol" }])), 5);
-  assert.equal(grade(answer([{ kind: "fact", verdict: "mismatch", label: "decimals", claimed: "18", reference: "24", source: "NEAR protocol" }])), 4);
+const COVERED: Fact = { kind: "fact", topic: "mri", value: "covered", source: "schedule" };
+const SALT = parseHash("07".repeat(32));
+if (!SALT) throw new Error("fixture salt");
+const SHOP = sealDataset([{ entry: COVERED, salt: SALT }]);
+const PINNED: PinnedCommitment = { status: "published", commitment: SHOP.commitment, source: { kind: "listing" } };
+
+const match: AssertedCheck = { kind: "fact", claim: { label: "MRI", topic: "mri", claimed: "covered" }, verdict: "match", evidence: SHOP.prove(COVERED) };
+const mismatch: AssertedCheck = { kind: "fact", claim: { label: "MRI", topic: "mri", claimed: "excluded" }, verdict: "mismatch", evidence: SHOP.prove(COVERED) };
+const unbacked: AssertedCheck = { kind: "fact", claim: { label: "dental", topic: "dental", claimed: "covered" }, verdict: "unverifiable", evidence: null };
+const clear: AssertedCheck = { kind: "flag", claim: { label: "term", text: "Twelve months." }, verdict: "clear", evidence: null };
+const forged: AssertedCheck = { ...match, evidence: { ...SHOP.prove(COVERED), entry: { ...COVERED, value: "excluded" } }, claim: { ...match.claim, claimed: "excluded" } };
+
+function stars(...checks: readonly AssertedCheck[]): number {
+  return grade(verifyChecks(checks, PINNED));
+}
+
+test("a verified mismatch costs one star and a verified match costs none", () => {
+  assert.equal(stars(match), 5);
+  assert.equal(stars(match, mismatch), 4);
+  assert.equal(stars(mismatch, mismatch, mismatch, mismatch, mismatch, mismatch), 1);
 });
 
-function answer(checks: readonly Check[]): Answer {
-  const model = parseModelId("stub");
-  if (!model) throw new Error("model");
-  return { text: "answer", checks, model, inference: "stub", attestation: [] };
-}
+test("an answer with nothing verified rates at most 3", () => {
+  assert.equal(stars(), 3);
+  assert.equal(stars(unbacked), 3);
+  assert.equal(stars(clear), 3);
+  assert.equal(stars(clear, clear, clear), 3);
+  assert.equal(stars(unbacked, unbacked, unbacked), 2);
+});
 
-function match(label: string): Check {
-  return { kind: "number", verdict: "match", label, claimed: 12.2, unit: "KRW T", source: "Samsung Electronics Q3 2025 earnings release" };
-}
+test("a claim the shop does not back costs the same star as a mismatch, so withholding an entry never pays", () => {
+  assert.equal(stars(match, unbacked), stars(match, mismatch));
+  assert.equal(stars(match, clear), 5);
+});
 
-function mismatch(label: string): Check {
-  return {
-    kind: "number",
-    verdict: "mismatch",
-    label,
-    claimed: 79,
-    unit: "KRW T",
-    reference: 86.1,
-    deltaPct: -0.12,
-    source: "Samsung Electronics Q3 2025 earnings release",
-  };
-}
+test("one forged check sets the rating to 1 whatever else was verified", () => {
+  assert.equal(stars(match, match, forged), 1);
+  assert.deepEqual(tally(verifyChecks([match, mismatch, unbacked, clear, forged], PINNED)), {
+    verified: 2,
+    mismatches: 1,
+    unproven: 2,
+    unbacked: 1,
+    forged: 1,
+  });
+});

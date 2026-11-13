@@ -2,17 +2,19 @@ import { newJobId, type JobId, type Price, type Stars } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
-import type { Answer } from "../providers/types.ts";
+import type { PinnedCommitment } from "../commitment/index.ts";
 import { assess } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
 import { grade } from "./grade.ts";
+import { verifyChecks, type BuyerCheck } from "./verify.ts";
 
 export { LOCAL_FLOOR } from "./decide.ts";
 export type { Decision, Option, PricedOption } from "./decide.ts";
 
 export type Progress =
   | { readonly step: "decide"; readonly decision: Decision }
-  | { readonly step: "rate"; readonly rating: Stars; readonly answer: Answer }
+  | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly commitment: PinnedCommitment }
+  | { readonly step: "rate"; readonly rating: Stars; readonly checks: readonly BuyerCheck[] }
   | MarketProgress;
 
 export type AskOutcome =
@@ -45,14 +47,18 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       onProgress?.({ step: "decide", decision });
       if (decision.kind === "answer-locally") return { kind: "local", text: decision.local.answer };
       if (decision.kind === "decline") return { kind: "declined" };
+      const providerId = decision.option.providerId;
+      const listing = listings.find((item) => item.id === providerId);
+      if (!listing) return { kind: "failed", reason: { kind: "unknown-provider", providerId } };
       const outcome = await market.hire(
         {
           jobId: newJobId(),
-          providerId: decision.option.providerId,
+          providerId,
           question,
           offer: decision.agreed,
           budget,
           payFrom: buyer.account,
+          commitment: listing.commitment,
         },
         (progress) => onProgress?.(progress),
       );
@@ -89,12 +95,10 @@ async function publishRating(
   job: CompletedJob,
   onProgress?: (progress: Progress) => void,
 ): Promise<Stars> {
-  if (job.rating !== null) {
-    onProgress?.({ step: "rate", rating: job.rating, answer: job.answer });
-    return job.rating;
-  }
-  const rating = grade(job.answer);
-  await market.rate(job, rating);
-  onProgress?.({ step: "rate", rating, answer: job.answer });
+  const checks = verifyChecks(job.answer.checks, job.commitment);
+  onProgress?.({ step: "verify", checks, commitment: job.commitment });
+  const rating = job.rating ?? grade(checks);
+  if (job.rating === null) await market.rate(job, rating);
+  onProgress?.({ step: "rate", rating, checks });
   return rating;
 }

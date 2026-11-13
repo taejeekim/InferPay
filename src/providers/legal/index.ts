@@ -1,7 +1,8 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { flagClauses, parseClauses, parseFlags } from "./flagClauses.ts";
+import { parseAssertedChecks } from "../../commitment/index.ts";
+import { flagClauses, parseClauses } from "./flagClauses.ts";
 import { loadPlaybook } from "./playbook.ts";
 
 const providerId = parseProviderId("legal");
@@ -41,19 +42,20 @@ export const legal: Provider = {
     routingHint:
       "Reviews NDAs and drafts. Flags clauses that fail a private playbook the caller does not hold.",
   },
+  commitment: () => loadPlaybook().commitment,
   fulfil(paid, deps) {
     return answerLegal(paid, deps.inference);
   },
 };
 
 async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
-  const rules = loadPlaybook();
+  const playbook = loadPlaybook();
   const flag = tool({
     name: "flag_clauses",
     description: "Check draft clauses against the private playbook. Pass every clause you cite.",
     parameters: CLAUSE_PARAMETERS,
     parseArgs: parseClauses,
-    run: (args) => flagClauses(args, rules),
+    run: (args) => flagClauses(args, playbook),
   });
   const result = await inference.run({
     name: "legal.answer",
@@ -70,7 +72,7 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
       const text = raw.trim();
       const last = [...toolResults].reverse().find((item) => item.name === "flag_clauses");
       if (text.length === 0 || !last) return null;
-      const checks = parseFlags(last.result);
+      const checks = parseAssertedChecks(last.result);
       if (!checks) return null;
       return { text, checks };
     },

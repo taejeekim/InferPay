@@ -60,6 +60,11 @@ test("all skips a job file that read would reject", async () => {
         offer: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
         budget: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.10" },
         payFrom: "researcher.kyle.inferpay.near",
+        commitment: {
+          status: "published",
+          commitment: { scheme: "inferpay-merkle-sha256-v1", root: "ab".repeat(32), leaves: 3 },
+          source: { kind: "listing" },
+        },
       },
       quote: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
       payTo: "insurance.ban.inferpay.near",
