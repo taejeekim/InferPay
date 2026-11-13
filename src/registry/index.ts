@@ -1,8 +1,32 @@
-import type { AccountId } from "../domain.ts";
-import type { PinnedCommitment } from "../commitment/index.ts";
+import type { AccountId, JobId, Stars } from "../domain.ts";
+import type { Hash, PinnedCommitment } from "../commitment/index.ts";
+
+// A buyer bot's rating as it stands on chain, under the bot's own account.
+export type OnChainRating = {
+  readonly jobId: JobId;
+  readonly rater: AccountId;
+  readonly shop: AccountId;
+  readonly stars: Stars;
+  // The transfer that paid for the job, so a reader can check the rater bought what it rated.
+  readonly payment: string;
+  // The root the checks were verified against, or null when the shop had published none.
+  readonly root: Hash | null;
+  readonly verified: number;
+  readonly unproven: number;
+  readonly forged: number;
+};
+
+export type RatingPost =
+  | { readonly kind: "posted"; readonly tx: string; readonly contract: AccountId; readonly key: string }
+  | { readonly kind: "pending"; readonly tx: string | null; readonly detail: string }
+  | { readonly kind: "failed"; readonly reason: string };
 
 // The public record a rail keeps on chain. A rail without one passes null, and the marketplace falls back to the
 // shop's listing and this machine's ledger.
 export interface Registry {
   commitments(shops: readonly AccountId[]): Promise<ReadonlyMap<AccountId, PinnedCommitment>>;
+  // Every rating the known buyer bots have written, whichever machine wrote it.
+  ratings(): Promise<readonly OnChainRating[]>;
+  // Safe to call again for the same job: a retry looks up or rebroadcasts the transaction it already signed.
+  postRating(rating: OnChainRating): Promise<RatingPost>;
 }

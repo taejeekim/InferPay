@@ -366,6 +366,24 @@ test("the liar hook names a shop, and a liar with nothing to hide changes nothin
   });
 });
 
+test("on the mock rail the rating stays in the ledger and providers says where reputation and each root came from", async () => {
+  await withDataDir(async (root) => {
+    const asked = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
+    assert.match(asked.out, /^rate {6}5\/5\n {10}kept {6}in this machine's ledger, because the mock rail has no chain$/m);
+    const stdout = capture(process.stdout);
+    try {
+      assert.equal(await main(["providers"], { INFERPAY_DATA_DIR: root }), 0);
+      const text = stdout.text();
+      assert.match(text, /^insurance .* 1 {5}5\.0 \(1\)$/m);
+      assert.match(text, /^reputation {2}this machine's job ledger, because the mock rail has no chain$/m);
+      assert.match(text, /^commitment {2}each root is from the shop's listing, because the mock rail has no chain$/m);
+      assert.match(text, /^ {12}insurance {3}99404ff0e137…4f95 {2}3 leaves$/m);
+    } finally {
+      stdout.restore();
+    }
+  });
+});
+
 async function withDataDir(body: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   try {

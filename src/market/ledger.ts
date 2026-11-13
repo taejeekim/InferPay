@@ -147,6 +147,7 @@ const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fulfil-failed"), at: z.string(), reason: z.string(), retryable: z.boolean() }),
   z.object({ type: z.literal("fulfilled"), at: z.string(), answer: answerSchema }),
   z.object({ type: z.literal("rated"), at: z.string(), rating: z.number() }),
+  z.object({ type: z.literal("rating-posted"), at: z.string(), tx: z.string().min(1) }),
 ]);
 
 type ParsedEvent = z.infer<typeof eventSchema>;
@@ -199,6 +200,8 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
     case "rated":
       if (!isStars(event.rating)) return null;
       return { type: "rated", at, rating: event.rating };
+    case "rating-posted":
+      return { type: "rating-posted", at, tx: event.tx };
     default: {
       const unreachable: never = event;
       return unreachable;

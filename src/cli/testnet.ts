@@ -211,11 +211,11 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
   await publishCommitments({ chain: client, credential: (account) => near.loadCredential(keysDir, account) }, shops, (step) => {
     const root = `root ${shortRoot(step.commitment.root)}`;
     if (step.kind === "current") {
-      say("commit", `${step.account}  ${root}  already on chain since block ${step.block}`);
+      say("commit", `${step.account.padEnd(36)}${root}  already on chain since block ${step.block}`);
       return;
     }
     if (step.toppedUp > 0n) say("fund", `${step.account}  ${formatNear(step.toppedUp)} NEAR from its owner for the SocialDB deposit`);
-    say("commit", `${step.account}  ${root}  published (${step.why === "missing" ? "none on chain" : "the root changed"})  tx ${step.hash}`);
+    say("commit", `${step.account.padEnd(36)}${root}  published, ${step.why === "missing" ? "none was on chain" : "the root changed"}`);
     transactions.push({ what: "commit", account: step.account, hash: step.hash });
   });
 

@@ -151,6 +151,14 @@ test("a testnet root with the Intents variables and no rail choice stays an erro
   assert.match(result.error.detail, /mainnet only/);
 });
 
+test("a rating crash point stops the rating and leaves the payment alone", () => {
+  const result = loadConfig({ INFERPAY_PAYMENT: "near-testnet", INFERPAY_TEST_CRASH: "after-rating-broadcast" });
+  assert.ok(result.ok);
+  assert.ok(result.value.payment.kind === "near-testnet");
+  assert.equal(result.value.payment.crash, null);
+  assert.equal(result.value.payment.ratingCrash, "after-broadcast");
+});
+
 test("the crash hook is read only from INFERPAY_TEST_CRASH", () => {
   const result = loadConfig({ INFERPAY_PAYMENT: "near-testnet", INFERPAY_TEST_CRASH: "after-broadcast" });
   assert.equal(result.ok, true);

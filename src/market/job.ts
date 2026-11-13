@@ -23,7 +23,9 @@ export type JobEvent =
   | { readonly type: "payment-rejected"; readonly at: IsoTime; readonly reason: string }
   | { readonly type: "fulfil-failed"; readonly at: IsoTime; readonly reason: string; readonly retryable: boolean }
   | { readonly type: "fulfilled"; readonly at: IsoTime; readonly answer: Answer }
-  | { readonly type: "rated"; readonly at: IsoTime; readonly rating: Stars };
+  | { readonly type: "rated"; readonly at: IsoTime; readonly rating: Stars }
+  // The transaction that wrote the rating on chain. Only a rail with an on-chain registry appends it.
+  | { readonly type: "rating-posted"; readonly at: IsoTime; readonly tx: string };
 
 type Opened = { readonly order: Order; readonly quote: Price; readonly payTo: AccountId };
 
@@ -32,7 +34,7 @@ export type JobState =
   | ({ readonly phase: "paying"; readonly key: IdempotencyKey; readonly correlationId: CorrelationId | null } & Opened)
   | ({ readonly phase: "paid"; readonly receipt: PaymentReceipt; readonly failures: readonly string[] } & Opened)
   | ({ readonly phase: "completed"; readonly receipt: PaymentReceipt; readonly answer: Answer } & Opened)
-  | ({ readonly phase: "rated"; readonly receipt: PaymentReceipt; readonly answer: Answer; readonly rating: Stars } & Opened)
+  | ({ readonly phase: "rated"; readonly receipt: PaymentReceipt; readonly answer: Answer; readonly rating: Stars; readonly postedTx: string | null } & Opened)
   | ({ readonly phase: "payment-rejected"; readonly reason: string } & Opened)
   | ({ readonly phase: "abandoned"; readonly receipt: PaymentReceipt; readonly reason: string } & Opened);
 
@@ -105,18 +107,14 @@ export function plan(state: JobState): Effect {
 }
 
 export function reputationOf(states: readonly JobState[]): Reputation {
-  let completedJobs = 0;
-  let ratings = 0;
-  let sum = 0;
-  for (const state of states) {
-    if (state.phase === "completed" || state.phase === "rated") completedJobs += 1;
-    if (state.phase === "rated") {
-      ratings += 1;
-      sum += state.rating;
-    }
-  }
-  if (ratings === 0) return { kind: "unrated", completedJobs };
-  return { kind: "rated", completedJobs, ratings, average: sum / ratings };
+  const completedJobs = states.filter((state) => state.phase === "completed" || state.phase === "rated").length;
+  return reputationFromStars(states.flatMap((state) => (state.phase === "rated" ? [state.rating] : [])), completedJobs);
+}
+
+export function reputationFromStars(stars: readonly Stars[], completedJobs: number): Reputation {
+  if (stars.length === 0) return { kind: "unrated", completedJobs };
+  const sum = stars.reduce((total, rating) => total + rating, 0);
+  return { kind: "rated", completedJobs, ratings: stars.length, average: sum / stars.length };
 }
 
 function receiptMatches(
@@ -199,7 +197,11 @@ function apply(state: JobState, event: JobEvent): JobState | null {
         receipt: state.receipt,
         answer: state.answer,
         rating: event.rating,
+        postedTx: null,
       };
+    case "rating-posted":
+      if (state.phase !== "rated" || state.postedTx !== null) return null;
+      return { ...state, postedTx: event.tx };
     default: {
       const unreachable: never = event;
       return unreachable;

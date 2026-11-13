@@ -20,6 +20,8 @@ export type PaymentConfig =
       readonly root: string;
       readonly credentialsDir: string;
       readonly crash: "after-sign" | "after-broadcast" | null;
+      // The same two crash points for the transaction that posts a rating.
+      readonly ratingCrash: "after-sign" | "after-broadcast" | null;
     }
   | {
       readonly kind: "near-intents";
@@ -56,6 +58,8 @@ const PAYMENT_ENV = [
   "INFERPAY_AGENT_ID",
   "INFERPAY_GRANT_TOKEN",
 ];
+
+const CRASH_POINTS = ["after-sign", "after-broadcast", "after-rating-sign", "after-rating-broadcast"];
 
 const DEFAULT_NEAR_ASSET = "nep141:wrap.near";
 const DEFAULT_ROOT_ACCOUNT = "inferpay.testnet";
@@ -94,10 +98,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
     return invalid("INFERPAY_ROOT_ACCOUNT", "near-testnet pays on testnet, so the root must end in .testnet. Run: npx inferpay testnet setup");
   }
   const crashRaw = env.INFERPAY_TEST_CRASH;
-  if (filled(crashRaw) && crashRaw !== "after-sign" && crashRaw !== "after-broadcast") {
-    return invalid("INFERPAY_TEST_CRASH", "expected after-sign or after-broadcast");
+  if (filled(crashRaw) && !CRASH_POINTS.includes(crashRaw)) {
+    return invalid("INFERPAY_TEST_CRASH", `expected one of ${CRASH_POINTS.join(", ")}`);
   }
   const crash = crashRaw === "after-sign" || crashRaw === "after-broadcast" ? crashRaw : null;
+  const ratingCrash = crashRaw === "after-rating-sign" ? "after-sign" : crashRaw === "after-rating-broadcast" ? "after-broadcast" : null;
 
   const chaosRaw = env.INFERPAY_MOCK_CHAOS;
   let chaos: "none" | "uncertain-once" = "none";
@@ -115,7 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       grantToken: secret(String(env.INFERPAY_GRANT_TOKEN)),
     };
   } else if (testnet) {
-    payment = { kind: "near-testnet", root: dataDir, credentialsDir: credentialsDir(env), crash };
+    payment = { kind: "near-testnet", root: dataDir, credentialsDir: credentialsDir(env), crash, ratingCrash };
   }
 
   let inference: InferenceConfig = { kind: "stub" };

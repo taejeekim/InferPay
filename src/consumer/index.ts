@@ -2,10 +2,11 @@ import { newJobId, type JobId, type Price, type Stars } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
+import type { RatingPost } from "../registry/index.ts";
 import type { PinnedCommitment } from "../commitment/index.ts";
 import { assess } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
-import { grade } from "./grade.ts";
+import { grade, tally } from "./grade.ts";
 import { verifyChecks, type BuyerCheck } from "./verify.ts";
 
 export { LOCAL_FLOOR } from "./decide.ts";
@@ -14,7 +15,14 @@ export type { Decision, Option, PricedOption } from "./decide.ts";
 export type Progress =
   | { readonly step: "decide"; readonly decision: Decision }
   | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly commitment: PinnedCommitment }
-  | { readonly step: "rate"; readonly rating: Stars; readonly checks: readonly BuyerCheck[] }
+  | {
+      readonly step: "rate";
+      readonly rating: Stars;
+      readonly checks: readonly BuyerCheck[];
+      readonly jobId: JobId;
+      // Where the rating went on chain, or null on a rail that keeps it only in the local ledger.
+      readonly onChain: RatingPost | null;
+    }
   | MarketProgress;
 
 export type AskOutcome =
@@ -98,7 +106,9 @@ async function publishRating(
   const checks = verifyChecks(job.answer.checks, job.commitment);
   onProgress?.({ step: "verify", checks, commitment: job.commitment });
   const rating = job.rating ?? grade(checks);
-  if (job.rating === null) await market.rate(job, rating);
-  onProgress?.({ step: "rate", rating, checks });
+  const { verified, unproven, forged } = tally(checks);
+  // Rating again is how a resumed job finishes an on-chain post that a crash interrupted.
+  const rated = await market.rate(job, { stars: rating, verified, unproven, forged });
+  onProgress?.({ step: "rate", rating, checks, jobId: job.jobId, onChain: rated.kind === "rejected" ? null : rated.onChain });
   return rating;
 }

@@ -167,8 +167,20 @@ test("an unproven check and a forged one are labelled, and neither prints as a m
     "                    the shop said match, but its evidence does not open to the committed root",
   ]);
   assert.equal(
-    progressLine({ step: "rate", rating: must(parseStars(1)), checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED) }, "mock"),
-    "rate      1/5  (forged evidence sets the rating to 1)",
+    progressLine(
+      {
+        step: "rate",
+        rating: must(parseStars(1)),
+        checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED),
+        jobId: must(parseJobId("job_01M7BGGX58BF3B8VB4ADYKXYZA")),
+        onChain: null,
+      },
+      "mock",
+    ),
+    [
+      "rate      1/5  (forged evidence sets the rating to 1)",
+      "          kept      in this machine's ledger, because the mock rail has no chain",
+    ].join("\n"),
   );
 });
 

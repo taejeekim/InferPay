@@ -1,17 +1,96 @@
-import type { AccountId } from "../domain.ts";
+import { z } from "zod";
+import { isAccountId, isJobId, isStars, type AccountId } from "../domain.ts";
+import { isHash } from "../commitment/merkle.ts";
 import { parseCommitment, type Commitment, type PinnedCommitment } from "../commitment/index.ts";
-import { actions, type Credential, type NearClient } from "../near/client.ts";
+import { actions, type Credential, type NearClient, type TxResult } from "../near/client.ts";
+import { sendOnce, type OutboxDeps } from "../near/outbox.ts";
 import { SOCIAL_DB, SOCIAL_DEPOSIT, socialGet, socialSet, type SocialValue } from "../near/social.ts";
 import { formatNear, nearOf } from "../payment/units.ts";
-import type { Registry } from "./index.ts";
-import { commitmentKey } from "./keys.ts";
+import type { OnChainRating, RatingPost, Registry } from "./index.ts";
+import { commitmentKey, ratingKey, ratingsPattern } from "./keys.ts";
 
-export function createChainRegistry(deps: { readonly chain: Pick<NearClient, "view"> }): Registry {
+export function createChainRegistry(deps: {
+  readonly chain: Pick<NearClient, "view">;
+  readonly raters: readonly AccountId[];
+  readonly outbox: OutboxDeps;
+}): Registry {
   return {
     async commitments(shops) {
       return readCommitments(await socialGet(deps.chain, shops.map(commitmentKey)), shops);
     },
+    async ratings() {
+      return readRatings(await socialGet(deps.chain, deps.raters.map(ratingsPattern)), deps.raters);
+    },
+    async postRating(rating) {
+      // One key for each job, so a retry reuses the transaction the first attempt signed.
+      const sent = await sendOnce(deps.outbox, {
+        key: `rating:${rating.jobId}`,
+        signer: rating.rater,
+        receiver: SOCIAL_DB,
+        yocto: SOCIAL_DEPOSIT.toString(),
+        actions: [socialSet(rating.rater, ratingValue(rating))],
+      });
+      if (sent.kind === "no-credential") return { kind: "failed", reason: `no saved key for ${rating.rater}` };
+      if (sent.kind === "key-reused") return { kind: "failed", reason: `the rating of ${rating.jobId} was already signed by another account` };
+      return toPost(sent.result, sent.tx.hash, ratingKey(rating.rater, rating.jobId));
+    },
   };
+}
+
+function toPost(result: TxResult, tx: string, key: string): RatingPost {
+  switch (result.kind) {
+    case "success":
+      return { kind: "posted", tx, contract: SOCIAL_DB, key };
+    case "failed":
+      return { kind: "failed", reason: `transaction ${tx} failed on chain: ${result.reason}` };
+    case "refused":
+      if (result.never === null) return { kind: "failed", reason: `testnet refused the rating: ${result.reason}` };
+      return { kind: "pending", tx, detail: result.reason };
+    case "pending":
+    case "unknown":
+      return { kind: "pending", tx, detail: "the transaction is not final yet" };
+    case "unreachable":
+      return { kind: "pending", tx, detail: result.detail };
+    default: {
+      const unreachable: never = result;
+      return unreachable;
+    }
+  }
+}
+
+export function ratingValue(rating: OnChainRating): SocialValue {
+  const { shop, stars, payment, root, verified, unproven, forged } = rating;
+  return { inferpay: { ratings: { [rating.jobId]: JSON.stringify({ shop, stars, payment, root, verified, unproven, forged }) } } };
+}
+
+const count = z.number().int().nonnegative();
+
+const ratingSchema = z.object({
+  shop: z.string(),
+  stars: z.number(),
+  payment: z.string(),
+  root: z.string().nullable(),
+  verified: count,
+  unproven: count,
+  forged: count,
+});
+
+// Anyone can write anything under an account they hold, so a value that is not a rating is skipped, not trusted.
+export function readRatings(raw: unknown, raters: readonly AccountId[]): readonly OnChainRating[] {
+  const ratings: OnChainRating[] = [];
+  for (const rater of raters) {
+    const jobs = nodeAt(raw, [rater, "inferpay", "ratings"]);
+    if (jobs === null) continue;
+    for (const jobId of Object.keys(jobs)) {
+      const leaf = leafAt(jobs, [jobId]);
+      const parsed = leaf === null ? null : ratingSchema.safeParse(parseJson(leaf.value));
+      if (!isJobId(jobId) || !parsed?.success) continue;
+      const { shop, stars, payment, root, verified, unproven, forged } = parsed.data;
+      if (!isAccountId(shop) || !isStars(stars) || (root !== null && !isHash(root))) continue;
+      ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged });
+    }
+  }
+  return ratings;
 }
 
 export function commitmentValue(commitment: Commitment): SocialValue {
@@ -29,25 +108,32 @@ export function readCommitments(raw: unknown, shops: readonly AccountId[]): Read
   }));
 }
 
-// With block heights on, SocialDB returns a value as { ":block": height, "": value } and nests it under its key path.
-export function leafAt(raw: unknown, path: readonly string[]): { readonly value: string; readonly block: number } | null {
+type Node = { readonly [key: string]: unknown };
+
+function nodeAt(raw: unknown, path: readonly string[]): Node | null {
   let node = raw;
   for (const key of path) {
-    if (!isRecord(node)) return null;
+    if (!isNode(node)) return null;
     node = node[key];
   }
-  if (!isRecord(node)) return null;
+  return isNode(node) ? node : null;
+}
+
+// With block heights on, SocialDB returns a value as { ":block": height, "": value } and nests it under its key path.
+function leafAt(raw: unknown, path: readonly string[]): { readonly value: string; readonly block: number } | null {
+  const node = nodeAt(raw, path);
+  if (node === null) return null;
   const value = node[""];
   const block = node[":block"];
   if (typeof value !== "string" || typeof block !== "number") return null;
   return { value, block };
 }
 
-export function isRecord(value: unknown): value is { readonly [key: string]: unknown } {
+function isNode(value: unknown): value is Node {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseJson(text: string): unknown {
+function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {

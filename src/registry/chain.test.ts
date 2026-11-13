@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { progressLine } from "../cli/render.ts";
 import { loadConfig } from "../config.ts";
 import type { Progress } from "../consumer/index.ts";
-import { parseAccountId, parseDecimalAmount, type AccountId } from "../domain.ts";
+import { parseAccountId, parseDecimalAmount, parseJobId, type AccountId } from "../domain.ts";
 import { PROVIDERS } from "../providers/index.ts";
 import { createRuntime } from "../runtime.ts";
 import { parseCommitment, SCHEME, type Commitment } from "../commitment/index.ts";
-import { newCredential, type Action, type NearClient, type TxResult } from "../near/client.ts";
+import { newCredential, type Action, type NearClient, type SignedTx, type TxResult } from "../near/client.ts";
 import { SOCIAL_DB } from "../near/social.ts";
 import { nearOf } from "../payment/units.ts";
-import { COMMIT_RESERVE, createChainRegistry, publishCommitments, readCommitments, type Published, type ShopCommitment } from "./chain.ts";
+import type { CrashPoint } from "../near/outbox.ts";
+import { COMMIT_RESERVE, createChainRegistry, publishCommitments, readCommitments, readRatings, type Published, type ShopCommitment } from "./chain.ts";
 
 const DISCLOSURE = account("disclosure.david.inferpay.testnet");
 const DAVID = account("david.inferpay.testnet");
@@ -43,6 +44,9 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
     balances: new Map(Object.entries(balances)),
     calls: [] as Call[],
     transfers: [] as { from: AccountId; to: AccountId; amount: bigint }[],
+    signed: new Map<string, readonly Action[]>(),
+    broadcasts: [] as string[],
+    landed: new Set<string>(),
     failNext: null as TxResult | null,
   };
   const store = (prefix: string, value: unknown): void => {
@@ -66,7 +70,31 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
       store(signer, data[signer]);
     }
   };
-  const port: Pick<NearClient, "view" | "balance" | "send"> = {
+  const land = (tx: SignedTx): void => {
+    if (state.landed.has(tx.hash)) return;
+    state.height += 1;
+    state.landed.add(tx.hash);
+    for (const action of state.signed.get(tx.hash) ?? []) apply(tx.signerId, tx.receiverId, action);
+  };
+  const port: Pick<NearClient, "view" | "balance" | "send" | "sign" | "broadcast" | "status"> = {
+    async sign(credential, receiverId, txActions) {
+      const hash = `tx${state.signed.size + 1}`;
+      state.signed.set(hash, txActions);
+      return { hash, signerId: credential.accountId, receiverId, nonce: String(state.signed.size), base64: hash };
+    },
+    async broadcast(tx, wait) {
+      state.broadcasts.push(tx.hash);
+      if (state.failNext !== null) {
+        const result = state.failNext;
+        state.failNext = null;
+        return result;
+      }
+      land(tx);
+      return wait === "NONE" ? { kind: "pending" } : { kind: "success" };
+    },
+    async status(tx) {
+      return state.landed.has(tx.hash) ? { kind: "success" } : { kind: "unknown" };
+    },
     async view(contractId, method, args) {
       assert.equal(contractId, SOCIAL_DB);
       assert.equal(method, "get");
@@ -91,15 +119,8 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
       return state.balances.get(accountId) ?? null;
     },
     async send(credential, receiverId, txActions) {
-      state.height += 1;
-      const tx = { hash: `hash${state.height}`, signerId: credential.accountId, receiverId, nonce: "1", base64: "" };
-      if (state.failNext !== null) {
-        const result = state.failNext;
-        state.failNext = null;
-        return { tx, result };
-      }
-      for (const action of txActions) apply(credential.accountId, receiverId, action);
-      return { tx, result: { kind: "success" } };
+      const tx = await port.sign(credential, receiverId, txActions);
+      return { tx, result: await port.broadcast(tx, "FINAL") };
     },
   };
   return Object.assign(state, { port });
@@ -182,8 +203,7 @@ test("the first run writes each shop's commitment under its own account, and a s
   assert.deepEqual(second.map((step) => step.kind), ["current", "current"]);
   assert.equal(chain.calls.length, 2);
 
-  const registry = createChainRegistry({ chain: chain.port });
-  const read = await registry.commitments([DISCLOSURE, LEGAL]);
+  const read = await registryOn(chain, "unused").commitments([DISCLOSURE, LEGAL]);
   assert.deepEqual(read.get(LEGAL), {
     status: "published",
     commitment: commitment("b2", 3),
@@ -231,49 +251,241 @@ function realShops(): ShopCommitment[] {
   });
 }
 
-async function askOn(chain: ReturnType<typeof fakeChain>, question: string): Promise<string> {
+const RESEARCHER = account("researcher.kyle.inferpay.testnet");
+const MRI = "Does this policy cover an outpatient MRI?";
+
+function registryOn(chain: ReturnType<typeof fakeChain>, root: string, crash: CrashPoint | null = null) {
+  const config = loadConfig({});
+  assert.ok(config.ok);
+  return createChainRegistry({
+    chain: chain.port,
+    raters: config.value.roster.forest().filter((row) => row.role !== "specialist").map((row) => row.account),
+    outbox: {
+      file: join(root, "ratings.jsonl"),
+      chain: chain.port,
+      credential: async (id) => newCredential(id),
+      crash,
+      // The real hook exits the process. Throwing leaves the same files behind: a stored transaction, a rated
+      // ledger line, and no record that the rating was posted.
+      onCrash(point) {
+        throw new Error(`stopped ${point}`);
+      },
+    },
+  });
+}
+
+async function runtimeOn(chain: ReturnType<typeof fakeChain>, root: string, crash: CrashPoint | null = null) {
+  const config = loadConfig({ INFERPAY_DATA_DIR: root });
+  assert.ok(config.ok);
+  return { config: config.value, runtime: await createRuntime(config.value, registryOn(chain, root, crash)) };
+}
+
+async function askOn(chain: ReturnType<typeof fakeChain>, root: string, question: string, crash: CrashPoint | null = null): Promise<string> {
+  const { config, runtime } = await runtimeOn(chain, root, crash);
+  const amount = parseDecimalAmount("0.10");
+  assert.ok(amount);
+  const seen: Progress[] = [];
+  await runtime.consumer.ask(question, { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer }, (step) => seen.push(step));
+  return seen.map((step) => progressLine(step, "near-testnet")).join("\n");
+}
+
+async function resumeOn(chain: ReturnType<typeof fakeChain>, root: string): Promise<string> {
+  const { runtime } = await runtimeOn(chain, root);
+  const jobId = parseJobId((await readdir(join(root, "jobs"))).find((name) => name.endsWith(".jsonl"))?.slice(0, -".jsonl".length) ?? "");
+  assert.ok(jobId);
+  const seen: Progress[] = [];
+  await runtime.consumer.resume(jobId, (step) => seen.push(step));
+  return seen.map((step) => progressLine(step, "near-testnet")).join("\n");
+}
+
+async function withRoot(body: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   try {
-    const config = loadConfig({ INFERPAY_DATA_DIR: root });
-    assert.ok(config.ok);
-    const runtime = await createRuntime(config.value, createChainRegistry({ chain: chain.port }));
-    const amount = parseDecimalAmount("0.10");
-    assert.ok(amount);
-    const seen: Progress[] = [];
-    await runtime.consumer.ask(question, { budget: { ...config.value.near, amount }, buyer: config.value.roster.defaultBuyer }, (step) => seen.push(step));
-    return seen.map((step) => progressLine(step, "near-testnet")).join("\n");
+    await body(root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 }
 
-function fundedShops() {
-  return fakeChain({ [DISCLOSURE]: nearOf("0.09"), [LEGAL]: nearOf("0.09"), [INSURANCE]: nearOf("0.09") });
+async function published() {
+  const chain = fakeChain({ [DISCLOSURE]: nearOf("0.09"), [LEGAL]: nearOf("0.09"), [INSURANCE]: nearOf("0.09") });
+  await publish(chain, realShops());
+  return chain;
+}
+
+function ratingCalls(chain: ReturnType<typeof fakeChain>): Call[] {
+  return chain.calls.filter((call) => call.signer === RESEARCHER);
 }
 
 test("the buyer verifies against the root it read from chain and says where it read it", async () => {
-  const chain = fundedShops();
-  await publish(chain, realShops());
-  const text = await askOn(chain, "Does this policy cover an outpatient MRI?");
-  assert.match(text, /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
-  assert.match(text, /^ {10}from {6}NEAR testnet, written at block 1003 and read before paying$/m);
-  assert.match(text, /^ {10}key {7}insurance\.ban\.inferpay\.testnet\/inferpay\/commitment in SocialDB v1\.social08\.testnet$/m);
-  assert.match(text, /^ {10}link {6}https:\/\/testnet\.nearblocks\.io\/address\/insurance\.ban\.inferpay\.testnet$/m);
-  assert.match(text, /^rate {6}5\/5$/m);
+  await withRoot(async (root) => {
+    const text = await askOn(await published(), root, MRI);
+    assert.match(text, /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
+    assert.match(text, /^ {10}from {6}NEAR testnet, written at block 1003 and read before paying$/m);
+    assert.match(text, /^ {10}key {7}insurance\.ban\.inferpay\.testnet\/inferpay\/commitment in SocialDB v1\.social08\.testnet$/m);
+    assert.match(text, /^ {10}link {6}https:\/\/testnet\.nearblocks\.io\/address\/insurance\.ban\.inferpay\.testnet$/m);
+    assert.match(text, /^rate {6}5\/5$/m);
+  });
 });
 
 test("the root on chain decides, not the one the shop holds: honest evidence against another root is forged", async () => {
-  const chain = fundedShops();
-  await publish(chain, realShops().map((shop) => (shop.account === INSURANCE ? { ...shop, declared: commitment("ee", 3) } : shop)));
-  const text = await askOn(chain, "Does this policy cover an outpatient MRI?");
-  assert.match(text, /^checks {4}0 of 1 verified by the buyer against the shop's committed root, 1 FORGED$/m);
-  assert.match(text, /^rate {6}1\/5 /m);
+  await withRoot(async (root) => {
+    const chain = fakeChain({ [DISCLOSURE]: nearOf("0.09"), [LEGAL]: nearOf("0.09"), [INSURANCE]: nearOf("0.09") });
+    await publish(chain, realShops().map((shop) => (shop.account === INSURANCE ? { ...shop, declared: commitment("ee", 3) } : shop)));
+    const text = await askOn(chain, root, MRI);
+    assert.match(text, /^checks {4}0 of 1 verified by the buyer against the shop's committed root, 1 FORGED$/m);
+    assert.match(text, /^rate {6}1\/5 /m);
+    const [call] = ratingCalls(chain);
+    const posted = JSON.parse(Object.values((call?.args as { data: Record<string, { inferpay: { ratings: Record<string, string> } }> }).data[RESEARCHER]?.inferpay.ratings ?? {})[0] ?? "");
+    assert.deepEqual([posted.stars, posted.verified, posted.unproven, posted.forged, posted.root], [1, 0, 0, 1, "ee".repeat(32)]);
+  });
 });
 
 test("a shop with nothing on chain has only its word, and the rating cannot pass 3", async () => {
-  const chain = fundedShops();
-  const text = await askOn(chain, "Does this policy cover an outpatient MRI?");
-  assert.match(text, /^ {10}unproven {2}match {9}outpatient MRI {2}covered$/m);
-  assert.match(text, /^ {10}root {6}none: insurance\.ban\.inferpay\.testnet has published no commitment in SocialDB v1\.social08\.testnet$/m);
-  assert.match(text, /^rate {6}3\/5 /m);
+  await withRoot(async (root) => {
+    const chain = fakeChain({});
+    const text = await askOn(chain, root, MRI);
+    assert.match(text, /^ {10}unproven {2}match {9}outpatient MRI {2}covered$/m);
+    assert.match(text, /^ {10}root {6}none: insurance\.ban\.inferpay\.testnet has published no commitment in SocialDB v1\.social08\.testnet$/m);
+    assert.match(text, /^rate {6}3\/5 /m);
+  });
+});
+
+test("the buyer bot writes its rating under its own account, with the shop, the payment, the root, and the counts", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const text = await askOn(chain, root, MRI);
+    const jobId = text.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+    const payment = JSON.parse((await readFile(join(root, "mock-rail.jsonl"), "utf8")).trim().split("\n")[0] ?? "").correlationId;
+    assert.ok(jobId && typeof payment === "string");
+    assert.deepEqual(ratingCalls(chain), [{
+      signer: RESEARCHER,
+      receiver: SOCIAL_DB,
+      method: "set",
+      args: {
+        data: {
+          [RESEARCHER]: {
+            inferpay: {
+              ratings: {
+                [jobId]: JSON.stringify({
+                  shop: INSURANCE,
+                  stars: 5,
+                  payment,
+                  root: "99404ff0e1372995542c5791014482b6fdea69eb01bac101ecde19c441404f95",
+                  verified: 1,
+                  unproven: 0,
+                  forged: 0,
+                }),
+              },
+            },
+          },
+        },
+        options: { refund_unused_deposit: true },
+      },
+      deposit: nearOf("0.02"),
+    }]);
+    assert.match(text, /^ {10}on chain {2}SocialDB v1\.social08\.testnet, written by the buyer bot under its own account$/m);
+    assert.match(text, new RegExp(`^ {10}key {7}researcher\\.kyle\\.inferpay\\.testnet/inferpay/ratings/${jobId}$`, "m"));
+    assert.match(text, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m);
+  });
+});
+
+test("reputation comes from the ratings on chain, so it survives losing the local ledger", async () => {
+  const chain = await published();
+  await withRoot(async (root) => {
+    await askOn(chain, root, MRI);
+    await askOn(chain, root, "What was Samsung's Q3 2025 operating profit?");
+  });
+  await withRoot(async (fresh) => {
+    const { runtime } = await runtimeOn(chain, fresh);
+    const listings = await runtime.market.listings();
+    assert.deepEqual(listings.map((listing) => [listing.id, listing.reputation]), [
+      ["disclosure", { kind: "rated", completedJobs: 1, ratings: 1, average: 4 }],
+      ["legal", { kind: "unrated", completedJobs: 0 }],
+      ["insurance", { kind: "rated", completedJobs: 1, ratings: 1, average: 5 }],
+    ]);
+    const next = await askOn(chain, fresh, MRI);
+    assert.match(next, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.80 = quality 0\.80/);
+  });
+});
+
+test("resuming a rated job posts nothing new and shows the same transaction", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const first = await askOn(chain, root, MRI);
+    const again = await resumeOn(chain, root);
+    assert.equal(ratingCalls(chain).length, 1);
+    assert.equal(chain.signed.size, 4);
+    const tx = /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m;
+    assert.match(first, tx);
+    assert.match(again, tx);
+  });
+});
+
+test("a crash after the rating was signed or broadcast keeps the local rating, and resume posts it exactly once", async () => {
+  for (const crash of ["after-sign", "after-broadcast"] as const) {
+    await withRoot(async (root) => {
+      const chain = await published();
+      assert.match(await askOn(chain, root, MRI, crash), new RegExp(`^ {10}on chain {2}not yet: stopped ${crash}$`, "m"));
+      const { runtime } = await runtimeOn(chain, root);
+      const [row] = (await runtime.market.listings()).filter((listing) => listing.id === "insurance");
+      assert.equal(row?.reputation.kind, crash === "after-broadcast" ? "rated" : "unrated", crash);
+      const ledger = await readFile(join(root, "jobs", (await readdir(join(root, "jobs"))).find((name) => name.endsWith(".jsonl")) ?? ""), "utf8");
+      assert.match(ledger, /"type":"rated","at":"[^"]+","rating":5/, crash);
+      assert.doesNotMatch(ledger, /rating-posted/, crash);
+
+      const resumed = await resumeOn(chain, root);
+      assert.match(resumed, /^rate {6}5\/5$/m, crash);
+      assert.match(resumed, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m, crash);
+      assert.equal(chain.signed.size, 4, crash);
+      assert.equal(ratingCalls(chain).length, 1, crash);
+      await resumeOn(chain, root);
+      assert.equal(ratingCalls(chain).length, 1, crash);
+    });
+  }
+});
+
+test("a rating that cannot reach the chain stays pending with a resume hint, and resume posts it", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    chain.failNext = { kind: "unreachable", detail: "fetch failed" };
+    const text = await askOn(chain, root, MRI);
+    assert.match(text, /^rate {6}5\/5$/m);
+    assert.match(text, /^ {10}on chain {2}not yet: fetch failed$/m);
+    assert.match(text, /^ {20}the rating is in the local ledger\. Run: npx inferpay resume job_\w+$/m);
+    assert.equal(ratingCalls(chain).length, 0);
+    assert.match(await resumeOn(chain, root), /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m);
+    assert.equal(ratingCalls(chain).length, 1);
+    assert.equal(chain.signed.size, 4);
+  });
+});
+
+test("only a well-formed rating under a known bot's account counts", () => {
+  const good = JSON.stringify({ shop: INSURANCE, stars: 4, payment: "hash", root: null, verified: 1, unproven: 1, forged: 0 });
+  const leaf = (value: string) => ({ ":block": 9, "": value });
+  const raw = {
+    [RESEARCHER]: {
+      inferpay: {
+        ratings: {
+          ":block": 9,
+          job_01M7BGGX58BF3B8VB4ADYKXYZA: leaf(good),
+          job_01M7BGGX58BF3B8VB4ADYKXYZB: leaf(JSON.stringify({ shop: INSURANCE, stars: 9, payment: "hash", root: null, verified: 0, unproven: 0, forged: 0 })),
+          job_01M7BGGX58BF3B8VB4ADYKXYZC: leaf("five stars"),
+          "not-a-job": leaf(good),
+        },
+      },
+    },
+    [INSURANCE]: { inferpay: { ratings: { job_01M7BGGX58BF3B8VB4ADYKXYZD: leaf(good.replace('"stars":4', '"stars":5')) } } },
+  };
+  assert.deepEqual(readRatings(raw, [RESEARCHER]), [{
+    jobId: "job_01M7BGGX58BF3B8VB4ADYKXYZA",
+    rater: RESEARCHER,
+    shop: INSURANCE,
+    stars: 4,
+    payment: "hash",
+    root: null,
+    verified: 1,
+    unproven: 1,
+    forged: 0,
+  }]);
 });

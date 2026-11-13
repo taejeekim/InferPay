@@ -14,8 +14,8 @@ import type { AccountId, IsoTime, Price } from "../domain.ts";
 import { canonical, type PinnedCommitment } from "../commitment/index.ts";
 import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
-import type { Registry } from "../registry/index.ts";
-import { fold, plan, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
+import type { RatingPost, Registry } from "../registry/index.ts";
+import { fold, plan, reputationFromStars, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
 import { createFileLedger, LedgerReadError, type Ledger } from "./ledger.ts";
 
 export type { JobEvent, JobState, Order, Reputation } from "./job.ts";
@@ -84,10 +84,18 @@ export type MarketProgress =
 
 export type JobView = { readonly order: Order; readonly state: JobState; readonly events: readonly JobEvent[] };
 
+// What the buyer concluded: the stars, and how many checks it verified, could not verify, or found forged.
+export type Rating = {
+  readonly stars: Stars;
+  readonly verified: number;
+  readonly unproven: number;
+  readonly forged: number;
+};
+
+// onChain is null on a rail with no registry, where the ledger line is the whole record.
 export type RateResult =
-  | { readonly kind: "recorded"; readonly reputation: Reputation }
-  | { readonly kind: "unchanged"; readonly reputation: Reputation }
-  | { readonly kind: "rejected"; readonly reason: "different-stars"; readonly reputation: Reputation };
+  | { readonly kind: "recorded" | "unchanged"; readonly onChain: RatingPost | null }
+  | { readonly kind: "rejected"; readonly reason: "different-stars" };
 
 export type CounterReply = "accepted" | "refused";
 
@@ -95,7 +103,9 @@ export interface Marketplace {
   listings(): Promise<readonly Listing[]>;
   counter(providerId: ProviderId, offer: Price): Promise<CounterReply>;
   hire(order: Order, onProgress?: (progress: MarketProgress) => void): Promise<HireOutcome>;
-  rate(job: CompletedJob, rating: Stars): Promise<RateResult>;
+  // Writes the stars to the ledger once, then posts the rating on chain where the rail has a registry. Calling it
+  // again with the same stars finishes a post that a crash interrupted.
+  rate(job: CompletedJob, rating: Rating): Promise<RateResult>;
   job(jobId: JobId): Promise<JobView | null>;
 }
 
@@ -113,24 +123,10 @@ export function createMarketplace(deps: {
 
   return {
     async listings() {
-      const rows = await ledger.all();
-      const states = new Map<ProviderId, JobState[]>();
-      for (const row of rows) {
-        const folded = fold(row.events);
-        if (!folded.ok) continue;
-        const id = folded.state.order.providerId;
-        const bucket = states.get(id) ?? [];
-        bucket.push(folded.state);
-        states.set(id, bucket);
-      }
-      const onChain = registry === null ? null : await registry.commitments(providers.map((bound) => bound.listing.payTo));
-      return providers.map((bound) => {
-        const { declared, ...listing } = bound.listing;
-        const commitment: PinnedCommitment | undefined = onChain === null
-          ? { status: "published", commitment: declared, source: { kind: "listing" } }
-          : onChain.get(listing.payTo);
-        if (commitment === undefined) throw new Error(`the registry returned nothing for ${listing.payTo}`);
-        return { ...listing, reputation: reputationOf(states.get(listing.id) ?? []), commitment };
+      const read = registry === null ? await fromLedger(ledger) : await fromRegistry(registry, providers);
+      return providers.map(({ listing }) => {
+        const { id, name, specialty, routingHint, price, owner, payTo } = listing;
+        return { id, name, specialty, routingHint, price, owner, payTo, ...read(listing) };
       });
     },
 
@@ -159,24 +155,15 @@ export function createMarketplace(deps: {
       const held = await ledger.lock(job.jobId);
       if (!held) throw new Error("job-busy");
       try {
-        const events = await readOrThrow(ledger, job.jobId);
-        const folded = fold(events);
+        const folded = fold(await readOrThrow(ledger, job.jobId));
         if (!folded.ok) throw new LedgerReadError(folded.corrupt);
-        const providerId = folded.state.order.providerId;
         if (folded.state.phase === "rated") {
-          const reputation = await reputationFor(ledger, providerId);
-          if (folded.state.rating === rating) return { kind: "unchanged", reputation };
-          return { kind: "rejected", reason: "different-stars", reputation };
+          if (folded.state.rating !== rating.stars) return { kind: "rejected", reason: "different-stars" };
+          return { kind: "unchanged", onChain: await post(job, rating) };
         }
         if (folded.state.phase !== "completed") throw new Error("job is not complete");
-        const wrote = await ledger.appendIfAbsent(job.jobId, { type: "rated", at: clock(), rating });
-        const reputation = await reputationFor(ledger, providerId);
-        if (wrote) return { kind: "recorded", reputation };
-        const after = fold(await readOrThrow(ledger, job.jobId));
-        if (after.ok && after.state.phase === "rated" && after.state.rating === rating) {
-          return { kind: "unchanged", reputation };
-        }
-        return { kind: "rejected", reason: "different-stars", reputation };
+        await ledger.append(job.jobId, { type: "rated", at: clock(), rating: rating.stars });
+        return { kind: "recorded", onChain: await post(job, rating) };
       } finally {
         await held.release();
       }
@@ -318,6 +305,30 @@ export function createMarketplace(deps: {
     return fail(order.jobId, { kind: "provider-failed", reason: "the job did not finish" });
   }
 
+  // The ledger line comes first, so a crash here loses nothing: the next call finds the job rated and posts again,
+  // and the registry answers with the transaction it already signed.
+  async function post(job: CompletedJob, rating: Rating): Promise<RatingPost | null> {
+    if (registry === null) return null;
+    let posted: RatingPost;
+    try {
+      posted = await registry.postRating({
+        jobId: job.jobId,
+        rater: job.payFrom,
+        shop: job.paid.recipient,
+        stars: rating.stars,
+        payment: job.paid.correlationId,
+        root: job.commitment.status === "published" ? job.commitment.commitment.root : null,
+        verified: rating.verified,
+        unproven: rating.unproven,
+        forged: rating.forged,
+      });
+    } catch (error) {
+      posted = { kind: "pending", tx: null, detail: error instanceof Error ? error.message : String(error) };
+    }
+    if (posted.kind === "posted") await ledger.appendIfAbsent(job.jobId, { type: "rating-posted", at: clock(), tx: posted.tx });
+    return posted;
+  }
+
   async function commit(jobId: JobId, event: JobEvent): Promise<readonly JobEvent[]> {
     await ledger.append(jobId, event);
     return readOrThrow(ledger, jobId);
@@ -374,15 +385,37 @@ async function readOrThrow(ledger: Ledger, jobId: JobId): Promise<readonly JobEv
   }
 }
 
-async function reputationFor(ledger: Ledger, providerId: ProviderId): Promise<Reputation> {
-  const rows = await ledger.all();
-  const states: JobState[] = [];
-  for (const row of rows) {
+type Standing = Pick<Listing, "reputation" | "commitment">;
+
+// A rail with no chain has only the shop's own statement of its root and this machine's ledger.
+async function fromLedger(ledger: Ledger): Promise<(listing: ProviderListing) => Standing> {
+  const states = new Map<ProviderId, JobState[]>();
+  for (const row of await ledger.all()) {
     const folded = fold(row.events);
     if (!folded.ok) continue;
-    if (folded.state.order.providerId === providerId) states.push(folded.state);
+    const id = folded.state.order.providerId;
+    states.set(id, [...states.get(id) ?? [], folded.state]);
   }
-  return reputationOf(states);
+  return (listing) => ({
+    reputation: reputationOf(states.get(listing.id) ?? []),
+    commitment: { status: "published", commitment: listing.declared, source: { kind: "listing" } },
+  });
+}
+
+async function fromRegistry(
+  registry: Registry,
+  providers: readonly BoundProvider[],
+): Promise<(listing: ProviderListing) => Standing> {
+  const [commitments, ratings] = await Promise.all([
+    registry.commitments(providers.map((bound) => bound.listing.payTo)),
+    registry.ratings(),
+  ]);
+  return (listing) => {
+    const commitment = commitments.get(listing.payTo);
+    if (commitment === undefined) throw new Error(`the registry returned nothing for ${listing.payTo}`);
+    const stars = ratings.filter((rating) => rating.shop === listing.payTo).map((rating) => rating.stars);
+    return { reputation: reputationFromStars(stars, stars.length), commitment };
+  };
 }
 
 async function fulfilQuiet(

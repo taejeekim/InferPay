@@ -10,6 +10,7 @@ import { tally } from "../consumer/grade.ts";
 import { verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
+import type { RatingPost } from "../registry/index.ts";
 import { commitmentKey } from "../registry/keys.ts";
 import { formatNear } from "../payment/units.ts";
 
@@ -32,7 +33,10 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
     case "verify":
       return checksBlock(progress.checks, progress.commitment, rail).join("\n");
     case "rate":
-      return line("rate", rateText(progress.rating, progress.checks));
+      return [
+        line("rate", rateText(progress.rating, progress.checks)),
+        ...ratingRows(progress.onChain, progress.jobId, rail).map((row) => line("", row)),
+      ].join("\n");
     case "pending":
       return line("pending", `${progress.jobId} is waiting on payment. Run: npx inferpay resume ${progress.jobId}`);
     default: {
@@ -46,7 +50,7 @@ export function localAnswerText(text: string): string {
   return [line("answer", text), line("checks", "none, this is the buyer's own answer")].join("\n");
 }
 
-export function providersTable(listings: readonly Listing[]): string {
+export function providersTable(listings: readonly Listing[], rail: PaymentRail["kind"]): string {
   const rows = [
     ["ID", "OWNER", "PAY TO", "SPECIALTY", "PRICE", "JOBS", "RATING"],
     ...listings.map((listing) => [
@@ -61,7 +65,31 @@ export function providersTable(listings: readonly Listing[]): string {
         : `${listing.reputation.average.toFixed(1)} (${listing.reputation.ratings})`,
     ]),
   ];
-  return table(rows);
+  const noChain = rail === "mock" ? "because the mock rail has no chain" : "because this rail keeps no record on chain";
+  const chain = listings.flatMap((listing) => {
+    if (listing.commitment.status === "missing") return [listing.commitment.contract];
+    return listing.commitment.source.kind === "chain" ? [listing.commitment.source.contract] : [];
+  })[0];
+  const idWidth = listings.reduce((max, listing) => Math.max(max, listing.id.length), 0) + 2;
+  const footer = (name: string, value: string): string => `${name.padEnd(12)}${value}`;
+  return [
+    table(rows),
+    "",
+    footer("reputation", chain === undefined
+      ? `this machine's job ledger, ${noChain}`
+      : "ratings on NEAR testnet, each written by a buyer bot under <bot>/inferpay/ratings/<job> in SocialDB"),
+    footer("commitment", chain === undefined
+      ? `each root is from the shop's listing, ${noChain}`
+      : `each root is on NEAR testnet under <shop>/inferpay/commitment in SocialDB ${chain}`),
+    ...listings.map((listing) => footer("", `${listing.id.padEnd(idWidth)}${listedRoot(listing.commitment)}`)),
+  ].join("\n");
+}
+
+function listedRoot(pinned: PinnedCommitment): string {
+  if (pinned.status === "missing") return "none published";
+  const { commitment, source } = pinned;
+  const since = source.kind === "chain" ? `  since block ${source.block}` : "";
+  return `${shortHash(commitment.root)}  ${plural(commitment.leaves, "leaf", "leaves")}${since}`;
 }
 
 export function jobText(view: JobView): string {
@@ -93,6 +121,8 @@ export function jobText(view: JobView): string {
         ].join("\n");
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
+      case "rating-posted":
+        return [`${label}${time}  tx ${event.tx}`, under(txUrl(event.tx))].join("\n");
       default: {
         const unreachable: never = event;
         return unreachable;
@@ -149,7 +179,9 @@ export function usageText(): string {
     "test hooks, set in the environment:",
     "  INFERPAY_TEST_LIAR=<shop id>   that shop reports every check in its own favour and forges the evidence;",
     "                                 the buyer should mark the check FORGED and rate the shop 1/5",
-    "  INFERPAY_TEST_CRASH=after-sign|after-broadcast   near-testnet only: exit mid-payment, then resume",
+    "  INFERPAY_TEST_CRASH=<point>    near-testnet only: exit at that point, then run inferpay resume <jobId>;",
+    "                                 after-sign or after-broadcast stops the payment,",
+    "                                 after-rating-sign or after-rating-broadcast stops the on-chain rating",
   ].join("\n");
 }
 
@@ -359,6 +391,30 @@ function rateText(rating: number, checks: readonly BuyerCheck[]): string {
   if (counts.unbacked > 0) reasons.push(`${plural(counts.unbacked, "claim", "claims")} the shop could not back`);
   if (counts.verified === 0) reasons.push("nothing verified, so at most 3");
   return reasons.length === 0 ? `${rating}/5` : `${rating}/5  (${reasons.join("; ")})`;
+}
+
+function ratingRows(onChain: RatingPost | null, jobId: string, rail: PaymentRail["kind"]): string[] {
+  const row = (name: string, value: string): string => `${name.padEnd(STATUS)}${value}`;
+  if (onChain === null) {
+    const why = rail === "mock" ? "because the mock rail has no chain" : "because this rail keeps no rating on chain";
+    return [row("kept", `in this machine's ledger, ${why}`)];
+  }
+  switch (onChain.kind) {
+    case "posted":
+      return [
+        row("on chain", `SocialDB ${onChain.contract}, written by the buyer bot under its own account`),
+        row("key", onChain.key),
+        row("tx", txUrl(onChain.tx)),
+      ];
+    case "pending":
+      return [row("on chain", `not yet: ${onChain.detail}`), row("", `the rating is in the local ledger. Run: npx inferpay resume ${jobId}`)];
+    case "failed":
+      return [row("on chain", `not posted: ${onChain.reason}`)];
+    default: {
+      const unreachable: never = onChain;
+      return unreachable;
+    }
+  }
 }
 
 function plural(count: number, one: string, many: string): string {

@@ -44,7 +44,7 @@ async function providersCommand(env: NodeJS.ProcessEnv): Promise<number> {
   const booted = await boot(env);
   if (!booted) return 1;
   const listings = await booted.runtime.market.listings();
-  process.stdout.write(`${providersTable(listings)}\n`);
+  process.stdout.write(`${providersTable(listings, booted.runtime.rails.payment)}\n`);
   return 0;
 }
 
