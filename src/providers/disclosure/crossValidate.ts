@@ -21,7 +21,7 @@ type ClaimedFigure = {
 
 /**
  * Percent points, not a fraction. 0.05 means 0.05 percent, which is 5 basis points.
- * A claim 0.13 percent away from the filed figure is a mismatch.
+ * A claim 0.12 percent away from the filed figure is a mismatch.
  */
 export const TOLERANCE_PCT = 0.05;
 

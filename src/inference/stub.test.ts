@@ -48,7 +48,7 @@ test("answers the paid question from the same recording", async () => {
     parseOutput: (raw) => raw,
   });
   assert.equal(result.ok, true);
-  if (result.ok) assert.match(result.value, /12\.1T/);
+  if (result.ok) assert.match(result.value, /12\.2T/);
 });
 
 test("an unrecorded question fails and says nothing was spent", async () => {

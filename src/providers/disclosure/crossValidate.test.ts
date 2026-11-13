@@ -7,25 +7,25 @@ const facts: readonly DisclosureFact[] = [
     company: "Samsung Electronics",
     period: "Q3 2025",
     metric: "operating profit",
-    value: 12.1,
+    value: 12.2,
     unit: "KRW T",
-    source: "quarterly report, p.14",
+    source: "Samsung Electronics Q3 2025 earnings release",
   },
   {
     company: "Samsung Electronics",
     period: "Q3 2025",
     metric: "revenue",
-    value: 79.1,
+    value: 86.1,
     unit: "KRW T",
-    source: "quarterly report",
+    source: "Samsung Electronics Q3 2025 earnings release",
   },
 ];
 
-test("12.1T matches the filing and 79.0T is a 0.13 percent mismatch", () => {
+test("12.2T matches the filing and 86.0T is a 0.12 percent mismatch", () => {
   const checks = crossValidate(
     [
-      claim("operating profit Q3 2025", "operating profit", 12.1, "KRW T"),
-      claim("revenue Q3 2025", "revenue", 79, "KRW T"),
+      claim("operating profit Q3 2025", "operating profit", 12.2, "KRW T"),
+      claim("revenue Q3 2025", "revenue", 86, "KRW T"),
     ],
     facts,
     TOLERANCE_PCT,
@@ -36,14 +36,14 @@ test("12.1T matches the filing and 79.0T is a 0.13 percent mismatch", () => {
   assert.equal(profit.verdict, "match");
   assert.equal(revenue.verdict, "mismatch");
   if (revenue.verdict !== "mismatch") return;
-  assert.equal(revenue.reference, 79.1);
+  assert.equal(revenue.reference, 86.1);
   assert.ok(Math.abs(revenue.deltaPct) > TOLERANCE_PCT);
-  assert.equal(revenue.deltaPct.toFixed(2), "-0.13");
+  assert.equal(revenue.deltaPct.toFixed(2), "-0.12");
 });
 
 test("a trillion-scale claim matches the same figure in KRW", () => {
   const checks = crossValidate(
-    [claim("operating profit Q3 2025", "operating profit", 12_100_000_000_000, "KRW")],
+    [claim("operating profit Q3 2025", "operating profit", 12_200_000_000_000, "KRW")],
     facts,
     TOLERANCE_PCT,
   );
@@ -58,7 +58,7 @@ test("case and spacing do not hide a filed figure, and a missing figure stays un
         company: " samsung   electronics ",
         period: "q3 2025",
         metric: "Operating Profit",
-        claimed: 12.1,
+        claimed: 12.2,
         unit: "krw t",
       },
       claim("capex Q3 2025", "capex", 1, "KRW T"),

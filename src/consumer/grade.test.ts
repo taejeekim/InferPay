@@ -23,7 +23,7 @@ function answer(checks: readonly Check[]): Answer {
 }
 
 function match(label: string): Check {
-  return { kind: "number", verdict: "match", label, claimed: 12.1, unit: "KRW T", source: "quarterly report, p.14" };
+  return { kind: "number", verdict: "match", label, claimed: 12.2, unit: "KRW T", source: "Samsung Electronics Q3 2025 earnings release" };
 }
 
 function mismatch(label: string): Check {
@@ -33,8 +33,8 @@ function mismatch(label: string): Check {
     label,
     claimed: 79,
     unit: "KRW T",
-    reference: 79.1,
-    deltaPct: -0.13,
-    source: "quarterly report",
+    reference: 86.1,
+    deltaPct: -0.12,
+    source: "Samsung Electronics Q3 2025 earnings release",
   };
 }

@@ -3,16 +3,16 @@
     "company": "Samsung Electronics",
     "period": "Q3 2025",
     "metric": "operating profit",
-    "value": 12.1,
+    "value": 12.2,
     "unit": "KRW T",
-    "source": "quarterly report, p.14"
+    "source": "Samsung Electronics Q3 2025 earnings release"
   },
   {
     "company": "Samsung Electronics",
     "period": "Q3 2025",
     "metric": "revenue",
-    "value": 79.1,
+    "value": 86.1,
     "unit": "KRW T",
-    "source": "quarterly report"
+    "source": "Samsung Electronics Q3 2025 earnings release"
   }
 ]

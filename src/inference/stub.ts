@@ -23,9 +23,9 @@ const LEGAL_ROUTE = route("legal", "needs the private clause playbook the consum
 const INSURANCE_ROUTE = route("insurance", "needs the private policy schedule the consumer does not hold");
 const DISCLOSURE_ROUTE = route("disclosure", "needs filing figures the consumer does not hold");
 
-// The revenue claim of 79.0 against a filed 79.1 is deliberate. It shows the cross-check catching a model error.
+// The revenue claim of 86.0 against a filed 86.1 is deliberate. It shows the cross-check catching a model error.
 const SAMSUNG_OPERATING_PROFIT: Fixture = {
-  output: "Operating profit matches across both documents: KRW 12.1T.",
+  output: "Operating profit matches across both documents: KRW 12.2T.",
   toolCalls: [{
     name: "cross_validate_numbers",
     arguments: {
@@ -35,7 +35,7 @@ const SAMSUNG_OPERATING_PROFIT: Fixture = {
           company: "Samsung Electronics",
           period: "Q3 2025",
           metric: "operating profit",
-          claimed: 12.1,
+          claimed: 12.2,
           unit: "KRW T",
         },
         {
@@ -43,7 +43,7 @@ const SAMSUNG_OPERATING_PROFIT: Fixture = {
           company: "Samsung Electronics",
           period: "Q3 2025",
           metric: "revenue",
-          claimed: 79.0,
+          claimed: 86.0,
           unit: "KRW T",
         },
       ],

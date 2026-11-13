@@ -165,7 +165,7 @@ function fixture() {
   const model = must(parseModelId("stub"), "model");
   const receipt: PaymentReceipt = { key, correlationId: correlation, amount: price(quote), recipient: payTo, rail: "mock" };
   const answer: Answer = {
-    text: "Operating profit matches across both documents: KRW 12.1T.",
+    text: "Operating profit matches across both documents: KRW 12.2T.",
     checks: [],
     model,
     inference: "stub",
