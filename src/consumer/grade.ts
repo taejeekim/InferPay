@@ -10,6 +10,6 @@ export function grade(answer: Answer): Stars {
 }
 
 // A raised flag is a specialist doing its job, so only a mismatch counts against the answer.
-function penalizes(check: Check): boolean {
+export function penalizes(check: Check): boolean {
   return check.verdict === "mismatch";
 }

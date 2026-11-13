@@ -3,6 +3,7 @@ import type { ForestRow, Roster } from "../roster.ts";
 import type { Decision, Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
 import type { Check } from "../providers/types.ts";
+import { penalizes } from "../consumer/grade.ts";
 
 export function railsLine(rails: { readonly payment: string; readonly inference: string }): string {
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
@@ -181,7 +182,7 @@ function field(name: string, value: string): string {
 }
 
 function rateText(rating: number, checks: readonly Check[]): string {
-  const penalties = checks.filter((check) => check.verdict === "mismatch").length;
+  const penalties = checks.filter(penalizes).length;
   if (penalties === 0) return `${rating}/5`;
   return `${rating}/5 (${penalties} of ${checks.length} checks needed correction)`;
 }
