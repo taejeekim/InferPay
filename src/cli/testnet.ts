@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { credentialsDir } from "../config.ts";
+import type { Hash } from "../commitment/index.ts";
 import { parseParentAccount, type AccountId, type ParentAccount } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
 import { formatNear, nearOf } from "../payment/units.ts";
+import { PROVIDERS } from "../providers/index.ts";
 import { resolveRoster, type Roster } from "../roster.ts";
 
 // Funding out of the faucet's 10 NEAR. A native NEAR transfer needs a full-access key, so a bot's on-chain spend
@@ -172,7 +174,7 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
   const toCreate = plan.steps.filter((step) => step.kind !== "verified").length;
   say("plan", `${toCreate} to create, ${plan.steps.length - toCreate} already exist with the saved key`);
 
-  const transactions: { account: AccountId; hash: string }[] = [];
+  const transactions: { what: "create" | "commit"; account: AccountId; hash: string }[] = [];
   for (const step of plan.steps) {
     if (step.kind === "verified") continue;
     const credential = step.key === "saved" ? await near.loadCredential(keysDir, step.account) : near.newCredential(step.account);
@@ -196,10 +198,26 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
     if (sent.result.kind !== "success") {
       throw new Error(`creating ${step.account} did not finish (${sent.result.kind}${"reason" in sent.result ? `: ${sent.result.reason}` : ""}). Run setup again; it resumes here.`);
     }
-    transactions.push({ account: step.account, hash: sent.tx.hash });
+    transactions.push({ what: "create", account: step.account, hash: sent.tx.hash });
     say("create", `${step.account}  ${formatNear(step.deposit)} NEAR from ${step.parent}  tx ${sent.tx.hash}`);
   }
   await recordEnv(chosen.root, say);
+
+  const { publishCommitments } = await import("../registry/chain.ts");
+  const shops = PROVIDERS.flatMap((provider) => {
+    const seat = resolved.roster.shop(provider.describe.id);
+    return seat === null ? [] : [{ account: seat.account, parent: seat.parent, declared: provider.commitment() }];
+  });
+  await publishCommitments({ chain: client, credential: (account) => near.loadCredential(keysDir, account) }, shops, (step) => {
+    const root = `root ${shortRoot(step.commitment.root)}`;
+    if (step.kind === "current") {
+      say("commit", `${step.account}  ${root}  already on chain since block ${step.block}`);
+      return;
+    }
+    if (step.toppedUp > 0n) say("fund", `${step.account}  ${formatNear(step.toppedUp)} NEAR from its owner for the SocialDB deposit`);
+    say("commit", `${step.account}  ${root}  published (${step.why === "missing" ? "none on chain" : "the root changed"})  tx ${step.hash}`);
+    transactions.push({ what: "commit", account: step.account, hash: step.hash });
+  });
 
   process.stdout.write("\n");
   for (const node of tree) {
@@ -209,10 +227,14 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
   }
   if (transactions.length > 0) {
     process.stdout.write("\nsetup transactions\n");
-    for (const tx of transactions) process.stdout.write(`  create ${tx.account.padEnd(44)}${txUrl(tx.hash)}\n`);
+    for (const tx of transactions) process.stdout.write(`  ${tx.what} ${tx.account.padEnd(44)}${txUrl(tx.hash)}\n`);
   }
   process.stdout.write(`\nspend cap: a native NEAR transfer needs a full-access key, so each bot's on-chain spend cap is its own sub-account balance (${formatNear(FUNDING.bot)} NEAR at setup). It cannot spend more than that; the owner tops it up to raise the cap.\n`);
   return 0;
+}
+
+function shortRoot(root: Hash): string {
+  return `${root.slice(0, 12)}…${root.slice(-4)}`;
 }
 
 async function recordEnv(root: ParentAccount, say: (label: string, rest: string) => void): Promise<void> {

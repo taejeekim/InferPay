@@ -14,6 +14,7 @@ import type { AccountId, IsoTime, Price } from "../domain.ts";
 import { canonical, type PinnedCommitment } from "../commitment/index.ts";
 import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
+import type { Registry } from "../registry/index.ts";
 import { fold, plan, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
 import { createFileLedger, LedgerReadError, type Ledger } from "./ledger.ts";
 
@@ -105,9 +106,10 @@ export function createMarketplace(deps: {
   readonly rail: PaymentRail;
   readonly inference: Inference;
   readonly providers: readonly BoundProvider[];
+  readonly registry: Registry | null;
   readonly clock: () => IsoTime;
 }): Marketplace {
-  const { ledger, rail, inference, providers, clock } = deps;
+  const { ledger, rail, inference, providers, registry, clock } = deps;
 
   return {
     async listings() {
@@ -121,13 +123,14 @@ export function createMarketplace(deps: {
         bucket.push(folded.state);
         states.set(id, bucket);
       }
+      const onChain = registry === null ? null : await registry.commitments(providers.map((bound) => bound.listing.payTo));
       return providers.map((bound) => {
         const { declared, ...listing } = bound.listing;
-        return {
-          ...listing,
-          reputation: reputationOf(states.get(listing.id) ?? []),
-          commitment: { status: "published", commitment: declared, source: { kind: "listing" } },
-        };
+        const commitment: PinnedCommitment | undefined = onChain === null
+          ? { status: "published", commitment: declared, source: { kind: "listing" } }
+          : onChain.get(listing.payTo);
+        if (commitment === undefined) throw new Error(`the registry returned nothing for ${listing.payTo}`);
+        return { ...listing, reputation: reputationOf(states.get(listing.id) ?? []), commitment };
       });
     },
 

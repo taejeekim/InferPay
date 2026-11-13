@@ -103,6 +103,8 @@ export type TxResult =
 export interface NearClient {
   balance(accountId: AccountId): Promise<bigint | null>;
   hasKey(accountId: AccountId, publicKey: string): Promise<boolean>;
+  // Calls a contract's read-only method at the final block. No key and no fee.
+  view(contractId: AccountId, method: string, args: { readonly [key: string]: unknown }): Promise<unknown>;
   sign(credential: Credential, receiverId: AccountId, txActions: readonly Action[]): Promise<SignedTx>;
   broadcast(tx: SignedTx, wait: "FINAL" | "NONE"): Promise<TxResult>;
   status(tx: { readonly hash: string; readonly signerId: AccountId }): Promise<TxResult>;
@@ -133,6 +135,10 @@ export function createNearClient(network: typeof TESTNET = TESTNET): NearClient 
         if (error instanceof AccessKeyDoesNotExistError || error instanceof AccountDoesNotExistError) return false;
         throw error;
       }
+    },
+
+    async view(contractId, method, args) {
+      return await rpc.callFunction({ contractId, method, args: { ...args }, blockQuery: { finality: "final" } }) ?? null;
     },
 
     async sign(credential, receiverId, txActions) {

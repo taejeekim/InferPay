@@ -279,6 +279,7 @@ async function harness(
       },
       floor: price("0.015"),
     }],
+    registry: null,
     clock: fixedClock,
   });
   return { market, order: sampleOrder(), root };
