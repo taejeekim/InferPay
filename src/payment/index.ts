@@ -19,6 +19,7 @@ export type PaymentStatus =
 
 export type Transfer = {
   readonly key: IdempotencyKey;
+  readonly payer: AccountId;
   readonly amount: Price;
   readonly recipient: AccountId;
 };

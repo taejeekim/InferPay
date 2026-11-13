@@ -6,6 +6,7 @@ import { mapThrown, mapWireStatus, type WireStatus } from "./near-intents.ts";
 test("transfer statuses stay inside PaymentStatus", () => {
   const transfer = {
     key: must(parseIdempotencyKey("11111111-1111-1111-1111-111111111111")),
+    payer: must(parseAccountId("agent.near")),
     amount: {
       asset: must(parseAssetId("nep141:wrap.near")),
       symbol: "NEAR",

@@ -77,7 +77,7 @@ export function plan(state: JobState): Effect {
     case "paying":
       return {
         kind: "settle",
-        transfer: { key: state.key, amount: state.quote, recipient: state.payTo },
+        transfer: { key: state.key, payer: state.order.payFrom, amount: state.quote, recipient: state.payTo },
       };
     case "paid":
       if (state.failures.length >= MAX_FULFIL_ATTEMPTS) {
