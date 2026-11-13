@@ -1,4 +1,4 @@
-import { parseDecimalAmount, parseJobId, type Price } from "../domain.ts";
+import { parseDecimalAmount, parseJobId, toUnits, type Price } from "../domain.ts";
 import { loadConfig, type Config } from "../config.ts";
 import type { AskOutcome, Progress } from "../consumer/index.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
@@ -46,7 +46,7 @@ async function askCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
   if (!booted) return 1;
   const budget = budgetPrice(booted.config, parsed.budget);
   if (!budget) {
-    process.stderr.write(`--budget needs a decimal amount such as 0.10\n`);
+    process.stderr.write(`--budget needs a decimal amount above zero, such as 0.10\n`);
     return 2;
   }
   const buyer = parsed.from === null ? booted.config.roster.defaultBuyer : booted.config.roster.buyer(parsed.from);
@@ -156,6 +156,6 @@ function parseAsk(argv: readonly string[]):
 
 function budgetPrice(config: Config, raw: string): Price | null {
   const amount = parseDecimalAmount(raw);
-  if (!amount) return null;
+  if (!amount || toUnits(amount) === 0n) return null;
   return { asset: config.near.asset, symbol: config.near.symbol, amount };
 }
