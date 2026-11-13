@@ -54,7 +54,7 @@ async function askCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
     process.stderr.write(`${unknownBotText(booted.config.roster, parsed.from ?? "")}\n${usageText()}\n`);
     return 2;
   }
-  const outcome = await booted.runtime.consumer.ask(parsed.question, { budget, buyer }, printProgress);
+  const outcome = await booted.runtime.consumer.ask(parsed.question, { budget, buyer }, printProgress(booted.runtime));
   return finishAsk(outcome);
 }
 
@@ -70,7 +70,7 @@ async function resumeCommand(argv: readonly string[], env: NodeJS.ProcessEnv): P
   }
   const booted = await boot(env);
   if (!booted) return 1;
-  const outcome = await booted.runtime.consumer.resume(jobId, printProgress);
+  const outcome = await booted.runtime.consumer.resume(jobId, printProgress(booted.runtime));
   return finishAsk(outcome);
 }
 
@@ -107,8 +107,8 @@ function finishAsk(outcome: AskOutcome): number {
   return 0;
 }
 
-function printProgress(progress: Progress): void {
-  process.stdout.write(`${progressLine(progress)}\n`);
+function printProgress(runtime: Runtime): (progress: Progress) => void {
+  return (progress) => process.stdout.write(`${progressLine(progress, runtime.rails.payment)}\n`);
 }
 
 async function boot(env: NodeJS.ProcessEnv): Promise<{ runtime: Runtime; config: Config } | null> {

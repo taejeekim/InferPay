@@ -3,18 +3,19 @@ import type { ForestRow, Roster } from "../roster.ts";
 import type { Decision, Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
 import type { Check } from "../providers/types.ts";
+import type { PaymentRail } from "../payment/index.ts";
 import { penalizes } from "../consumer/grade.ts";
 
 export function railsLine(rails: { readonly payment: string; readonly inference: string }): string {
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
 }
 
-export function progressLine(progress: Progress): string {
+export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
   switch (progress.step) {
     case "decide":
       return decideBlock(progress.decision);
     case "pay":
-      return payBlock(progress);
+      return payBlock(progress, rail);
     case "answer":
       return [line("answer", progress.answer.text), ...checkLines(progress.answer.checks)].join("\n");
     case "rate":
@@ -157,13 +158,13 @@ function decideBlock(decision: Decision): string {
   return [line("decide", "answer locally"), field("why", decision.reason)].join("\n");
 }
 
-function payBlock(progress: Extract<Progress, { step: "pay" }>): string {
+function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRail["kind"]): string {
   const money = `${progress.amount.amount} ${progress.amount.symbol}`;
   const rows = [
     line("pay", `${progress.status}  ${money}`),
     field("from", progress.payer),
     field("to", progress.recipient),
-    field("via", "Intents grant"),
+    field("via", rail === "mock" ? "mock receipt (no NEAR moved)" : "Intents grant"),
   ];
   if (progress.status === "pending" || progress.status === "uncertain") {
     rows.push(field("job", progress.jobId));

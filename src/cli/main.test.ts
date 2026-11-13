@@ -57,7 +57,7 @@ test("ask still runs when an old job file has no payFrom", async () => {
     assert.match(stdout.text(), /settled  0\.02 NEAR/);
     assert.match(stdout.text(), /from    researcher\.kyle\.inferpay\.testnet/);
     assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
-    assert.match(stdout.text(), /via     Intents grant/);
+    assert.match(stdout.text(), /via     mock receipt \(no NEAR moved\)/);
   } finally {
     stdout.restore();
     await rm(root, { recursive: true, force: true });
@@ -76,7 +76,7 @@ test("ask pays the named Kyle bot", async () => {
     assert.match(stdout.text(), /settled  0\.02 NEAR/);
     assert.match(stdout.text(), /from    clerk\.kyle\.inferpay\.testnet/);
     assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
-    assert.match(stdout.text(), /via     Intents grant/);
+    assert.match(stdout.text(), /via     mock receipt \(no NEAR moved\)/);
   } finally {
     stdout.restore();
     await rm(root, { recursive: true, force: true });
