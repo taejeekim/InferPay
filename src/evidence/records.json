@@ -1,0 +1,24 @@
+{
+  "network": "NEAR testnet",
+  "root": "inferpay.testnet",
+  "rpcs": [
+    "https://archival-rpc.testnet.fastnear.com",
+    "https://archival-rpc.testnet.near.org",
+    "https://near-testnet.drpc.org"
+  ],
+  "socialDb": "v1.social08.testnet",
+  "transfers": [
+    { "what": "payment at list price", "hash": "CYvHqXWvDNtEaQnfuoNyMP7LBUkAZLxwbyunhT2Qs5Mp", "signer": "researcher.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "payment from another bot (--from clerk)", "hash": "DJ6zvYtC3z4Jzp5Q3T2Tc542Zy451WY7GReDSD8Y9F8N", "signer": "clerk.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "accepted counter-offer, live inference", "hash": "6XWf3aZnx5ZejvdLkBne1tLftMUa1SQctctQpEMuYgES", "signer": "scout.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.0195" },
+    { "what": "accepted counter-offer, live inference", "hash": "9wt9cXMFPfLNnyaCkCPkwjY7KqGkoEFz8VWhjxj2Uq11", "signer": "analyst.kyle.inferpay.testnet", "receiver": "legal.stella.inferpay.testnet", "near": "0.025" },
+    { "what": "payment, check verified against the root on chain", "hash": "4QsLdHa1SRhk16ExNbfTVCRnS3j4vuh6hXcRr3Z4Mv62", "signer": "reviewer.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "payment, live inference, two verified checks", "hash": "2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH", "signer": "editor.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "process killed after broadcast, settled once by resume", "hash": "ES3cqQdve71jxW4nFg7uJKwtVxT8dT13CbSrHU4shKC1", "signer": "writer.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "process killed after signing, broadcast once by resume", "hash": "9Uif5q6Dm68hp9UyeuaQXU1FXDecgH2waVAKgBpTQHrs", "signer": "trader.kyle.inferpay.testnet", "receiver": "disclosure.david.inferpay.testnet", "near": "0.02" }
+  ],
+  "ratings": [
+    { "hash": "5RXR7tQwbbskXkLPpZByRso4yxLJ3zkxb4Ju1ctw2wcq", "rater": "reviewer.kyle.inferpay.testnet", "jobId": "job_01M7BMG0TR1XEZH504RGA6MBP3", "shop": "insurance.ban.inferpay.testnet", "stars": 5, "payment": "4QsLdHa1SRhk16ExNbfTVCRnS3j4vuh6hXcRr3Z4Mv62" },
+    { "hash": "2sq3LcmcMbHAZxukfggumA66SCasqDetk7iZ893qxkh4", "rater": "editor.kyle.inferpay.testnet", "jobId": "job_01M7BMM6BHX9P6B7M5BDQ3JBF0", "shop": "insurance.ban.inferpay.testnet", "stars": 5, "payment": "2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH" }
+  ]
+}

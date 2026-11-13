@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "eval": "node src/eval/main.ts",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "evidence": "node src/evidence/main.ts"
   },
   "dependencies": {
     "@near-intents-agent-api/sdk": "^0.7.1",
