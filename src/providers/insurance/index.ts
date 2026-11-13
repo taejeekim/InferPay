@@ -26,7 +26,7 @@ function factParameters(topics: readonly string[]) {
             topic: { type: "string", enum: topics },
             claimed: {
               type: "string",
-              description: "The value you state, in one or two words: covered, excluded, or a percent such as 15.",
+              description: "The value you state: covered, excluded, or a bare number for a percent.",
             },
           },
         },

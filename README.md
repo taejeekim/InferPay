@@ -2,7 +2,7 @@
 
 InferPay is a command-line agent that buys answers from specialist agents and pays them in NEAR. Each answer comes with machine checks computed from a dataset that only the specialist holds. The buyer grades the answer from those checks, and the grade becomes the specialist's reputation.
 
-The problem: an AI agent that pays another agent for an answer cannot tell whether the answer is right. Agent marketplaces settle payment and collect a star rating, but the rating is someone's opinion. InferPay makes the specialist return checks the buyer can read line by line ("revenue claimed 79.0T, filing says 79.1T, mismatch"). The specialist keeps its data, and the buyer never pays more than its budget.
+The problem: an AI agent that pays another agent for an answer cannot tell whether the answer is right. Agent marketplaces settle payment and collect a star rating, but the rating is someone's opinion. InferPay makes the specialist return checks the buyer can read line by line ("revenue claimed 86.0T, filing says 86.1T, mismatch"). The specialist keeps its data, and the buyer never pays more than its budget.
 
 ## What runs today
 
@@ -40,13 +40,14 @@ You need Node 22.18 or newer. The commands take about two minutes.
 	pay       settled  0.02 NEAR
 	          from    researcher.kyle.inferpay.testnet
 	          to      insurance.ban.inferpay.testnet
-	          via     Intents grant
+	          via     mock receipt (no NEAR moved)
+	          job     job_01M7BETHF0FM5SPDRPWWVSEJWK
 	answer    Outpatient MRI is covered at a 20 percent copay.
 	checks    match     outpatient MRI            covered   (Policy schedule §4.2. Outpatient MRI is covered at 20% copay.)
 	rate      5/5
 	```
 
-	The `via` line names the rail that a live payment uses. On `payment=mock`, the payment is a local receipt.
+	The `via` line names the rail that ran. On `payment=mock`, the payment is a local receipt. The `job` line is the id that `npx inferpay job <id>` and `npx inferpay resume <id>` take.
 
 3. Ask the filings specialist. This recording contains a wrong revenue figure on purpose.
 
@@ -57,13 +58,13 @@ You need Node 22.18 or newer. The commands take about two minutes.
 	The cross-check catches the wrong figure, and the grade drops to 4/5:
 
 	```
-	answer    Operating profit matches across both documents: KRW 12.1T.
-	checks    match     operating profit Q3 2025  12.1T KRW   (quarterly report, p.14)
-	          mismatch  revenue Q3 2025           79.0T KRW   ref 79.1T KRW (-0.13%)
+	answer    Operating profit matches across both documents: KRW 12.2T.
+	checks    match     operating profit Q3 2025  12.2T KRW   (Samsung Electronics Q3 2025 earnings release)
+	          mismatch  revenue Q3 2025           86.0T KRW   ref 86.1T KRW (-0.12%)
 	rate      4/5 (1 of 2 checks needed correction)
 	```
 
-	The filed revenue is 79.1T KRW. The recorded claim of 79.0T KRW is 0.13 percent away, and `TOLERANCE_PCT` in `src/providers/disclosure/crossValidate.ts` is 0.05 percent.
+	Samsung's Q3 2025 earnings release reports revenue of 86.1T KRW and operating profit of 12.2T KRW. The recorded claim of 86.0T KRW is 0.12 percent away, and `TOLERANCE_PCT` in `src/providers/disclosure/crossValidate.ts` is 0.05 percent.
 
 4. Ask with a budget below every price.
 
@@ -125,17 +126,19 @@ Matching ignores case, extra spaces, and the final `?`.
 	```
 	rails: payment=mock inference=near-ai
 	decide    outsource to insurance
-	          why     The MRI copay depends on the specific policy's private schedule, which the insurance provider holds and the caller does not. This is exactly the provider's stated use case for copay, MRI, and exclusions questions.
+	          why     The copay depends on the private policy schedule, which the insurance provider holds and I do not.
 	pay       settled  0.02 NEAR
 	          from    researcher.kyle.inferpay.testnet
 	          to      insurance.ban.inferpay.testnet
-	          via     Intents grant
-	answer    You pay a 20% copay for an outpatient MRI under this policy.
-	checks    match     MRI copay percent         20   (Policy schedule §4.2. Outpatient MRI copay is 20 percent.)
-	rate      5/5
+	          via     mock receipt (no NEAR moved)
+	          job     job_01M7BET5CRDKWBR7G6FQ0JMD2F
+	answer    Under this policy, your copay for an outpatient MRI is 20%.
+	checks    match     outpatient MRI coverage   covered   (Policy schedule §4.2. Outpatient MRI is covered at 20% copay.)
+	          mismatch  MRI copay                 15   ref 20 (Policy schedule §4.2. Outpatient MRI copay is 20 percent.)
+	rate      4/5 (1 of 2 checks needed correction)
 	```
 
-	Model output varies between runs. A question with no private data behind it, such as `What is the capital of France?`, prints `decide    answer locally` and pays nothing.
+	In this run the specialist model first claimed a 15 percent copay. The check against the private schedule returned 20, the model corrected its answer, and the grade dropped to 4/5 for the wrong claim. Model output varies between runs. A question with no private data behind it, such as `What is the capital of France?`, prints `decide    answer locally` and pays nothing.
 
 The first line changes to `inference=near-ai`. The routing model picks a specialist from the listings. The specialist model calls its tool (`cross_validate_numbers`, `flag_clauses`, or `lookup_coverage`), and the tool returns the checks. The tool schema lists the key names in the private file, such as the topic `mri-copay`, but not the values. The tool reads the private JSON file, and the model sees only the tool result.
 
