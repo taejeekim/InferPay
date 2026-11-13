@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseProviderId, type Price } from "../domain.ts";
+import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseModelId, parseProviderId, type Price } from "../domain.ts";
 import { decide, percentOf } from "../consumer/decide.ts";
+import type { CallAttestation } from "../inference/attest.ts";
 import { resolveRoster } from "../roster.ts";
-import { progressLine, railsLine, walletsTable } from "./render.ts";
+import { attestLines, progressLine, railsLine, walletsTable } from "./render.ts";
 
 test("when the shop is no better than the buyer, the decide block shows a reservation at or below zero", () => {
   const insurance = must(parseProviderId("insurance"));
@@ -85,6 +86,36 @@ test("on the testnet rail the wallets table shows each live balance", () => {
   assert.match(text, /writer\.kyle\.inferpay\.testnet +payer +not created/);
   assert.match(text, /spend cap/);
   assert.doesNotMatch(walletsTable(resolved.roster, null), /BALANCE/);
+});
+
+const model = parseModelId("z-ai/glm-5.3-flash");
+if (!model) throw new Error("model");
+const signer = "0x3b753b4406613c5e70ae640508632b600424fa0c";
+
+test("a fully verified role names its signer and what was not checked", () => {
+  const calls: CallAttestation[] = [
+    { verdict: "verified", model, completionId: "a", signer },
+    { verdict: "verified", model, completionId: "b", signer },
+  ];
+  assert.deepEqual(attestLines("specialist", calls), [
+    "attest    specialist 2/2 calls verified",
+    `          signed by ${signer}, a key in NEAR AI's attestation report for z-ai/glm-5.3-flash`,
+    "          request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally",
+  ]);
+});
+
+test("an unverified call prints its reason and claims no match", () => {
+  const calls: CallAttestation[] = [
+    { verdict: "unverified", model, completionId: "a", reason: "hash-mismatch", detail: "signed text differs from what we hashed: response hash" },
+  ];
+  assert.deepEqual(attestLines("buyer", calls), [
+    "attest    buyer 0/1 calls verified",
+    "          unverified hash-mismatch: signed text differs from what we hashed: response hash",
+  ]);
+});
+
+test("a role with no live calls prints nothing", () => {
+  assert.deepEqual(attestLines("buyer", []), []);
 });
 
 function near(amount: string): Price {

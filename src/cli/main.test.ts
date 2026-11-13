@@ -316,6 +316,20 @@ async function jobFiles(root: string): Promise<string[]> {
   return names.filter((name) => name.endsWith(".jsonl"));
 }
 
+test("the stub rail prints no attest line", async () => {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  const stdout = capture(process.stdout);
+  try {
+    const code = await main(["ask", "Does this policy cover an outpatient MRI?", "--budget", "0.10"], { INFERPAY_DATA_DIR: root });
+    assert.equal(code, 0);
+    assert.match(stdout.text(), /inference=stub/);
+    assert.doesNotMatch(stdout.text(), /attest/);
+  } finally {
+    stdout.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function capture(stream: NodeJS.WriteStream): { text(): string; restore(): void } {
   const chunks: string[] = [];
   const original = stream.write;

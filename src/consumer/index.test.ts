@@ -60,7 +60,8 @@ function replying(raw: string): Inference {
     async run(task) {
       const value = task.parseOutput(raw, []);
       if (value === null) return { ok: false, reason: "unparseable-output", detail: "output failed its check" };
-      return { ok: true, value, model };
+      return { ok: true, value, model, attestation: [] };
     },
+    attested: () => [],
   };
 }

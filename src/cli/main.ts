@@ -4,7 +4,7 @@ import type { AskOutcome, Progress } from "../consumer/index.ts";
 import type { AccountId } from "../domain.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
-import { configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { attestLines, configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -67,7 +67,10 @@ async function askCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
     return 2;
   }
   const outcome = await booted.runtime.consumer.ask(parsed.question, { budget, buyer }, printProgress(booted.runtime));
-  return finishAsk(outcome);
+  const code = finishAsk(outcome);
+  const buyerCalls = booted.runtime.attested().filter((item) => item.role === "consumer").map((item) => item.attestation);
+  for (const row of attestLines("buyer", buyerCalls)) process.stdout.write(`${row}\n`);
+  return code;
 }
 
 async function resumeCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {

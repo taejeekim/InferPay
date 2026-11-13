@@ -5,6 +5,7 @@ import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progre
 import type { FailReason, JobView, Listing } from "../market/index.ts";
 import type { Check } from "../providers/types.ts";
 import type { PaymentRail } from "../payment/index.ts";
+import type { CallAttestation } from "../inference/attest.ts";
 import { penalizes } from "../consumer/grade.ts";
 import type { AccountId } from "../domain.ts";
 import { txUrl } from "../near/explorer.ts";
@@ -21,7 +22,11 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
     case "pay":
       return payBlock(progress, rail);
     case "answer":
-      return [line("answer", progress.answer.text), ...checkLines(progress.answer.checks)].join("\n");
+      return [
+        line("answer", progress.answer.text),
+        ...checkLines(progress.answer.checks),
+        ...attestLines("specialist", progress.answer.attestation),
+      ].join("\n");
     case "rate":
       return line("rate", rateText(progress.rating, progress.answer.checks));
     case "pending":
@@ -73,7 +78,10 @@ export function jobText(view: JobView): string {
       case "fulfil-failed":
         return `${label}${time}  ${event.reason}`;
       case "fulfilled":
-        return `${label}${time}  ${event.answer.checks.length} checks`;
+        return [
+          `${label}${time}  ${event.answer.checks.length} checks`,
+          ...attestLines("specialist", event.answer.attestation).map((row) => `${"".padEnd(18)}${row}`),
+        ].join("\n");
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
       default: {
@@ -307,6 +315,22 @@ function viaText(rail: PaymentRail["kind"]): string {
       return unreachable;
     }
   }
+}
+
+// Says only what was checked: the signer is in NEAR AI's report and the hashes match. The TDX and GPU
+// quotes that make the report trustworthy are NEAR AI's claim here, not something this CLI re-verified.
+export function attestLines(role: "buyer" | "specialist", calls: readonly CallAttestation[]): string[] {
+  if (calls.length === 0) return [];
+  const verified = calls.filter((call) => call.verdict === "verified");
+  const rows = [line("attest", `${role} ${verified.length}/${calls.length} calls verified`)];
+  const signers = new Set(verified.map((call) => `signed by ${call.signer}, a key in NEAR AI's attestation report for ${call.model}`));
+  rows.push(...[...signers].map((text) => line("", text)));
+  if (verified.length > 0) {
+    rows.push(line("", "request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally"));
+  }
+  const failures = new Set(calls.flatMap((call) => (call.verdict === "unverified" ? [`unverified ${call.reason}: ${call.detail}`] : [])));
+  rows.push(...[...failures].map((text) => line("", text)));
+  return rows;
 }
 
 function field(name: string, value: string): string {
