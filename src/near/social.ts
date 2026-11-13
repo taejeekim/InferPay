@@ -12,7 +12,9 @@ export const SOCIAL_DB = contract;
 // returns whatever the write did not use, so a write costs its bytes and its gas.
 export const SOCIAL_DEPOSIT = nearOf("0.02");
 
-const SOCIAL_GAS = 50_000_000_000_000n;
+// A first write burned under 6 TGas on testnet in November 2026. The signer must hold the whole prepaid amount up
+// front, about 0.001 NEAR for each TGas at that month's price, so the allowance stays close to what a write uses.
+const SOCIAL_GAS = 20_000_000_000_000n;
 
 export type SocialValue = string | { readonly [key: string]: SocialValue };
 

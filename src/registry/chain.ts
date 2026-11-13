@@ -143,8 +143,9 @@ function parseJson(text: string): unknown {
   }
 }
 
-// The 0.02 NEAR deposit, the gas for the call, and the storage the shop's own account must keep paying for.
-export const COMMIT_RESERVE = nearOf("0.03");
+// What a shop must hold to publish: the 0.02 NEAR deposit, about 0.02 NEAR of prepaid gas, and the storage its own
+// account keeps paying for. Testnet refused a shop holding 0.064 NEAR when the call prepaid 50 TGas.
+export const COMMIT_RESERVE = nearOf("0.05");
 
 export type ShopCommitment = {
   readonly account: AccountId;

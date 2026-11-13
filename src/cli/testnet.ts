@@ -215,7 +215,9 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
       return;
     }
     if (step.toppedUp > 0n) say("fund", `${step.account}  ${formatNear(step.toppedUp)} NEAR from its owner for the SocialDB deposit`);
-    say("commit", `${step.account.padEnd(36)}${root}  published, ${step.why === "missing" ? "none was on chain" : "the root changed"}`);
+    say("commit", `${step.account.padEnd(36)}${root}  published, ${step.why === "missing" ? "none in this scheme was on chain" : "the root changed"}`);
+    // Printed as each one lands, so a run that stops at a later shop still shows what it sent.
+    say("", txUrl(step.hash));
     transactions.push({ what: "commit", account: step.account, hash: step.hash });
   });
 
