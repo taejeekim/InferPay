@@ -45,8 +45,14 @@ const disclosureInternals = {
   message: "Import a specialist through its src/providers/<id>/index.ts.",
 };
 
-function restricted({ sdk, openai }) {
+function restricted({ sdk, openai, near = true }) {
   const paths = [];
+  if (near) {
+    paths.push(
+      { name: "near-api-js", message: "Import near-api-js only from src/near/client.ts." },
+      { name: "near-api-js/rpc-errors", message: "Import near-api-js only from src/near/client.ts." },
+    );
+  }
   if (sdk) {
     paths.push({
       name: "@near-intents-agent-api/sdk",
@@ -89,8 +95,12 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ["src/**/*.ts"],
-    ignores: ["src/payment/near-intents.ts", "src/inference/near-ai.ts"],
+    ignores: ["src/payment/near-intents.ts", "src/inference/near-ai.ts", "src/near/client.ts"],
     rules: { "no-restricted-imports": restricted({ sdk: true, openai: true }) },
+  },
+  {
+    files: ["src/near/client.ts"],
+    rules: { "no-restricted-imports": restricted({ sdk: true, openai: true, near: false }) },
   },
   {
     files: ["src/payment/near-intents.ts"],
