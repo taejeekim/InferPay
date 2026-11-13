@@ -113,3 +113,47 @@ test("a root whose longest derived account passes 64 characters is refused with 
   assert.equal(result.error.variable, "INFERPAY_ROOT_ACCOUNT");
   assert.match(result.error.detail, /is 65 characters and a NEAR account allows at most 64\. Use a shorter root account\./);
 });
+
+test("INFERPAY_PAYMENT=near-testnet with a testnet root selects the testnet rail", () => {
+  const result = loadConfig({
+    INFERPAY_PAYMENT: "near-testnet",
+    INFERPAY_ROOT_ACCOUNT: "inferpay-0a1b2c3d.testnet",
+    INFERPAY_NEAR_CREDENTIALS_DIR: "/keys",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.payment.kind, "near-testnet");
+  if (result.value.payment.kind !== "near-testnet") return;
+  assert.equal(result.value.payment.credentialsDir, "/keys");
+  assert.equal(result.value.payment.crash, null);
+  assert.equal(result.value.roster.buyer("clerk")?.account, "clerk.kyle.inferpay-0a1b2c3d.testnet");
+});
+
+test("the testnet rail refuses a mainnet root, the Intents variables, and an unknown rail name", () => {
+  const cases: { env: NodeJS.ProcessEnv; variable: string }[] = [
+    { env: { INFERPAY_PAYMENT: "near-testnet", INFERPAY_ROOT_ACCOUNT: "inferpay.near" }, variable: "INFERPAY_ROOT_ACCOUNT" },
+    { env: { ...LIVE, INFERPAY_PAYMENT: "near-testnet", INFERPAY_ROOT_ACCOUNT: "inferpay.testnet" }, variable: "INFERPAY_PAYMENT" },
+    { env: { INFERPAY_PAYMENT: "near-mainnet" }, variable: "INFERPAY_PAYMENT" },
+    { env: { INFERPAY_PAYMENT: "near-testnet", INFERPAY_TEST_CRASH: "sometimes" }, variable: "INFERPAY_TEST_CRASH" },
+  ];
+  for (const { env, variable } of cases) {
+    const result = loadConfig(env);
+    assert.equal(result.ok, false, JSON.stringify(env));
+    if (result.ok || result.error.kind !== "invalid") continue;
+    assert.equal(result.error.variable, variable);
+  }
+});
+
+test("a testnet root with the Intents variables and no rail choice stays an error", () => {
+  const result = loadConfig({ ...LIVE, INFERPAY_ROOT_ACCOUNT: "inferpay.testnet" });
+  assert.equal(result.ok, false);
+  if (result.ok || result.error.kind !== "invalid") return;
+  assert.match(result.error.detail, /mainnet only/);
+});
+
+test("the crash hook is read only from INFERPAY_TEST_CRASH", () => {
+  const result = loadConfig({ INFERPAY_PAYMENT: "near-testnet", INFERPAY_TEST_CRASH: "after-broadcast" });
+  assert.equal(result.ok, true);
+  if (!result.ok || result.value.payment.kind !== "near-testnet") return;
+  assert.equal(result.value.payment.crash, "after-broadcast");
+});

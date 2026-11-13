@@ -8,7 +8,7 @@ export type PaymentReceipt = {
   readonly correlationId: CorrelationId;
   readonly amount: Price;
   readonly recipient: AccountId;
-  readonly rail: "mock" | "near-intents";
+  readonly rail: PaymentRail["kind"];
 };
 
 export type PaymentStatus =
@@ -25,13 +25,17 @@ export type Transfer = {
 };
 
 export interface PaymentRail {
-  readonly kind: "mock" | "near-intents";
+  readonly kind: "mock" | "near-intents" | "near-testnet";
   mintKey(): IdempotencyKey;
   settle(transfer: Transfer): Promise<PaymentStatus>;
 }
 
 export async function createPaymentRail(config: PaymentConfig): Promise<PaymentRail> {
   if (config.kind === "mock") return createMockRail(config);
+  if (config.kind === "near-testnet") {
+    const loaded = await import("./near-testnet.ts");
+    return loaded.createNearTestnetRail(config);
+  }
   const loaded = await import("./near-intents.ts");
   return loaded.createNearIntentsRail(config);
 }

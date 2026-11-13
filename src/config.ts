@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   parseAssetId,
   parseModelId,
@@ -12,6 +13,12 @@ import { resolveRoster, type Roster } from "./roster.ts";
 
 export type PaymentConfig =
   | { readonly kind: "mock"; readonly root: string; readonly chaos: "none" | "uncertain-once" }
+  | {
+      readonly kind: "near-testnet";
+      readonly root: string;
+      readonly credentialsDir: string;
+      readonly crash: "after-sign" | "after-broadcast" | null;
+    }
   | {
       readonly kind: "near-intents";
       readonly apiKey: Secret;
@@ -63,6 +70,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   if (!asset) return invalid("INFERPAY_NEAR_ASSET", "asset id is empty");
 
   const livePayment = present.length === PAYMENT_ENV.length;
+  const choice = env.INFERPAY_PAYMENT;
+  if (filled(choice) && choice !== "near-testnet" && choice !== "mock") {
+    return invalid("INFERPAY_PAYMENT", "expected near-testnet or mock");
+  }
+  const testnet = choice === "near-testnet";
+  if (testnet && livePayment) {
+    return invalid("INFERPAY_PAYMENT", "near-testnet pays on testnet, so unset the NEAR Intents variables or unset INFERPAY_PAYMENT");
+  }
   if (livePayment && !filled(env.INFERPAY_ROOT_ACCOUNT)) {
     return invalid("INFERPAY_ROOT_ACCOUNT", "live payment needs a mainnet root account you own, such as inferpay.near");
   }
@@ -71,6 +86,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   if (livePayment && root.endsWith(".testnet")) {
     return invalid("INFERPAY_ROOT_ACCOUNT", "NEAR Intents is mainnet only, so the root cannot end in .testnet");
   }
+  if (testnet && !root.endsWith(".testnet")) {
+    return invalid("INFERPAY_ROOT_ACCOUNT", "near-testnet pays on testnet, so the root must end in .testnet. Run: npx inferpay testnet setup");
+  }
+  const crashRaw = env.INFERPAY_TEST_CRASH;
+  if (filled(crashRaw) && crashRaw !== "after-sign" && crashRaw !== "after-broadcast") {
+    return invalid("INFERPAY_TEST_CRASH", "expected after-sign or after-broadcast");
+  }
+  const crash = crashRaw === "after-sign" || crashRaw === "after-broadcast" ? crashRaw : null;
 
   const chaosRaw = env.INFERPAY_MOCK_CHAOS;
   let chaos: "none" | "uncertain-once" = "none";
@@ -79,14 +102,17 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
     chaos = "uncertain-once";
   }
 
-  const payment: PaymentConfig = livePayment
-    ? {
-        kind: "near-intents",
-        apiKey: secret(String(env.NEAR_INTENTS_AGENT_API_KEY)),
-        agentId: String(env.INFERPAY_AGENT_ID),
-        grantToken: secret(String(env.INFERPAY_GRANT_TOKEN)),
-      }
-    : { kind: "mock", root: dataDir, chaos };
+  let payment: PaymentConfig = { kind: "mock", root: dataDir, chaos };
+  if (livePayment) {
+    payment = {
+      kind: "near-intents",
+      apiKey: secret(String(env.NEAR_INTENTS_AGENT_API_KEY)),
+      agentId: String(env.INFERPAY_AGENT_ID),
+      grantToken: secret(String(env.INFERPAY_GRANT_TOKEN)),
+    };
+  } else if (testnet) {
+    payment = { kind: "near-testnet", root: dataDir, credentialsDir: credentialsDir(env), crash };
+  }
 
   let inference: InferenceConfig = { kind: "stub" };
   if (filled(env.NEAR_AI_API_KEY)) {
@@ -115,6 +141,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       inference,
     },
   };
+}
+
+export function credentialsDir(env: NodeJS.ProcessEnv): string {
+  if (filled(env.INFERPAY_NEAR_CREDENTIALS_DIR)) return env.INFERPAY_NEAR_CREDENTIALS_DIR;
+  return join(homedir(), ".near-credentials", "testnet");
 }
 
 function filled(value: string | undefined): value is string {

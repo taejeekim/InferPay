@@ -169,7 +169,7 @@ const receiptSchema = z.object({
   correlationId: z.string(),
   amount: priceSchema,
   recipient: z.string(),
-  rail: z.enum(["mock", "near-intents"]),
+  rail: z.enum(["mock", "near-intents", "near-testnet"]),
 });
 
 const eventSchema = z.discriminatedUnion("type", [
