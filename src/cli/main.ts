@@ -2,7 +2,7 @@ import { parseDecimalAmount, parseJobId, type Price } from "../domain.ts";
 import { loadConfig, type Config } from "../config.ts";
 import type { AskOutcome, Progress } from "../consumer/index.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
-import { configErrorText, failureText, jobText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { configErrorText, failureText, jobText, localAnswerText, progressLine, providersTable, railsLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -97,7 +97,7 @@ async function jobCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
 
 function finishAsk(outcome: AskOutcome): number {
   if (outcome.kind === "local") {
-    process.stdout.write(`${outcome.text}\n`);
+    process.stdout.write(`${localAnswerText(outcome.text)}\n`);
     return 0;
   }
   if (outcome.kind === "failed") {

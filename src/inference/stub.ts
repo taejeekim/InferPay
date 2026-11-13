@@ -15,13 +15,15 @@ type Recording = {
   readonly tasks: { readonly [taskName: string]: Fixture };
 };
 
-function route(providerId: string, reason: string): Fixture {
-  return { output: JSON.stringify({ kind: "outsource", providerId, reason }), toolCalls: [] };
+// What the buyer model would report about itself, replayed word for word. The buy decision runs on these numbers for real.
+function assessment(report: {
+  readonly answer: string;
+  readonly confidence: number;
+  readonly missing: readonly string[];
+  readonly coverage: { readonly [providerId: string]: number };
+}): Fixture {
+  return { output: JSON.stringify(report), toolCalls: [] };
 }
-
-const LEGAL_ROUTE = route("legal", "needs the private clause playbook the consumer does not hold");
-const INSURANCE_ROUTE = route("insurance", "needs the private policy schedule the consumer does not hold");
-const DISCLOSURE_ROUTE = route("disclosure", "needs filing figures the consumer does not hold");
 
 // The revenue claim of 86.0 against a filed 86.1 is deliberate. It shows the cross-check catching a model error.
 const SAMSUNG_OPERATING_PROFIT: Fixture = {
@@ -54,16 +56,38 @@ const SAMSUNG_OPERATING_PROFIT: Fixture = {
 const RECORDINGS: readonly Recording[] = [
   {
     question: "What was Samsung's Q3 2025 operating profit?",
-    tasks: { "consumer.route": DISCLOSURE_ROUTE, "disclosure.answer": SAMSUNG_OPERATING_PROFIT },
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "Press reports put it near KRW 12 trillion. I cannot confirm the filed figure.",
+        confidence: 0.3,
+        missing: ["the operating profit Samsung filed for Q3 2025"],
+        coverage: { disclosure: 1 },
+      }),
+      "disclosure.answer": SAMSUNG_OPERATING_PROFIT,
+    },
   },
   {
     question: "Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?",
-    tasks: { "consumer.route": DISCLOSURE_ROUTE, "disclosure.answer": SAMSUNG_OPERATING_PROFIT },
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "I cannot compare the two documents without their figures.",
+        confidence: 0.1,
+        missing: ["the earnings release figure", "the quarterly report figure"],
+        coverage: { disclosure: 1 },
+      }),
+      "disclosure.answer": SAMSUNG_OPERATING_PROFIT,
+    },
   },
   {
     question: "What was Samsung's Q3 2025 capex?",
     tasks: {
-      "consumer.route": DISCLOSURE_ROUTE,
+      // The buyer cannot see that the shop holds no capex figure, so it expects most of the answer to be covered.
+      "consumer.assess": assessment({
+        answer: "I do not know Samsung's Q3 2025 capex.",
+        confidence: 0.15,
+        missing: ["the capex Samsung filed for Q3 2025"],
+        coverage: { disclosure: 0.8 },
+      }),
       "disclosure.answer": {
         output: "Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.",
         toolCalls: [{
@@ -83,9 +107,41 @@ const RECORDINGS: readonly Recording[] = [
     },
   },
   {
+    question: "What was Samsung's Q3 2025 revenue?",
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "Samsung reported about KRW 86 trillion in revenue for Q3 2025. I have not checked that against the filing.",
+        confidence: 0.55,
+        missing: ["the revenue Samsung filed for Q3 2025"],
+        coverage: { disclosure: 1 },
+      }),
+      "disclosure.answer": {
+        output: "Samsung Electronics reported Q3 2025 revenue of KRW 86.1T.",
+        toolCalls: [{
+          name: "cross_validate_numbers",
+          arguments: {
+            claims: [{
+              label: "revenue Q3 2025",
+              company: "Samsung Electronics",
+              period: "Q3 2025",
+              metric: "revenue",
+              claimed: 86.1,
+              unit: "KRW T",
+            }],
+          },
+        }],
+      },
+    },
+  },
+  {
     question: "Does this NDA's unlimited indemnification clause fail our playbook?",
     tasks: {
-      "consumer.route": LEGAL_ROUTE,
+      "consumer.assess": assessment({
+        answer: "Unlimited indemnification is often rejected, but I cannot see your playbook.",
+        confidence: 0.1,
+        missing: ["the playbook's position on indemnification"],
+        coverage: { legal: 1 },
+      }),
       "legal.answer": {
         output: "The unlimited indemnification clause fails the playbook.",
         toolCalls: [{
@@ -103,7 +159,12 @@ const RECORDINGS: readonly Recording[] = [
   {
     question: "Does this policy cover an outpatient MRI?",
     tasks: {
-      "consumer.route": INSURANCE_ROUTE,
+      "consumer.assess": assessment({
+        answer: "Many policies cover an outpatient MRI, but I cannot see this one.",
+        confidence: 0.2,
+        missing: ["this policy's schedule of covered procedures"],
+        coverage: { insurance: 1 },
+      }),
       "insurance.answer": {
         output: "Outpatient MRI is covered at a 20 percent copay.",
         toolCalls: [{
@@ -116,7 +177,12 @@ const RECORDINGS: readonly Recording[] = [
   {
     question: "Does this policy cover cosmetic surgery?",
     tasks: {
-      "consumer.route": INSURANCE_ROUTE,
+      "consumer.assess": assessment({
+        answer: "Most policies exclude cosmetic surgery, but I cannot see this one.",
+        confidence: 0.35,
+        missing: ["this policy's exclusions"],
+        coverage: { insurance: 1 },
+      }),
       "insurance.answer": {
         output: "Cosmetic surgery is excluded under this policy.",
         toolCalls: [{
@@ -126,11 +192,22 @@ const RECORDINGS: readonly Recording[] = [
       },
     },
   },
+  {
+    question: "What is the capital of France?",
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "Paris is the capital of France.",
+        confidence: 0.99,
+        missing: [],
+        coverage: {},
+      }),
+    },
+  },
 ];
 
 const BY_QUESTION = new Map(RECORDINGS.map((recording) => [normalize(recording.question), recording]));
 
-// Providers receive the paid question as their input, so one key serves routing and answering.
+// Providers receive the paid question as their input, so one key serves the buyer's assessment and the shop's answer.
 function normalize(question: string): string {
   return question.trim().replace(/\s+/g, " ").toLowerCase().replace(/[?.!]+$/, "");
 }

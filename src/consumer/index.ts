@@ -3,10 +3,12 @@ import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
 import type { Answer } from "../providers/types.ts";
-import { decide, type Decision } from "./decide.ts";
+import { assess } from "./assess.ts";
+import { decide, settleCounter, type Decision } from "./decide.ts";
 import { grade } from "./grade.ts";
 
-export type { Decision } from "./decide.ts";
+export { LOCAL_FLOOR } from "./decide.ts";
+export type { Decision, Option, PricedOption } from "./decide.ts";
 
 export type Progress =
   | { readonly step: "decide"; readonly decision: Decision }
@@ -14,9 +16,9 @@ export type Progress =
   | MarketProgress;
 
 export type AskOutcome =
-  | { readonly kind: "local"; readonly text: string; readonly reason: string }
+  | { readonly kind: "local"; readonly text: string }
   | { readonly kind: "outsourced"; readonly job: CompletedJob; readonly rating: Stars }
-  | { readonly kind: "declined"; readonly reason: string }
+  | { readonly kind: "declined" }
   | { readonly kind: "pending"; readonly jobId: JobId; readonly why: "payment-pending" | "payment-uncertain" }
   | { readonly kind: "failed"; readonly reason: FailReason };
 
@@ -34,16 +36,24 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
   return {
     async ask(question, { budget, buyer }, onProgress) {
       const listings = await market.listings();
-      const routed = await decide(inference, question, listings, budget);
-      if (!routed.ok) return { kind: "failed", reason: { kind: "inference", detail: routed.detail } };
-      onProgress?.({ step: "decide", decision: routed.decision });
-      if (routed.decision.kind === "answer-locally") return answerLocally(inference, question, routed.decision);
-      if (routed.decision.kind === "decline") return { kind: "declined", reason: routed.decision.reason };
-      const providerId = routed.decision.providerId;
-      const listing = listings.find((item) => item.id === providerId);
-      if (!listing) return { kind: "failed", reason: { kind: "unknown-provider", providerId } };
+      const assessed = await assess(inference, question, listings);
+      if (!assessed.ok) return { kind: "failed", reason: { kind: "inference", detail: assessed.detail } };
+      const plan = decide({ value: budget, assessment: assessed.assessment, listings });
+      const decision = plan.kind === "counter"
+        ? settleCounter(plan, await market.counter(plan.option.providerId, plan.offer))
+        : plan;
+      onProgress?.({ step: "decide", decision });
+      if (decision.kind === "answer-locally") return { kind: "local", text: decision.local.answer };
+      if (decision.kind === "decline") return { kind: "declined" };
       const outcome = await market.hire(
-        { jobId: newJobId(), providerId, question, offer: listing.price, budget, payFrom: buyer.account },
+        {
+          jobId: newJobId(),
+          providerId: decision.option.providerId,
+          question,
+          offer: decision.agreed,
+          budget,
+          payFrom: buyer.account,
+        },
         (progress) => onProgress?.(progress),
       );
       if (outcome.kind !== "completed") return fromUnfinished(outcome);
@@ -59,27 +69,6 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       return { kind: "outsourced", job: outcome.job, rating };
     },
   };
-}
-
-export async function answerLocally(
-  inference: Inference,
-  question: string,
-  decision: { readonly reason: string },
-): Promise<AskOutcome> {
-  const result = await inference.run({
-    name: "consumer.answer",
-    role: "consumer",
-    system: "Answer from general knowledge. If the question needs a filed figure, say you do not hold it.",
-    input: question,
-    tools: [],
-    parseOutput: (raw) => {
-      const text = raw.trim();
-      if (text.length === 0) return null;
-      return { text };
-    },
-  });
-  if (!result.ok) return { kind: "failed", reason: { kind: "inference", detail: result.detail } };
-  return { kind: "local", text: result.value.text, reason: decision.reason };
 }
 
 export function fromUnfinished(outcome: Exclude<HireOutcome, { kind: "completed" }>): AskOutcome {

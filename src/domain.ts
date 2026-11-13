@@ -169,9 +169,14 @@ export function toUnits(amount: DecimalAmount): bigint {
 
 export function fromUnits(units: bigint): DecimalAmount | null {
   if (units < 0n) return null;
-  const frac = (units % UNITS_PER_WHOLE).toString().padStart(FRACTION_DIGITS, "0").replace(/0+$/, "");
-  const whole = (units / UNITS_PER_WHOLE).toString();
-  return parseDecimalAmount(frac.length === 0 ? whole : `${whole}.${frac}`);
+  return parseDecimalAmount(formatUnits(units));
+}
+
+export function formatUnits(units: bigint): string {
+  const size = units < 0n ? -units : units;
+  const frac = (size % UNITS_PER_WHOLE).toString().padStart(FRACTION_DIGITS, "0").replace(/0+$/, "");
+  const whole = `${units < 0n ? "-" : ""}${size / UNITS_PER_WHOLE}`;
+  return frac.length === 0 ? whole : `${whole}.${frac}`;
 }
 
 function ulid(now: number): string {

@@ -1,6 +1,7 @@
 import type { ConfigError } from "../config.ts";
+import { formatUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
-import type { Decision, Progress } from "../consumer/index.ts";
+import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
 import type { Check } from "../providers/types.ts";
 import type { PaymentRail } from "../payment/index.ts";
@@ -27,6 +28,10 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
       return unreachable;
     }
   }
+}
+
+export function localAnswerText(text: string): string {
+  return [line("answer", text), line("checks", "none, this is the buyer's own answer")].join("\n");
 }
 
 export function providersTable(listings: readonly Listing[]): string {
@@ -151,13 +156,107 @@ function roleLabel(role: ForestRow["role"]): string {
 }
 
 function decideBlock(decision: Decision): string {
-  if (decision.kind === "outsource") {
-    return [line("decide", `outsource to ${decision.providerId}`), field("why", decision.reason)].join("\n");
+  const { value, local } = decision;
+  const idWidth = decision.options.reduce((max, option) => Math.max(max, option.providerId.length), 0) + 2;
+  return [
+    line("decide", headline(decision)),
+    field("value", `${money(value)}, the budget: the most a right answer is worth`),
+    field("local", `confidence ${share(local.confidence)} x value = worth ${near(local.worth)} ${value.symbol}`),
+    field("missing", local.missing.length === 0 ? "nothing" : local.missing.join("; ")),
+    ...decision.options.map((option) => field("option", optionText(option, idWidth, value))),
+    ...ruleRows(decision),
+  ].join("\n");
+}
+
+function headline(decision: Decision): string {
+  switch (decision.kind) {
+    case "buy": {
+      const how = decision.negotiation === "list-price" ? "list price" : "counter-offer accepted";
+      return `buy from ${decision.option.providerId} at ${money(decision.agreed)} (${how})`;
+    }
+    case "answer-locally":
+      return `answer locally, pay nothing${refusedNote(decision)}`;
+    case "decline":
+      return `decline, pay nothing${refusedNote(decision)}`;
+    default: {
+      const unreachable: never = decision;
+      return unreachable;
+    }
   }
-  if (decision.kind === "decline") {
-    return [line("decide", "declined"), field("why", decision.reason)].join("\n");
+}
+
+function refusedNote(decision: Exclude<Decision, { kind: "buy" }>): string {
+  return decision.because.kind === "counter-refused" ? " (counter-offer refused)" : "";
+}
+
+function optionText(option: Option, idWidth: number, value: Price): string {
+  const head = `${option.providerId.padEnd(idWidth)}ask ${option.ask.amount}  `;
+  if (option.kind === "unaffordable") return `${head}outside the ${money(value)} budget`;
+  const quality = `cover ${share(option.coverage)} x rep ${share(option.reputation)} = quality ${share(option.quality)}`;
+  return `${head}${quality}  net ${option.net < 0n ? "" : "+"}${near(option.net)}`;
+}
+
+function ruleRows(decision: Decision): string[] {
+  const { value, local } = decision;
+  const buyRule = (option: PricedOption): string => {
+    const verdict = option.net >= local.worth ? ">=" : "<";
+    return field("rule", `net = quality x value - ask; buy when net >= local worth: ${near(option.net)} ${verdict} ${near(local.worth)}`);
+  };
+  const reservation = (option: PricedOption): string => (
+    `(${share(option.quality)} - ${share(local.confidence)}) x ${value.amount} = ${near(option.reservation)} ${value.symbol}`
+  );
+  const counterRows = (option: PricedOption, offer: Price, reply: string): string[] => [
+    field("reserve", `${reservation(option)}, where buying equals the local worth`),
+    field("counter", `${money(offer)} against the ask of ${money(option.ask)}`),
+    field("reply", `${option.providerId} ${reply}`),
+  ];
+  if (decision.kind === "buy") {
+    if (decision.negotiation === "list-price") return [buyRule(decision.option)];
+    return [buyRule(decision.option), ...counterRows(decision.option, decision.agreed, "accepted")];
   }
-  return [line("decide", "answer locally"), field("why", decision.reason)].join("\n");
+  const clears = local.confidence >= LOCAL_FLOOR;
+  const floor = share(LOCAL_FLOOR);
+  const localRule = field(
+    "rule",
+    `answer locally when confidence >= ${floor}: ${share(local.confidence)} ${clears ? ">=" : "<"} ${floor}${clears ? "" : ", so decline"}`,
+  );
+  const because = decision.because;
+  switch (because.kind) {
+    case "nothing-affordable":
+      return [field("rule", `never pay above the budget: every ask is outside ${money(value)}`), localRule];
+    case "no-coverage":
+      return [field("rule", "buy only from a shop that covers a missing fact: no shop within the budget does"), localRule];
+    case "no-price-worth-paying":
+      return [
+        buyRule(because.option),
+        field("rule", `counter only when the reservation is above zero: ${reservation(because.option)}`),
+        localRule,
+      ];
+    case "counter-refused":
+      return [
+        buyRule(because.option),
+        ...counterRows(because.option, because.offer, "refused, so the buyer walks away"),
+        localRule,
+      ];
+    default: {
+      const unreachable: never = because;
+      return unreachable;
+    }
+  }
+}
+
+function money(price: Price): string {
+  return `${price.amount} ${price.symbol}`;
+}
+
+function share(percent: number): string {
+  return (percent / 100).toFixed(2);
+}
+
+// Three decimals line the columns up. Up to six show when a budget needs them.
+function near(units: bigint): string {
+  const [whole, frac] = formatUnits(units).split(".");
+  return `${whole ?? "0"}.${(frac ?? "").slice(0, 6).padEnd(3, "0")}`;
 }
 
 function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRail["kind"]): string {

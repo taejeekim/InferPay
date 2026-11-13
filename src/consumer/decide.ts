@@ -1,88 +1,164 @@
-import { z } from "zod";
-import { compareSameAsset, isProviderId, type Price, type ProviderId } from "../domain.ts";
-import type { Inference } from "../inference/index.ts";
-import type { Listing } from "../market/index.ts";
+import { compareSameAsset, fromUnits, toUnits, type Brand, type Price, type ProviderId } from "../domain.ts";
+import type { CounterReply, Listing, Reputation } from "../market/index.ts";
 
-export type Decision =
-  | { readonly kind: "answer-locally"; readonly reason: string }
-  | { readonly kind: "outsource"; readonly providerId: ProviderId; readonly reason: string }
-  | { readonly kind: "decline"; readonly reason: string };
+// A probability in whole percent. Whole numbers keep the money arithmetic exact, and the two digits printed are the two digits used.
+export type Percent = Brand<number, "Percent">;
 
-const routeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("answer-locally"), reason: z.string().min(1) }),
-  z.object({ kind: z.literal("decline"), reason: z.string().min(1) }),
-  z.object({ kind: z.literal("outsource"), providerId: z.string().min(1), reason: z.string().min(1) }),
-]);
+// An unrated shop is trusted like one that averages 3.8 stars. The prior counts as two ratings, so a third real rating outweighs it.
+const PRIOR_QUALITY = 0.7;
+const PRIOR_RATINGS = 2;
 
-export async function decide(
-  inference: Inference,
-  question: string,
-  listings: readonly Listing[],
-  budget: Price,
-): Promise<{ readonly ok: true; readonly decision: Decision } | { readonly ok: false; readonly detail: string }> {
-  const affordable = listings.filter((listing) => {
-    const cmp = compareSameAsset(listing.price, budget);
-    return cmp === -1 || cmp === 0;
-  });
-  if (affordable.length === 0) {
-    return { ok: true, decision: { kind: "decline", reason: declineReason(listings, budget) } };
+// The buyer answers on its own only when it is more likely right than wrong.
+export const LOCAL_FLOOR = 50;
+
+export type SelfAssessment = {
+  readonly answer: string;
+  readonly confidence: Percent;
+  readonly missing: readonly string[];
+  readonly coverage: ReadonlyMap<ProviderId, Percent>;
+};
+
+// Amounts are in units of 1e-18 of the budget's asset, as toUnits gives them.
+export type PricedOption = {
+  readonly kind: "priced";
+  readonly providerId: ProviderId;
+  readonly ask: Price;
+  readonly coverage: Percent;
+  readonly reputation: Percent;
+  readonly quality: Percent;
+  readonly net: bigint;
+  // The price at which buying is worth exactly as much as answering locally.
+  readonly reservation: bigint;
+};
+
+export type Option =
+  | PricedOption
+  | { readonly kind: "unaffordable"; readonly providerId: ProviderId; readonly ask: Price };
+
+export type NoDeal =
+  | { readonly kind: "nothing-affordable" }
+  | { readonly kind: "no-coverage" }
+  | { readonly kind: "no-price-worth-paying"; readonly option: PricedOption }
+  | { readonly kind: "counter-refused"; readonly option: PricedOption; readonly offer: Price };
+
+type Analysis = {
+  readonly value: Price;
+  readonly local: {
+    readonly answer: string;
+    readonly confidence: Percent;
+    readonly worth: bigint;
+    readonly missing: readonly string[];
+  };
+  readonly options: readonly Option[];
+};
+
+export type Plan = Analysis & (
+  | {
+      readonly kind: "buy";
+      readonly option: PricedOption;
+      readonly agreed: Price;
+      readonly negotiation: "list-price" | "counter-accepted";
+    }
+  | { readonly kind: "counter"; readonly option: PricedOption; readonly offer: Price }
+  | { readonly kind: "answer-locally"; readonly because: NoDeal }
+  | { readonly kind: "decline"; readonly because: NoDeal }
+);
+
+export type CounterPlan = Extract<Plan, { kind: "counter" }>;
+export type Decision = Exclude<Plan, { kind: "counter" }>;
+
+export function decide(input: {
+  readonly value: Price;
+  readonly assessment: SelfAssessment;
+  readonly listings: readonly Pick<Listing, "id" | "price" | "reputation">[];
+}): Plan {
+  const { value, assessment } = input;
+  const valueUnits = toUnits(value.amount);
+  const worth = portion(assessment.confidence, valueUnits);
+  const priced: PricedOption[] = [];
+  const unaffordable: Option[] = [];
+  for (const listing of input.listings) {
+    const fits = compareSameAsset(listing.price, value);
+    if (fits === "different-asset" || fits === 1) {
+      unaffordable.push({ kind: "unaffordable", providerId: listing.id, ask: listing.price });
+      continue;
+    }
+    const coverage = assessment.coverage.get(listing.id) ?? NO_COVERAGE;
+    const reputation = reputationQuality(listing.reputation);
+    const quality = percent(Math.round((coverage * reputation) / 100));
+    const gross = portion(quality, valueUnits);
+    priced.push({
+      kind: "priced",
+      providerId: listing.id,
+      ask: listing.price,
+      coverage,
+      reputation,
+      quality,
+      net: gross - toUnits(listing.price.amount),
+      reservation: gross - worth,
+    });
   }
-  const result = await inference.run({
-    name: "consumer.route",
-    role: "consumer",
-    system: routeSystem(affordable),
-    input: question,
-    tools: [],
-    parseOutput: (raw) => parseDecision(raw, affordable),
-  });
-  if (!result.ok) return { ok: false, detail: result.detail };
-  return { ok: true, decision: result.value };
+  // A tie in net goes to the lower ask, which puts less money at risk, and then to listing order.
+  const candidates = priced
+    .filter((option) => option.coverage > 0)
+    .sort((a, b) => order(b.net, a.net) || order(toUnits(a.ask.amount), toUnits(b.ask.amount)));
+  const analysis: Analysis = {
+    value,
+    local: { answer: assessment.answer, confidence: assessment.confidence, worth, missing: assessment.missing },
+    options: [...candidates, ...priced.filter((option) => option.coverage === 0), ...unaffordable],
+  };
+
+  if (priced.length === 0) return withoutDeal(analysis, { kind: "nothing-affordable" });
+  const best = candidates[0];
+  if (!best) return withoutDeal(analysis, { kind: "no-coverage" });
+  if (best.net >= worth) return { ...analysis, kind: "buy", option: best, agreed: best.ask, negotiation: "list-price" };
+  const counter = best.reservation > 0n ? fromUnits(best.reservation) : null;
+  if (counter === null) return withoutDeal(analysis, { kind: "no-price-worth-paying", option: best });
+  return { ...analysis, kind: "counter", option: best, offer: { ...value, amount: counter } };
 }
 
-function parseDecision(raw: string, affordable: readonly Listing[]): Decision | null {
-  const open = raw.indexOf("{");
-  const close = raw.lastIndexOf("}");
-  if (open === -1 || close < open) return null;
-  let data: unknown;
-  try {
-    data = JSON.parse(raw.slice(open, close + 1));
-  } catch {
-    return null;
+export function settleCounter(plan: CounterPlan, reply: CounterReply): Decision {
+  const analysis: Analysis = { value: plan.value, local: plan.local, options: plan.options };
+  if (reply === "accepted") {
+    return { ...analysis, kind: "buy", option: plan.option, agreed: plan.offer, negotiation: "counter-accepted" };
   }
-  const parsed = routeSchema.safeParse(data);
-  if (!parsed.success) return null;
-  if (parsed.data.kind !== "outsource") return parsed.data;
-  const providerId = parsed.data.providerId;
-  if (!isProviderId(providerId) || !affordable.some((listing) => listing.id === providerId)) {
-    return { kind: "decline", reason: "The routed provider is outside the budget." };
-  }
-  return { kind: "outsource", providerId, reason: parsed.data.reason };
+  return withoutDeal(analysis, { kind: "counter-refused", option: plan.option, offer: plan.offer });
 }
 
-function declineReason(listings: readonly Listing[], budget: Price): string {
-  const sameAsset = listings.filter((listing) => listing.price.asset === budget.asset);
-  const pool = sameAsset.length > 0 ? sameAsset : listings;
-  const first = pool[0];
-  if (!first) return `No provider is priced in ${budget.symbol}.`;
-  const cheapest = pool.reduce((best, listing) => (
-    compareSameAsset(listing.price, best.price) === -1 ? listing : best
-  ), first);
-  return `Cheapest fitting provider costs ${cheapest.price.amount} ${cheapest.price.symbol}, budget is ${budget.amount} ${budget.symbol}.`;
+export function percentOf(share: number): Percent | null {
+  if (!(share >= 0 && share <= 1)) return null;
+  return percent(Math.round(share * 100));
 }
 
-function routeSystem(listings: readonly Listing[]): string {
-  const lines = listings.map((listing) => {
-    const reputation = listing.reputation.kind === "unrated"
-      ? `${listing.reputation.completedJobs} completed jobs, unrated`
-      : `${listing.reputation.completedJobs} completed jobs, average ${listing.reputation.average.toFixed(1)} from ${listing.reputation.ratings} ratings`;
-    return `${listing.id} | ${listing.price.amount} ${listing.price.symbol} | ${reputation} | ${listing.routingHint}`;
-  });
-  return [
-    "Choose who answers the question.",
-    "Reply with one JSON object and no other text.",
-    'Use {"kind":"outsource","providerId":"...","reason":"..."}, {"kind":"answer-locally","reason":"..."}, or {"kind":"decline","reason":"..."}.',
-    "Outsource when a listed provider holds private data you do not.",
-    "Providers:",
-    ...lines,
-  ].join("\n");
+function withoutDeal(analysis: Analysis, because: NoDeal): Decision {
+  if (analysis.local.confidence >= LOCAL_FLOOR) return { ...analysis, kind: "answer-locally", because };
+  return { ...analysis, kind: "decline", because };
 }
+
+function reputationQuality(reputation: Reputation): Percent {
+  const ratings = reputation.kind === "rated" ? reputation.ratings : 0;
+  const starQuality = reputation.kind === "rated" ? (reputation.average - 1) / 4 : 0;
+  const smoothed = (PRIOR_RATINGS * PRIOR_QUALITY + ratings * starQuality) / (PRIOR_RATINGS + ratings);
+  return percent(Math.round(smoothed * 100));
+}
+
+function portion(share: Percent, units: bigint): bigint {
+  return (BigInt(share) * units) / 100n;
+}
+
+function order(a: bigint, b: bigint): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+function percent(value: number): Percent {
+  if (!isPercent(value)) throw new Error("a probability left the 0 to 100 range");
+  return value;
+}
+
+function isPercent(value: number): value is Percent {
+  return Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+const NO_COVERAGE = percent(0);

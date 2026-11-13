@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -117,7 +117,7 @@ test("an uncertain payment prints its job id and the retry-key note once, and re
 test("off-script questions fail before any payment or job file", async () => {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   try {
-    for (const question of ["Schedule a meeting on Monday", "Is Apple revenue up?", "What is the capital of France?"]) {
+    for (const question of ["Schedule a meeting on Monday", "Is Apple revenue up?", "What is the capital of Peru?"]) {
       const stdout = capture(process.stdout);
       const stderr = capture(process.stderr);
       let code: number;
@@ -154,6 +154,155 @@ test("the cosmetic surgery question routes to insurance and finds the exclusion"
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("each recorded purchase at a 0.10 budget pays the covering shop its list price", async () => {
+  const purchases: readonly (readonly [string, string, string])[] = [
+    ["What was Samsung's Q3 2025 operating profit?", "disclosure", "0.02"],
+    ["Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?", "disclosure", "0.02"],
+    ["What was Samsung's Q3 2025 capex?", "disclosure", "0.02"],
+    ["Does this NDA's unlimited indemnification clause fail our playbook?", "legal", "0.03"],
+    ["Does this policy cover an outpatient MRI?", "insurance", "0.02"],
+    ["Does this policy cover cosmetic surgery?", "insurance", "0.02"],
+  ];
+  for (const [question, shop, price] of purchases) {
+    await withDataDir(async (root) => {
+      const { code, out } = await ask(root, question, "0.10");
+      assert.equal(code, 0, question);
+      assert.ok(out.includes(`decide    buy from ${shop} at ${price} NEAR (list price)`), question);
+      assert.ok(out.includes(`pay       settled  ${price} NEAR`), question);
+      assert.match(out, new RegExp(`^ {10}to {6}${shop}\\.`, "m"), question);
+      assert.equal((await jobFiles(root)).length, 1, question);
+    });
+  }
+});
+
+test("the decide block shows the arithmetic behind a purchase", async () => {
+  await withDataDir(async (root) => {
+    const { out } = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
+    for (const row of [
+      "          value   0.10 NEAR, the budget: the most a right answer is worth",
+      "          local   confidence 0.20 x value = worth 0.020 NEAR",
+      "          missing this policy's schedule of covered procedures",
+      "          option  insurance   ask 0.02  cover 1.00 x rep 0.70 = quality 0.70  net +0.050",
+      "          option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030",
+      "          rule    net = quality x value - ask; buy when net >= local worth: 0.050 >= 0.020",
+    ]) {
+      assert.ok(out.includes(`${row}\n`), row);
+    }
+  });
+});
+
+test("a question the buyer can answer is answered locally with no payment and no job file", async () => {
+  await withDataDir(async (root) => {
+    const { code, out } = await ask(root, "What is the capital of France?", "0.10");
+    assert.equal(code, 0);
+    assert.match(out, /^decide {4}answer locally, pay nothing$/m);
+    assert.match(out, /answer locally when confidence >= 0\.50: 0\.99 >= 0\.50$/m);
+    assert.match(out, /^answer {4}Paris is the capital of France\.$/m);
+    assert.doesNotMatch(out, /^pay /m);
+    assert.deepEqual(await jobFiles(root), []);
+  });
+});
+
+test("an accepted counter-offer pays the agreed price in the pay block, the ledger, and the receipt", async () => {
+  await withDataDir(async (root) => {
+    const { code, out } = await ask(root, "Does this policy cover an outpatient MRI?", "0.03");
+    assert.equal(code, 0);
+    assert.match(out, /^decide {4}buy from insurance at 0\.015 NEAR \(counter-offer accepted\)$/m);
+    assert.match(out, /^ {10}reserve \(0\.70 - 0\.20\) x 0\.03 = 0\.015 NEAR/m);
+    assert.match(out, /^ {10}counter 0\.015 NEAR against the ask of 0\.02 NEAR$/m);
+    assert.match(out, /^ {10}reply {3}insurance accepted$/m);
+    assert.match(out, /^pay {7}settled {2}0\.015 NEAR$/m);
+    const [file] = await jobFiles(root);
+    assert.ok(file);
+    const events = (await readFile(join(root, "jobs", file), "utf8")).trim().split("\n").map((row) => JSON.parse(row));
+    assert.equal(events.find((event) => event.type === "opened")?.quote.amount, "0.015");
+    assert.equal(events.find((event) => event.type === "payment-settled")?.receipt.amount.amount, "0.015");
+    const stdout = capture(process.stdout);
+    try {
+      assert.equal(await main(["job", file.replace(".jsonl", "")], { INFERPAY_DATA_DIR: root }), 0);
+      assert.match(stdout.text(), /^opened .* quote 0\.015 NEAR {2}budget 0\.03 NEAR/m);
+    } finally {
+      stdout.restore();
+    }
+  });
+});
+
+test("a refused counter-offer pays nothing: an unsure buyer declines and a fairly sure buyer answers", async () => {
+  await withDataDir(async (root) => {
+    const { code, out } = await ask(root, "Does this policy cover an outpatient MRI?", "0.02");
+    assert.equal(code, 0);
+    assert.match(out, /^decide {4}decline, pay nothing \(counter-offer refused\)$/m);
+    assert.match(out, /^ {10}counter 0\.01 NEAR against the ask of 0\.02 NEAR$/m);
+    assert.match(out, /^ {10}reply {3}insurance refused, so the buyer walks away$/m);
+    assert.match(out, /answer locally when confidence >= 0\.50: 0\.20 < 0\.50, so decline$/m);
+    assert.doesNotMatch(out, /^(pay|answer) /m);
+    assert.deepEqual(await jobFiles(root), []);
+  });
+  await withDataDir(async (root) => {
+    const { code, out } = await ask(root, "What was Samsung's Q3 2025 revenue?", "0.10");
+    assert.equal(code, 0);
+    assert.match(out, /^decide {4}answer locally, pay nothing \(counter-offer refused\)$/m);
+    assert.match(out, /^ {10}reply {3}disclosure refused, so the buyer walks away$/m);
+    assert.match(out, /^answer {4}Samsung reported about KRW 86 trillion/m);
+    assert.doesNotMatch(out, /^pay /m);
+    assert.deepEqual(await jobFiles(root), []);
+  });
+});
+
+test("a budget below every ask declines with no payment and no job file", async () => {
+  await withDataDir(async (root) => {
+    const { code, out } = await ask(root, "What was Samsung's Q3 2025 operating profit?", "0.01");
+    assert.equal(code, 0);
+    assert.match(out, /^decide {4}decline, pay nothing$/m);
+    assert.match(out, /never pay above the budget: every ask is outside 0\.01 NEAR$/m);
+    assert.doesNotMatch(out, /^(pay|answer) /m);
+    assert.deepEqual(await jobFiles(root), []);
+  });
+});
+
+test("a shop's net rises after a good rating and falls after a poor one", async () => {
+  await withDataDir(async (root) => {
+    const first = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
+    assert.match(first.out, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.70 = quality 0\.70 {2}net \+0\.050$/m);
+    assert.match(first.out, /^rate {6}5\/5$/m);
+    const second = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
+    assert.match(second.out, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.80 = quality 0\.80 {2}net \+0\.060$/m);
+  });
+  await withDataDir(async (root) => {
+    const first = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
+    assert.match(first.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.70 = quality 0\.56 {2}net \+0\.036$/m);
+    assert.match(first.out, /^rate {6}3\/5$/m);
+    const second = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
+    assert.match(second.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.63 = quality 0\.50 {2}net \+0\.030$/m);
+  });
+});
+
+async function withDataDir(body: (root: string) => Promise<void>): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  try {
+    await body(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function ask(root: string, question: string, budget: string): Promise<{ code: number; out: string; err: string }> {
+  const stdout = capture(process.stdout);
+  const stderr = capture(process.stderr);
+  try {
+    const code = await main(["ask", question, "--budget", budget], { INFERPAY_DATA_DIR: root });
+    return { code, out: stdout.text(), err: stderr.text() };
+  } finally {
+    stdout.restore();
+    stderr.restore();
+  }
+}
+
+async function jobFiles(root: string): Promise<string[]> {
+  const names = await readdir(join(root, "jobs")).catch(() => []);
+  return names.filter((name) => name.endsWith(".jsonl"));
+}
 
 function capture(stream: NodeJS.WriteStream): { text(): string; restore(): void } {
   const chunks: string[] = [];

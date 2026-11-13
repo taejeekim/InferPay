@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compareSameAsset,
+  formatUnits,
   fromUnits,
   newJobId,
   parseAccountId,
@@ -62,6 +63,7 @@ test("an amount converts to units of 1e-18 and back in its shortest form", () =>
     assert.equal(fromUnits(units), shortest, text);
   }
   assert.equal(fromUnits(-1n), null);
+  assert.equal(formatUnits(-6_000_000_000_000_000n), "-0.006");
 });
 
 test("a parent account contains a dot", () => {
