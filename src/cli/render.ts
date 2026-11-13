@@ -165,9 +165,9 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     field("from", progress.payer),
     field("to", progress.recipient),
     field("via", rail === "mock" ? "mock receipt (no NEAR moved)" : "Intents grant"),
+    field("job", progress.jobId),
   ];
   if (progress.status === "pending" || progress.status === "uncertain") {
-    rows.push(field("job", progress.jobId));
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
   }

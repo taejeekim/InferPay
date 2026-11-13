@@ -77,6 +77,7 @@ test("ask pays the named Kyle bot", async () => {
     assert.match(stdout.text(), /from    clerk\.kyle\.inferpay\.testnet/);
     assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
     assert.match(stdout.text(), /via     mock receipt \(no NEAR moved\)/);
+    assert.match(stdout.text(), /^ {10}job {5}job_[0-9A-Z]{26}$/m);
   } finally {
     stdout.restore();
     await rm(root, { recursive: true, force: true });
