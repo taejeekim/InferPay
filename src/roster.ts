@@ -86,7 +86,7 @@ function defineBuyer<const B extends readonly [string, ...string[]]>(spec: {
 // Every person is a separate sub-account of the root. A NEAR parent has no control over a sub-account it created.
 export function resolveRoster(root: ParentAccount): ResolveRoster {
   const kyleParent = personOf(BUYER.id, root);
-  if (!kyleParent) return failRoster("underivable", `${BUYER.id}.${root} is not a named account`);
+  if (!kyleParent) return failRoster("underivable", notAnAccount(`${BUYER.id}.${root}`));
   const buyers: BuyerSeat[] = [];
   const byBot = new Map<string, BuyerSeat>();
   const shops: ShopSeat[] = [];
@@ -102,7 +102,7 @@ export function resolveRoster(root: ParentAccount): ResolveRoster {
   let defaultBuyer: BuyerSeat | null = null;
   for (const bot of BUYER.bots) {
     const account = walletOf(bot, kyleParent);
-    if (!account) return failRoster("underivable", `${bot}.${kyleParent} is not an account`);
+    if (!account) return failRoster("underivable", notAnAccount(`${bot}.${kyleParent}`));
     const clash = take(account, bot);
     if (clash) return clash;
     const seat = sealBuyer({ kind: "buyer", personId: BUYER.id, parent: kyleParent, bot, account });
@@ -114,13 +114,13 @@ export function resolveRoster(root: ParentAccount): ResolveRoster {
 
   for (const shop of SHOPS) {
     const parent = personOf(shop.id, root);
-    if (!parent) return failRoster("underivable", `${shop.id}.${root} is not a named account`);
+    if (!parent) return failRoster("underivable", notAnAccount(`${shop.id}.${root}`));
     const providerId = parseProviderId(shop.providerId);
     if (!providerId) return failRoster("underivable", `shop provider ${shop.providerId} is not a provider id`);
     if (byBot.has(providerId)) return failRoster("overlap", `${providerId} names a Kyle bot and a shop`);
     if (byProvider.has(providerId)) return failRoster("overlap", `${providerId} is on more than one shop`);
     const account = walletOf(providerId, parent);
-    if (!account) return failRoster("underivable", `${providerId}.${parent} is not an account`);
+    if (!account) return failRoster("underivable", notAnAccount(`${providerId}.${parent}`));
     const clash = take(account, providerId);
     if (clash) return clash;
     const seat = sealShop({ kind: "specialist", personId: shop.id, parent, providerId, account });
@@ -182,6 +182,13 @@ export function resolveRoster(root: ParentAccount): ResolveRoster {
 
 function failRoster(fault: "underivable" | "duplicate-account" | "overlap", detail: string): ResolveRoster {
   return { ok: false, fault, detail };
+}
+
+function notAnAccount(name: string): string {
+  if (name.length > 64) {
+    return `${name} is ${name.length} characters and a NEAR account allows at most 64. Use a shorter root account.`;
+  }
+  return `${name} is not a valid NEAR account id`;
 }
 
 function personOf(person: string, root: ParentAccount): ParentAccount | null {

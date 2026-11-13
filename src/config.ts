@@ -67,7 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
     return invalid("INFERPAY_ROOT_ACCOUNT", "live payment needs a mainnet root account you own, such as inferpay.near");
   }
   const root = parseParentAccount(filled(env.INFERPAY_ROOT_ACCOUNT) ? String(env.INFERPAY_ROOT_ACCOUNT) : DEFAULT_ROOT_ACCOUNT);
-  if (!root) return invalid("INFERPAY_ROOT_ACCOUNT", "named account must contain a dot, such as inferpay.near");
+  if (!root) return invalid("INFERPAY_ROOT_ACCOUNT", "must be a lowercase NEAR account of 2 to 64 characters that contains a dot, such as inferpay.near");
   if (livePayment && root.endsWith(".testnet")) {
     return invalid("INFERPAY_ROOT_ACCOUNT", "NEAR Intents is mainnet only, so the root cannot end in .testnet");
   }

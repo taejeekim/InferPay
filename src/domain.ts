@@ -32,7 +32,9 @@ const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const DECIMAL = /^(0|[1-9]\d*)(\.\d{1,18})?$/;
 const JOB_ID = /^job_[0-9A-HJKMNP-TV-Z]{26}$/;
 const PROVIDER_ID = /^[a-z][a-z0-9-]*$/;
-const ACCOUNT_ID = /^[A-Za-z0-9._-]+$/;
+const ACCOUNT_ID = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+const ACCOUNT_ID_MIN = 2;
+const ACCOUNT_ID_MAX = 64;
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const FRACTION_DIGITS = 18;
 
@@ -81,7 +83,7 @@ export function parseCorrelationId(raw: string): CorrelationId | null {
 }
 
 export function isAccountId(value: string): value is AccountId {
-  return ACCOUNT_ID.test(value);
+  return value.length >= ACCOUNT_ID_MIN && value.length <= ACCOUNT_ID_MAX && ACCOUNT_ID.test(value);
 }
 
 export function parseAccountId(raw: string): AccountId | null {

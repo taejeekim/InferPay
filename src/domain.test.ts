@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   compareSameAsset,
   newJobId,
+  parseAccountId,
   parseAssetId,
   parseDecimalAmount,
   parseParentAccount,
@@ -56,4 +57,13 @@ test("a new job id sorts by time and rejects a blank amount", () => {
   assert.equal(parseDecimalAmount("0.02"), "0.02");
   assert.equal(parseDecimalAmount("1e2"), null);
   assert.equal(parseDecimalAmount("-1"), null);
+});
+
+test("account ids follow the NEAR rule of 2 to 64 lowercase characters", () => {
+  for (const ok of ["ab", "a.near", "researcher.kyle.inferpay.near", "a-b_c.near", "a".repeat(64)]) {
+    assert.notEqual(parseAccountId(ok), null, ok);
+  }
+  for (const bad of ["a", "UPPER.near", "a..near", ".a.near", "a.near.", "a-.near", "a b.near", "a".repeat(65)]) {
+    assert.equal(parseAccountId(bad), null, bad);
+  }
 });

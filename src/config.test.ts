@@ -68,7 +68,7 @@ test("a live root derives every person and shop beneath it", () => {
 test("live payment refuses a missing, undotted, or testnet root", () => {
   const cases: readonly (readonly [NodeJS.ProcessEnv, RegExp])[] = [
     [LIVE, /mainnet root/],
-    [{ ...LIVE, INFERPAY_ROOT_ACCOUNT: "alice" }, /must contain a dot/],
+    [{ ...LIVE, INFERPAY_ROOT_ACCOUNT: "alice" }, /contains a dot/],
     [{ ...LIVE, INFERPAY_ROOT_ACCOUNT: "inferpay.testnet" }, /mainnet only/],
   ];
   for (const [env, detail] of cases) {
@@ -88,4 +88,28 @@ test("both NEAR AI models default to a model the live list serves", () => {
   if (!result.ok || result.value.inference.kind !== "near-ai") return;
   assert.equal(result.value.inference.consumerModel, "z-ai/glm-5.3-flash");
   assert.equal(result.value.inference.providerModel, "z-ai/glm-5.3-flash");
+});
+
+test("a root that is not a valid NEAR account id is refused", () => {
+  for (const root of ["UPPER.near", "inferpay..near", "-inferpay.near", "inferpay.near."]) {
+    const result = loadConfig({ INFERPAY_ROOT_ACCOUNT: root });
+    assert.equal(result.ok, false, root);
+    if (result.ok || result.error.kind !== "invalid") continue;
+    assert.equal(result.error.variable, "INFERPAY_ROOT_ACCOUNT");
+    assert.match(result.error.detail, /lowercase NEAR account/, root);
+  }
+});
+
+test("a root whose longest derived account passes 64 characters is refused with its length", () => {
+  const fits = `${"a".repeat(42)}.near`;
+  assert.equal(fits.length, 47);
+  assert.equal(loadConfig({ INFERPAY_ROOT_ACCOUNT: fits }).ok, true);
+
+  const tooLong = `${"a".repeat(43)}.near`;
+  assert.equal(tooLong.length, 48);
+  const result = loadConfig({ INFERPAY_ROOT_ACCOUNT: tooLong });
+  assert.equal(result.ok, false);
+  if (result.ok || result.error.kind !== "invalid") return;
+  assert.equal(result.error.variable, "INFERPAY_ROOT_ACCOUNT");
+  assert.match(result.error.detail, /is 65 characters and a NEAR account allows at most 64\. Use a shorter root account\./);
 });
