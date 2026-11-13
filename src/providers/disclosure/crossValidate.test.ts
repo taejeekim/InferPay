@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { opensTo } from "../../commitment/index.ts";
+import { figureKey, opensTo } from "../../commitment/index.ts";
 import { crossValidate } from "./crossValidate.ts";
 import { loadFacts } from "./facts.ts";
 
@@ -15,12 +15,12 @@ test("12.2T matches the filing and 86.0T mismatches it, each with evidence that 
   );
   assert.deepEqual(checks.map((check) => check.verdict), ["match", "mismatch"]);
   for (const check of checks) {
-    assert.ok(check.evidence);
-    assert.equal(opensTo(check.evidence), data.commitment.root);
+    assert.ok(check.kind === "number" && check.evidence);
+    assert.equal(opensTo(figureKey(check.claim), check.evidence), data.commitment.root);
   }
-  const revenue = checks[1]?.evidence?.entry;
-  assert.ok(revenue?.kind === "figure");
-  assert.equal(revenue.value, 86.1);
+  const revenue = checks[1]?.evidence;
+  assert.ok(revenue && "entry" in revenue && revenue.entry.kind === "figure");
+  assert.equal(revenue.entry.value, 86.1);
 });
 
 test("a trillion-scale claim matches the same figure in KRW", () => {
@@ -28,7 +28,7 @@ test("a trillion-scale claim matches the same figure in KRW", () => {
   assert.equal(checks[0]?.verdict, "match");
 });
 
-test("case and spacing do not hide a filed figure, and a missing figure is unverifiable with no evidence", () => {
+test("case and spacing do not hide a filed figure, and a missing figure comes with proof that its slot is empty", () => {
   const checks = crossValidate(
     [
       {
@@ -44,8 +44,9 @@ test("case and spacing do not hide a filed figure, and a missing figure is unver
     loadFacts(),
   );
   assert.equal(checks[0]?.verdict, "match");
-  assert.equal(checks[1]?.verdict, "unverifiable");
-  assert.equal(checks[1]?.evidence, null);
+  const capex = checks[1];
+  assert.ok(capex?.kind === "number" && capex.verdict === "unverifiable" && capex.evidence && "vacant" in capex.evidence);
+  assert.equal(opensTo(figureKey(capex.claim), capex.evidence), loadFacts().commitment.root);
 });
 
 function claim(label: string, metric: string, claimed: number, unit: string) {

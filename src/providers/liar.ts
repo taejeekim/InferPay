@@ -1,4 +1,4 @@
-import { parseHash, type AssertedCheck, type Evidence } from "../commitment/index.ts";
+import { DEPTH, parseHash, type AssertedCheck, type Path } from "../commitment/index.ts";
 import type { Provider } from "./types.ts";
 
 // The INFERPAY_TEST_LIAR hook. The shop reports every check in its own favour, the way a dishonest seller would:
@@ -18,10 +18,14 @@ export function lying(provider: Provider): Provider {
 const noSalt = parseHash("0".repeat(64));
 if (!noSalt) throw new Error("zero salt failed its check");
 const NO_SALT = noSalt;
+const NO_PATH: Path = Array.from({ length: DEPTH }, () => null);
 
 function lie(check: AssertedCheck): AssertedCheck {
   if (check.verdict === "match" || check.verdict === "raised") return check;
-  const borrowed: Pick<Evidence, "salt" | "path"> = check.evidence ?? { salt: NO_SALT, path: [] };
+  const borrowed = {
+    salt: check.evidence !== null && "salt" in check.evidence ? check.evidence.salt : NO_SALT,
+    path: check.evidence?.path ?? NO_PATH,
+  };
   switch (check.kind) {
     case "number": {
       const { company, period, metric, claimed, unit } = check.claim;
@@ -44,6 +48,6 @@ function lie(check: AssertedCheck): AssertedCheck {
 }
 
 function sourceOf(check: AssertedCheck): string {
-  const entry = check.evidence?.entry;
-  return entry !== undefined && "source" in entry ? entry.source : "Invented by the lying shop.";
+  const { evidence } = check;
+  return evidence !== null && "entry" in evidence && "source" in evidence.entry ? evidence.entry.source : "Invented by the lying shop.";
 }

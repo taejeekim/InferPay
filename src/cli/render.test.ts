@@ -140,7 +140,7 @@ function figure(entry: Figure, claimed: number, verdict: "match" | "mismatch" | 
 }
 
 function verifyBlock(checks: readonly AssertedCheck[], pinned: PinnedCommitment, rail: "mock" | "near-testnet"): string[] {
-  return progressLine({ step: "verify", checks: verifyChecks(checks, pinned), commitment: pinned }, rail).split("\n");
+  return progressLine({ step: "verify", checks: verifyChecks(checks, pinned, "What was Samsung's Q3 2025 revenue?"), commitment: pinned }, rail).split("\n");
 }
 
 test("the checks block marks each verified check, shows the entry it rests on, and says the root came from the listing", () => {
@@ -151,7 +151,7 @@ test("the checks block marks each verified check, shows the entry it rests on, a
     "                    Samsung Electronics Q3 2025 earnings release",
     "          verified  mismatch      revenue Q3 2025           86.0T KRW   ref 86.1T KRW (-0.12%)",
     "                    Samsung Electronics Q3 2025 earnings release",
-    `          root      ${root.slice(0, 12)}…${root.slice(-4)}  2 leaves  inferpay-merkle-sha256-v1`,
+    `          root      ${root.slice(0, 12)}…${root.slice(-4)}  2 leaves  inferpay-keyed-merkle-sha256-v1`,
     "          from      the shop's listing, because the mock rail has no chain",
   ]);
 });
@@ -162,7 +162,7 @@ test("an unproven check and a forged one are labelled, and neither prints as a m
   assert.deepEqual(block.slice(0, 5), [
     "checks    0 of 2 verified by the buyer against the shop's committed root, 1 unproven, 1 FORGED",
     "          unproven  unverifiable  operating profit Q3 2025  1.0T KRW",
-    "                    the shop's word only: it says it holds no entry for this, and an absence carries no proof",
+    "                    the shop's word only: it sent no proof that it holds no entry for this",
     "          FORGED    match         revenue Q3 2025           86.0T KRW",
     "                    the shop said match, but its evidence does not open to the committed root",
   ]);
@@ -171,7 +171,7 @@ test("an unproven check and a forged one are labelled, and neither prints as a m
       {
         step: "rate",
         rating: must(parseStars(1)),
-        checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED),
+        checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED, "What was Samsung's Q3 2025 revenue?"),
         jobId: must(parseJobId("job_01M7BGGX58BF3B8VB4ADYKXYZA")),
         onChain: null,
       },
@@ -189,7 +189,7 @@ test("a root read from chain names its block, its SocialDB key, and a link to th
   const contract = must(parseAccountId("v1.social08.testnet"));
   const pinned: PinnedCommitment = { status: "published", commitment: SHOP.commitment, source: { kind: "chain", contract, account, block: 277573383 } };
   assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match")], pinned, "near-testnet").slice(3), [
-    `          root      ${SHOP.commitment.root.slice(0, 12)}…${SHOP.commitment.root.slice(-4)}  2 leaves  inferpay-merkle-sha256-v1`,
+    `          root      ${SHOP.commitment.root.slice(0, 12)}…${SHOP.commitment.root.slice(-4)}  2 leaves  inferpay-keyed-merkle-sha256-v1`,
     "          from      NEAR testnet, written at block 277573383 and read before paying",
     "          key       disclosure.david.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet",
     "          link      https://testnet.nearblocks.io/address/disclosure.david.inferpay.testnet",

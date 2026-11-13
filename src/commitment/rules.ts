@@ -57,10 +57,26 @@ export const TOLERANCE_PCT = 0.05;
 
 const SCALES: Readonly<Record<string, number>> = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
 
-export function sameFigure(claim: FigureClaim, entry: Figure): boolean {
-  return words(entry.company) === words(claim.company)
-    && words(entry.period) === words(claim.period)
-    && words(entry.metric) === words(claim.metric);
+// What an entry or a claim is about. The key picks the entry's slot in the tree, so a dataset can hold one
+// entry for a key and a claim can be checked against that slot alone.
+export type Key = readonly string[];
+
+export function figureKey(of: Pick<Figure, "company" | "period" | "metric">): Key {
+  return ["figure", words(of.company), words(of.period), words(of.metric)];
+}
+
+export function factKey(of: Pick<Fact, "topic">): Key {
+  return ["fact", of.topic.toLowerCase()];
+}
+
+export function entryKey(entry: Entry): Key {
+  if (entry.kind === "figure") return figureKey(entry);
+  if (entry.kind === "fact") return factKey(entry);
+  return ["rule", entry.id];
+}
+
+export function sameKey(a: Key, b: Key): boolean {
+  return a.length === b.length && a.every((part, index) => part === b[index]);
 }
 
 export type FigureVerdict =
@@ -78,21 +94,25 @@ export function judgeFigure(claim: FigureClaim, entry: Figure): FigureVerdict {
   return { verdict: "mismatch", deltaPct };
 }
 
-export function sameTopic(claim: FactClaim, entry: Fact): boolean {
-  return entry.topic.toLowerCase() === claim.topic.toLowerCase();
-}
-
 export function judgeFact(claim: FactClaim, entry: Fact): "match" | "mismatch" {
   return stated(entry.value) === stated(claim.claimed) ? "match" : "mismatch";
 }
 
+// A rule that also hits the empty string says nothing about a clause, so it never counts as a hit.
 export function ruleHits(rule: Rule, text: string): boolean {
   if (rule.all.length === 0) return false;
   try {
-    return rule.all.every((source) => new RegExp(source, "i").test(text));
+    const patterns = rule.all.map((source) => new RegExp(source, "i"));
+    return patterns.every((pattern) => pattern.test(text)) && !patterns.every((pattern) => pattern.test(""));
   } catch {
     return false;
   }
+}
+
+// A flag is about the buyer's clause only when the clause is quoted from the question the buyer asked.
+export function quotedFrom(question: string, clause: string): boolean {
+  const quote = words(clause).replace(/^["'“”‘’\s]+|["'“”‘’.,;:\s]+$/g, "");
+  return quote.length > 0 && words(question).includes(quote);
 }
 
 function words(value: string): string {

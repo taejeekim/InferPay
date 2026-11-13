@@ -1,8 +1,9 @@
 import { z } from "zod";
 import {
   figureClaimSchema,
+  figureKey,
   judgeFigure,
-  sameFigure,
+  sameKey,
   type AssertedCheck,
   type Dataset,
   type Figure,
@@ -17,8 +18,9 @@ export function parseClaims(raw: unknown): readonly FigureClaim[] | null {
 
 export function crossValidate(claims: readonly FigureClaim[], data: Dataset<Figure>): readonly AssertedCheck[] {
   return claims.map((claim) => {
-    const fact = data.entries.find((entry) => sameFigure(claim, entry));
-    if (!fact) return { kind: "number", claim, verdict: "unverifiable", evidence: null };
+    const key = figureKey(claim);
+    const fact = data.entries.find((entry) => sameKey(key, figureKey(entry)));
+    if (!fact) return { kind: "number", claim, verdict: "unverifiable", evidence: data.proveAbsent(key) };
     const { verdict } = judgeFigure(claim, fact);
     if (verdict === "unverifiable") return { kind: "number", claim, verdict, evidence: null };
     return { kind: "number", claim, verdict, evidence: data.prove(fact) };

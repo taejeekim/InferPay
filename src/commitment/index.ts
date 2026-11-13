@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { isAccountId, type AccountId } from "../domain.ts";
-import { buildTree, isHash, leafHash, rootFrom, type Hash, type Step } from "./merkle.ts";
-import type { ClauseClaim, Entry, FactClaim, FigureClaim } from "./rules.ts";
+import { buildTree, DEPTH, isHash, leafHash, rootFrom, slotOf, type Hash, type Path } from "./merkle.ts";
+import { entryKey, type ClauseClaim, type Entry, type FactClaim, type FigureClaim, type Key } from "./rules.ts";
 
-export { canonical, leafHash, parseHash } from "./merkle.ts";
-export type { Hash, Step } from "./merkle.ts";
+export { canonical, DEPTH, leafHash, parseHash, slotOf } from "./merkle.ts";
+export type { Hash, Path } from "./merkle.ts";
 export * from "./rules.ts";
 
-export const SCHEME = "inferpay-merkle-sha256-v1";
+export const SCHEME = "inferpay-keyed-merkle-sha256-v1";
 
 // All a shop publishes about its dataset. Entries and salts stay with the shop.
 export type Commitment = {
@@ -18,11 +18,19 @@ export type Commitment = {
 
 // What a buyer needs to recompute one leaf and walk it to the root. The salt keeps the sibling hashes in a
 // path from being matched against guessed entries.
-export type Evidence = {
+export type Membership = {
   readonly entry: Entry;
   readonly salt: Hash;
-  readonly path: readonly Step[];
+  readonly path: Path;
 };
+
+// The path from a key's slot when the slot is empty: proof that the dataset holds no entry for the key.
+export type Vacancy = {
+  readonly vacant: true;
+  readonly path: Path;
+};
+
+export type Evidence = Membership | Vacancy;
 
 // A shop's word. It can pair any verdict with any evidence, so nothing here counts until a buyer verifies it.
 export type AssertedCheck =
@@ -42,25 +50,40 @@ export type PinnedCommitment =
 export type Dataset<E extends Entry> = {
   readonly commitment: Commitment;
   readonly entries: readonly E[];
-  prove(entry: E): Evidence;
+  prove(entry: E): Membership;
+  // Null when another key's entry happens to sit in this key's slot, which leaves nothing to prove.
+  proveAbsent(key: Key): Vacancy | null;
 };
 
 export function sealDataset<E extends Entry>(rows: readonly { readonly entry: E; readonly salt: Hash }[]): Dataset<E> {
-  const tree = buildTree(rows.map((row) => leafHash(row.entry, row.salt)));
+  const slots = new Map<number, { readonly entry: E; readonly salt: Hash }>();
+  for (const row of rows) {
+    const slot = slotOf(entryKey(row.entry));
+    if (slots.has(slot)) throw new Error(`two entries share the key or the slot of ${entryKey(row.entry).join(" / ")}`);
+    slots.set(slot, row);
+  }
+  const tree = buildTree(new Map([...slots].map(([slot, row]) => [slot, leafHash(row.entry, row.salt)])));
   return {
-    commitment: { scheme: SCHEME, root: tree.root, leaves: tree.leaves },
+    commitment: { scheme: SCHEME, root: tree.root, leaves: rows.length },
     entries: rows.map((row) => row.entry),
     prove(entry) {
-      const index = rows.findIndex((row) => row.entry === entry);
-      const row = rows[index];
-      if (row === undefined) throw new Error("entry is not in this dataset");
-      return { entry, salt: row.salt, path: tree.path(index) };
+      const slot = slotOf(entryKey(entry));
+      const row = slots.get(slot);
+      if (row === undefined || row.entry !== entry) throw new Error("entry is not in this dataset");
+      return { entry, salt: row.salt, path: tree.path(slot) };
+    },
+    proveAbsent(key) {
+      const slot = slotOf(key);
+      return slots.has(slot) ? null : { vacant: true, path: tree.path(slot) };
     },
   };
 }
 
-export function opensTo(evidence: Evidence): Hash {
-  return rootFrom(leafHash(evidence.entry, evidence.salt), evidence.path);
+// The root this evidence gives for the slot of the key. The caller names the key, so evidence for one key
+// cannot stand in for another. Null when the path is not a full path.
+export function opensTo(key: Key, evidence: Evidence): Hash | null {
+  const leaf = "vacant" in evidence ? null : leafHash(evidence.entry, evidence.salt);
+  return rootFrom(slotOf(key), leaf, evidence.path);
 }
 
 const hashSchema = z.custom<Hash>((value) => typeof value === "string" && isHash(value));
@@ -87,14 +110,12 @@ const entrySchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-// No path in a tree of 2^64 leaves is longer than this, so a longer one is not worth hashing.
-const MAX_PATH = 64;
+const pathSchema = z.array(hashSchema.nullable()).length(DEPTH);
 
-const evidenceSchema = z.object({
-  entry: entrySchema,
-  salt: hashSchema,
-  path: z.array(z.object({ side: z.enum(["left", "right"]), hash: hashSchema })).max(MAX_PATH),
-});
+const evidenceSchema = z.union([
+  z.object({ entry: entrySchema, salt: hashSchema, path: pathSchema }),
+  z.object({ vacant: z.literal(true), path: pathSchema }),
+]);
 
 export const figureClaimSchema = z.object({
   label: z.string(),

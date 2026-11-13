@@ -62,7 +62,7 @@ test("all skips a job file that read would reject", async () => {
         payFrom: "researcher.kyle.inferpay.near",
         commitment: {
           status: "published",
-          commitment: { scheme: "inferpay-merkle-sha256-v1", root: "ab".repeat(32), leaves: 3 },
+          commitment: { scheme: "inferpay-keyed-merkle-sha256-v1", root: "ab".repeat(32), leaves: 3 },
           source: { kind: "listing" },
         },
       },

@@ -149,7 +149,7 @@ const RECORDINGS: readonly Recording[] = [
           arguments: {
             clauses: [{
               label: "indemnity",
-              text: "The receiving party shall provide unlimited indemnification for any claim.",
+              text: "unlimited indemnification clause",
             }],
           },
         }],

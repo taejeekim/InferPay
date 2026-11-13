@@ -150,7 +150,7 @@ test("the response testnet gave for a published commitment reads as that commitm
         ":block": 277575111,
         commitment: {
           ":block": 277575111,
-          "": '{"scheme":"inferpay-merkle-sha256-v1","root":"a4c9ebe62bca0698da105b2b7cadcd6097a276a236bce104186f01b81423a7dc","leaves":2}',
+          "": '{"scheme":"inferpay-keyed-merkle-sha256-v1","root":"4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a","leaves":2}',
         },
       },
     },
@@ -158,14 +158,14 @@ test("the response testnet gave for a published commitment reads as that commitm
   const read = readCommitments(live, [DISCLOSURE, LEGAL]);
   assert.deepEqual(read.get(DISCLOSURE), {
     status: "published",
-    commitment: { scheme: SCHEME, root: "a4c9ebe62bca0698da105b2b7cadcd6097a276a236bce104186f01b81423a7dc", leaves: 2 },
+    commitment: { scheme: SCHEME, root: "4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a", leaves: 2 },
     source: { kind: "chain", contract: SOCIAL_DB, account: DISCLOSURE, block: 277575111 },
   });
   assert.deepEqual(read.get(LEGAL), { status: "missing", contract: SOCIAL_DB, account: LEGAL });
 });
 
 test("a value that is not a commitment in this scheme reads as missing", () => {
-  for (const value of ["not json", '{"scheme":"other","root":"ab","leaves":1}', '{"scheme":"inferpay-merkle-sha256-v1","root":"xyz","leaves":2}']) {
+  for (const value of ["not json", '{"scheme":"other","root":"ab","leaves":1}', '{"scheme":"inferpay-keyed-merkle-sha256-v1","root":"xyz","leaves":2}']) {
     const raw = { [DISCLOSURE]: { inferpay: { commitment: { ":block": 5, "": value } } } };
     assert.equal(readCommitments(raw, [DISCLOSURE]).get(DISCLOSURE)?.status, "missing", value);
   }
@@ -181,7 +181,7 @@ test("the first run writes each shop's commitment under its own account, and a s
       receiver: SOCIAL_DB,
       method: "set",
       args: {
-        data: { [DISCLOSURE]: { inferpay: { commitment: `{"scheme":"inferpay-merkle-sha256-v1","root":"${"a1".repeat(32)}","leaves":2}` } } },
+        data: { [DISCLOSURE]: { inferpay: { commitment: `{"scheme":"inferpay-keyed-merkle-sha256-v1","root":"${"a1".repeat(32)}","leaves":2}` } } },
         options: { refund_unused_deposit: true },
       },
       deposit: nearOf("0.02"),
@@ -191,7 +191,7 @@ test("the first run writes each shop's commitment under its own account, and a s
       receiver: SOCIAL_DB,
       method: "set",
       args: {
-        data: { [LEGAL]: { inferpay: { commitment: `{"scheme":"inferpay-merkle-sha256-v1","root":"${"b2".repeat(32)}","leaves":3}` } } },
+        data: { [LEGAL]: { inferpay: { commitment: `{"scheme":"inferpay-keyed-merkle-sha256-v1","root":"${"b2".repeat(32)}","leaves":3}` } } },
         options: { refund_unused_deposit: true },
       },
       deposit: nearOf("0.02"),
@@ -343,6 +343,24 @@ test("a shop whose data no longer seals to its root on chain turns the order dow
   });
 });
 
+test("a forged check is rated 1 on chain, with the forgery counted and the root it was checked against", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const config = loadConfig({ INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "disclosure" });
+    assert.ok(config.ok);
+    const runtime = await createRuntime(config.value, registryOn(chain, root));
+    const amount = parseDecimalAmount("0.10");
+    assert.ok(amount);
+    await runtime.consumer.ask("What was Samsung's Q3 2025 operating profit?", { budget: { ...config.value.near, amount }, buyer: config.value.roster.defaultBuyer });
+    const [call] = ratingCalls(chain);
+    const posted = JSON.parse(Object.values((call?.args as { data: Record<string, { inferpay: { ratings: Record<string, string> } }> }).data[RESEARCHER]?.inferpay.ratings ?? {})[0] ?? "");
+    assert.deepEqual(
+      [posted.shop, posted.stars, posted.verified, posted.unproven, posted.forged, posted.root],
+      [DISCLOSURE, 1, 1, 0, 1, "4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a"],
+    );
+  });
+});
+
 test("a shop with nothing on chain has only its word, and the rating cannot pass 3", async () => {
   await withRoot(async (root) => {
     const chain = fakeChain({});
@@ -373,7 +391,7 @@ test("the buyer bot writes its rating under its own account, with the shop, the 
                   shop: INSURANCE,
                   stars: 5,
                   payment,
-                  root: "99404ff0e1372995542c5791014482b6fdea69eb01bac101ecde19c441404f95",
+                  root: "d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f",
                   verified: 1,
                   unproven: 0,
                   forged: 0,

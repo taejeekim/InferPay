@@ -103,7 +103,7 @@ async function publishRating(
   job: CompletedJob,
   onProgress?: (progress: Progress) => void,
 ): Promise<Stars> {
-  const checks = verifyChecks(job.answer.checks, job.commitment);
+  const checks = verifyChecks(job.answer.checks, job.commitment, job.question);
   onProgress?.({ step: "verify", checks, commitment: job.commitment });
   const rating = job.rating ?? grade(checks);
   const { verified, unproven, forged } = tally(checks);

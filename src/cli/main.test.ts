@@ -284,7 +284,7 @@ test("a shop's net rises after a good rating and falls after a poor one", async 
   await withDataDir(async (root) => {
     const first = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
     assert.match(first.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.70 = quality 0\.56 {2}net \+0\.036$/m);
-    assert.match(first.out, /^rate {6}3\/5 {2}\(1 claim the shop could not back; nothing verified, so at most 3\)$/m);
+    assert.match(first.out, /^rate {6}3\/5 {2}\(1 claim the shop could not back; nothing verified in the answer's favour, so at most 3\)$/m);
     const second = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
     assert.match(second.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.63 = quality 0\.50 {2}net \+0\.030$/m);
   });
@@ -314,6 +314,19 @@ test("on the mock rail the buyer verifies each check against the listed root, an
     } finally {
       stdout.restore();
     }
+  });
+});
+
+test("the buyer verifies that a shop holds no entry, and that a raised flag is about the clause in the question", async () => {
+  await withDataDir(async (root) => {
+    const capex = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
+    assert.match(capex.out, /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
+    assert.match(capex.out, /^ {10}verified {2}no entry {6}capex Q3 2025 {2}1\.0T KRW$/m);
+    assert.match(capex.out, /^ {20}the slot for this key in the shop's committed tree is empty: the shop holds nothing on it$/m);
+    const legal = await ask(root, "Does this NDA's unlimited indemnification clause fail our playbook?", "0.10");
+    assert.match(legal.out, /^ {10}verified {2}raised {8}uncapped indemnity$/m);
+    assert.match(legal.out, /^rate {6}5\/5$/m);
+    for (const row of `${capex.out}${legal.out}`.split("\n")) assert.ok(row.length <= 110, row);
   });
 });
 
@@ -377,7 +390,7 @@ test("on the mock rail the rating stays in the ledger and providers says where r
       assert.match(text, /^insurance .* 1 {5}5\.0 \(1\)$/m);
       assert.match(text, /^reputation {2}this machine's job ledger, because the mock rail has no chain$/m);
       assert.match(text, /^commitment {2}each root is from the shop's listing, because the mock rail has no chain$/m);
-      assert.match(text, /^ {12}insurance {3}99404ff0e137…4f95 {2}3 leaves$/m);
+      assert.match(text, /^ {12}insurance {3}d26d1609271e…b68f {2}3 leaves$/m);
     } finally {
       stdout.restore();
     }

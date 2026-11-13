@@ -33,9 +33,9 @@ test("a shop refuses below its floor, takes an offer up to its list price, and n
 test("each shop's dataset and stored salts seal to the root it published", () => {
   const roots = Object.fromEntries(PROVIDERS.map((provider) => [provider.describe.id, provider.commitment()]));
   assert.deepEqual(roots, {
-    disclosure: { scheme: "inferpay-merkle-sha256-v1", root: "a4c9ebe62bca0698da105b2b7cadcd6097a276a236bce104186f01b81423a7dc", leaves: 2 },
-    legal: { scheme: "inferpay-merkle-sha256-v1", root: "9af83af60095a9c6126fa6686e8602fdb84c43c2994cb8c77690809ea98fc4d5", leaves: 2 },
-    insurance: { scheme: "inferpay-merkle-sha256-v1", root: "99404ff0e1372995542c5791014482b6fdea69eb01bac101ecde19c441404f95", leaves: 3 },
+    disclosure: { scheme: "inferpay-keyed-merkle-sha256-v1", root: "4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a", leaves: 2 },
+    legal: { scheme: "inferpay-keyed-merkle-sha256-v1", root: "4a19e743ea7432156c47bfb0a33558b1e1988e1710d6e7e9e05761299c35d9b5", leaves: 2 },
+    insurance: { scheme: "inferpay-keyed-merkle-sha256-v1", root: "d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f", leaves: 3 },
   });
 });
 

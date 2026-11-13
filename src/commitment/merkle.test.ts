@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { buildTree, canonical, leafHash, parseHash, rootFrom, type Hash } from "./merkle.ts";
+import { buildTree, canonical, DEPTH, leafHash, parseHash, rootFrom, slotOf, type Hash } from "./merkle.ts";
 
 const SALT = hash("11".repeat(32));
 
@@ -15,8 +15,29 @@ function sha(...parts: readonly Buffer[]): Hash {
   return hash(createHash("sha256").update(Buffer.concat(parts)).digest("hex"));
 }
 
-function leaves(count: number): Hash[] {
-  return Array.from({ length: count }, (_, index) => leafHash({ index }, SALT));
+function node(left: Hash, right: Hash): Hash {
+  return sha(Buffer.from([1]), Buffer.from(left, "hex"), Buffer.from(right, "hex"));
+}
+
+// The definition, written out with nothing shared with the code under test: an empty slot is sha256 of a two
+// byte, and each level hashes the node with its sibling, the node on the left when its index is even.
+function walk(slot: number, leaf: Hash, siblings: ReadonlyMap<number, Hash>): Hash {
+  let empty = sha(Buffer.from([2]));
+  let at = leaf;
+  let index = slot;
+  for (let level = 0; level < 32; level += 1) {
+    const sibling = siblings.get(level) ?? empty;
+    at = index % 2 === 0 ? node(at, sibling) : node(sibling, at);
+    empty = node(empty, empty);
+    index = Math.floor(index / 2);
+  }
+  return at;
+}
+
+function tree(count: number) {
+  const leaves = new Map(Array.from({ length: count }, (_, index) => [slotOf(["topic", String(index)]), leafHash({ index }, SALT)] as const));
+  assert.equal(leaves.size, count);
+  return { leaves, built: buildTree(leaves) };
 }
 
 test("a leaf is sha256 over a zero byte, the salt, and the entry with its keys sorted", () => {
@@ -25,50 +46,63 @@ test("a leaf is sha256 over a zero byte, the salt, and the entry with its keys s
   assert.equal(canonical({ b: 1, a: 2 }), canonical({ a: 2, b: 1 }));
 });
 
-test("a single leaf is its own root and needs no path", () => {
-  const [only] = leaves(1);
-  assert.ok(only);
-  const tree = buildTree([only]);
-  assert.equal(tree.root, only);
-  assert.deepEqual(tree.path(0), []);
-  assert.equal(rootFrom(only, tree.path(0)), tree.root);
+test("a key's slot is the first four bytes of sha256 over a three byte and the key", () => {
+  const digest = createHash("sha256").update(Buffer.concat([Buffer.from([3]), Buffer.from('["fact","mri"]', "utf8")])).digest();
+  assert.equal(slotOf(["fact", "mri"]), digest.readUInt32BE(0));
+  assert.notEqual(slotOf(["fact", "mri"]), slotOf(["fact", "copay"]));
 });
 
-test("three leaves hash the first pair under a one byte and carry the third up unchanged", () => {
-  const [a, b, c] = leaves(3);
-  assert.ok(a && b && c);
-  const pair = sha(Buffer.from([1]), Buffer.from(a, "hex"), Buffer.from(b, "hex"));
-  const root = sha(Buffer.from([1]), Buffer.from(pair, "hex"), Buffer.from(c, "hex"));
-  const tree = buildTree([a, b, c]);
-  assert.equal(tree.root, root);
-  assert.deepEqual(tree.path(2), [{ side: "left", hash: pair }]);
-  assert.deepEqual(tree.path(0), [{ side: "right", hash: b }, { side: "right", hash: c }]);
+test("a single leaf walks to the root through 32 empty subtrees", () => {
+  const { leaves, built } = tree(1);
+  const [[slot, leaf]] = [...leaves] as [[number, Hash]];
+  const path = built.path(slot);
+  assert.equal(path.length, DEPTH);
+  assert.ok(path.every((sibling) => sibling === null));
+  assert.equal(built.root, walk(slot, leaf, new Map()));
+  assert.equal(rootFrom(slot, leaf, path), built.root);
 });
 
-test("every leaf of every tree from one to nine leaves walks to the root", () => {
+test("every leaf of every tree from one to nine leaves walks to the same root as the definition gives", () => {
   for (let count = 1; count <= 9; count += 1) {
-    const all = leaves(count);
-    const tree = buildTree(all);
-    assert.equal(tree.leaves, count);
-    all.forEach((leaf, index) => assert.equal(rootFrom(leaf, tree.path(index)), tree.root, `${index} of ${count}`));
+    const { leaves, built } = tree(count);
+    for (const [slot, leaf] of leaves) {
+      const path = built.path(slot);
+      assert.equal(rootFrom(slot, leaf, path), built.root, `${slot} of ${count}`);
+      const siblings = new Map(path.flatMap((sibling, level) => (sibling === null ? [] : [[level, sibling] as const])));
+      assert.equal(walk(slot, leaf, siblings), built.root, `${slot} of ${count}`);
+    }
   }
 });
 
-test("a changed entry, salt, or path walks to a different root", () => {
-  const entries = [{ topic: "a" }, { topic: "b" }, { topic: "c" }, { topic: "d" }, { topic: "e" }];
-  const tree = buildTree(entries.map((entry) => leafHash(entry, SALT)));
-  const path = tree.path(1);
-  const honest = leafHash({ topic: "b" }, SALT);
-  assert.equal(rootFrom(honest, path), tree.root);
+test("an empty slot walks to the root with no leaf, and a filled slot does not", () => {
+  const { leaves, built } = tree(5);
+  const vacant = slotOf(["topic", "missing"]);
+  assert.equal(leaves.has(vacant), false);
+  assert.equal(rootFrom(vacant, null, built.path(vacant)), built.root);
+  const [[taken]] = [...leaves] as [[number, Hash]];
+  assert.notEqual(rootFrom(taken, null, built.path(taken)), built.root);
+});
 
-  assert.notEqual(rootFrom(leafHash({ topic: "B" }, SALT), path), tree.root);
-  assert.notEqual(rootFrom(leafHash({ topic: "b" }, hash("22".repeat(32))), path), tree.root);
-  assert.notEqual(rootFrom(honest, path.slice(1)), tree.root);
-  assert.notEqual(rootFrom(honest, path.map((step, index) => (index === 0 ? { ...step, side: "right" as const } : step))), tree.root);
-  assert.notEqual(rootFrom(honest, path.map((step, index) => (index === 1 ? { ...step, hash: honest } : step))), tree.root);
-  assert.notEqual(rootFrom(honest, tree.path(2)), tree.root);
+test("a changed entry, salt, slot, or path walks to a different root or to none", () => {
+  const { leaves, built } = tree(5);
+  const [[slot], [other]] = [...leaves] as [[number, Hash], [number, Hash]];
+  const honest = leafHash({ index: 0 }, SALT);
+  const path = built.path(slot);
+  assert.equal(rootFrom(slot, honest, path), built.root);
+
+  assert.notEqual(rootFrom(slot, leafHash({ index: 7 }, SALT), path), built.root);
+  assert.notEqual(rootFrom(slot, leafHash({ index: 0 }, hash("22".repeat(32))), path), built.root);
+  assert.notEqual(rootFrom(other, honest, path), built.root);
+  assert.notEqual(rootFrom(slot, honest, built.path(other)), built.root);
+  const level = path.findIndex((sibling) => sibling !== null);
+  assert.ok(level >= 0);
+  assert.notEqual(rootFrom(slot, honest, path.map((sibling, index) => (index === level ? null : sibling))), built.root);
+  assert.notEqual(rootFrom(slot, honest, path.map((sibling, index) => (index === level ? honest : sibling))), built.root);
+  assert.equal(rootFrom(slot, honest, path.slice(1)), null);
+  assert.equal(rootFrom(slot, honest, [...path, null]), null);
+  assert.equal(rootFrom(2 ** 32, honest, path), null);
 });
 
 test("an empty dataset has no commitment", () => {
-  assert.throws(() => buildTree([]), /at least one entry/);
+  assert.throws(() => buildTree(new Map()), /at least one entry/);
 });

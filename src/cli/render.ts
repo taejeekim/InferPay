@@ -3,7 +3,21 @@ import { formatUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
 import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
-import { canonical, leafHash, type AssertedCheck, type Evidence, type Hash, type PinnedCommitment } from "../commitment/index.ts";
+import {
+  canonical,
+  entryKey,
+  factKey,
+  figureKey,
+  leafHash,
+  slotOf,
+  type AssertedCheck,
+  type Evidence,
+  type FactClaim,
+  type FigureClaim,
+  type Hash,
+  type Key,
+  type PinnedCommitment,
+} from "../commitment/index.ts";
 import type { PaymentRail } from "../payment/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
 import { tally } from "../consumer/grade.ts";
@@ -117,7 +131,7 @@ export function jobText(view: JobView): string {
         return [
           `${label}${time}  ${event.answer.checks.length} checks`,
           ...attestLines("specialist", event.answer.attestation).map(under),
-          ...verifyChecks(event.answer.checks, view.order.commitment).flatMap(proofRows).map(under),
+          ...verifyChecks(event.answer.checks, view.order.commitment, view.order.question).flatMap(proofRows).map(under),
         ].join("\n");
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
@@ -391,7 +405,7 @@ function rateText(rating: number, checks: readonly BuyerCheck[]): string {
   const reasons: string[] = [];
   if (counts.mismatches > 0) reasons.push(`${plural(counts.mismatches, "mismatch", "mismatches")} among ${plural(counts.verified, "verified check", "verified checks")}`);
   if (counts.unbacked > 0) reasons.push(`${plural(counts.unbacked, "claim", "claims")} the shop could not back`);
-  if (counts.verified === 0) reasons.push("nothing verified, so at most 3");
+  if (counts.supporting === 0) reasons.push("nothing verified in the answer's favour, so at most 3");
   return reasons.length === 0 ? `${rating}/5` : `${rating}/5  (${reasons.join("; ")})`;
 }
 
@@ -457,6 +471,10 @@ function checkRows(check: BuyerCheck, width: number): string[] {
     return [head("FORGED", check.check.verdict, claimedText(check.check)), under(forgeryText(check.forgery, check.check))];
   }
   if (check.kind === "flag") return [head("verified", check.verdict, ""), under(check.entry.detail)];
+  if (check.verdict === "absent") {
+    const claimed = check.kind === "number" ? formatFigure(check.claim.claimed, check.claim.unit) : check.claim.claimed;
+    return [head("verified", "no entry", claimed), under("the slot for this key in the shop's committed tree is empty: the shop holds nothing on it")];
+  }
   if (check.kind === "fact") {
     const ref = check.verdict === "mismatch" ? `   ref ${check.entry.value}` : "";
     return [head("verified", check.verdict, `${check.claim.claimed}${ref}`), under(check.entry.source)];
@@ -478,8 +496,9 @@ function claimedText(check: AssertedCheck): string {
 
 function unprovenText(check: Extract<BuyerCheck, { status: "unproven" }>): string {
   if (check.why === "no-commitment") return "the shop's word only: it has published no root to check this against";
-  if (check.check.kind === "flag") return "the shop's word only: it says no playbook rule matched, and an absence carries no proof";
-  return "the shop's word only: it says it holds no entry for this, and an absence carries no proof";
+  if (check.why === "unquoted") return "the rule is real, but the clause is not quoted from the question, so it shows nothing about what was asked";
+  if (check.check.kind === "flag") return "the shop's word only: it says no playbook rule matched, and that carries no proof";
+  return "the shop's word only: it sent no proof that it holds no entry for this";
 }
 
 function forgeryText(forgery: Forgery, check: AssertedCheck): string {
@@ -530,21 +549,39 @@ function pinnedRows(pinned: PinnedCommitment): string[] {
 // Every value a reader needs to recompute the leaf and walk it to the root by hand.
 function proofRows(check: BuyerCheck): string[] {
   if (check.status === "verified") {
-    return [`verified  ${check.verdict}  ${checkLabel(check)}`, ...evidenceRows(check), "  root      equals the commitment above"];
+    const key = check.verdict === "absent" ? claimKey(check) : entryKey(check.entry);
+    const evidence: Evidence = check.verdict === "absent" ? { vacant: true, path: check.path } : check;
+    return [
+      `verified  ${check.verdict === "absent" ? "no entry" : check.verdict}  ${checkLabel(check)}`,
+      ...evidenceRows(key, evidence),
+      "  root      equals the commitment above",
+    ];
   }
   const rows = [`${check.status === "forged" ? "FORGED" : "unproven"}  ${check.check.verdict}  ${checkLabel(check)}`];
   rows.push(`  ${check.status === "forged" ? forgeryText(check.forgery, check.check) : unprovenText(check)}`);
-  if (check.check.evidence !== null) rows.push(...evidenceRows(check.check.evidence));
-  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  opens to  ${check.forgery.opensTo}`);
+  const { evidence } = check.check;
+  if (evidence !== null) rows.push(...evidenceRows("vacant" in evidence ? claimKey(check.check) : entryKey(evidence.entry), evidence));
+  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  opens to  ${check.forgery.opensTo ?? "nothing: the path is not a full path"}`);
   return rows;
 }
 
-function evidenceRows(evidence: Evidence): string[] {
+function claimKey(check: { readonly kind: "number"; readonly claim: FigureClaim } | { readonly kind: "fact"; readonly claim: FactClaim } | { readonly kind: "flag" }): Key {
+  if (check.kind === "number") return figureKey(check.claim);
+  if (check.kind === "fact") return factKey(check.claim);
+  return [];
+}
+
+function evidenceRows(key: Key, evidence: Evidence): string[] {
+  const siblings = evidence.path.flatMap((hash, level) => (hash === null ? [] : [`  ${`level ${level}`.padEnd(10)}${hash}`]));
+  const leaf = "vacant" in evidence
+    ? ["  leaf      empty slot"]
+    : [`  entry     ${canonical(evidence.entry)}`, `  salt      ${evidence.salt}`, `  leaf      ${leafHash(evidence.entry, evidence.salt)}`];
   return [
-    `  entry     ${canonical(evidence.entry)}`,
-    `  salt      ${evidence.salt}`,
-    `  leaf      ${leafHash(evidence.entry, evidence.salt)}`,
-    ...evidence.path.map((step) => `  ${step.side.padEnd(10)}${step.hash}`),
+    `  key       ${canonical(key)}`,
+    `  slot      ${slotOf(key)}`,
+    ...leaf,
+    ...siblings,
+    `  path      ${evidence.path.length} levels, ${evidence.path.length - siblings.length} of them empty subtrees`,
   ];
 }
 

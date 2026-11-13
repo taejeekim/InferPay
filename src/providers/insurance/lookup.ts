@@ -1,8 +1,9 @@
 import { z } from "zod";
 import {
   factClaimSchema,
+  factKey,
   judgeFact,
-  sameTopic,
+  sameKey,
   type AssertedCheck,
   type Dataset,
   type Fact,
@@ -17,8 +18,9 @@ export function parseFactClaims(raw: unknown): readonly FactClaim[] | null {
 
 export function lookupCoverage(claims: readonly FactClaim[], data: Dataset<Fact>): readonly AssertedCheck[] {
   return claims.map((claim) => {
-    const fact = data.entries.find((entry) => sameTopic(claim, entry));
-    if (!fact) return { kind: "fact", claim, verdict: "unverifiable", evidence: null };
+    const key = factKey(claim);
+    const fact = data.entries.find((entry) => sameKey(key, factKey(entry)));
+    if (!fact) return { kind: "fact", claim, verdict: "unverifiable", evidence: data.proveAbsent(key) };
     return { kind: "fact", claim, verdict: judgeFact(claim, fact), evidence: data.prove(fact) };
   });
 }
