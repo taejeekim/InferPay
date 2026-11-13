@@ -82,7 +82,7 @@ test("live payment refuses a missing, undotted, or testnet root", () => {
   }
 });
 
-test("both NEAR AI models default to a model the live list serves", () => {
+test("both NEAR AI models default to the glm-5.3-flash model id", () => {
   const result = loadConfig({ NEAR_AI_API_KEY: "key" });
   assert.equal(result.ok, true);
   if (!result.ok || result.value.inference.kind !== "near-ai") return;
