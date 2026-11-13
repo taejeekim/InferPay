@@ -77,6 +77,17 @@ export function createFileLedger(root: string): Ledger {
   };
 }
 
+// A shop's answer is outside input. One the ledger could not read back must never be written to it.
+export function isStorableAnswer(answer: unknown): boolean {
+  let roundTrip: unknown;
+  try {
+    roundTrip = JSON.parse(JSON.stringify(answer));
+  } catch {
+    return false;
+  }
+  return answerSchema.safeParse(roundTrip).success;
+}
+
 export function parseJobEvent(line: string): JobEvent | null {
   let raw: unknown;
   try {

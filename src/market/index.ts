@@ -16,7 +16,7 @@ import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
 import type { RatingPost, Registry } from "../registry/index.ts";
 import { fold, plan, reputationFromStars, reputationOf, type JobEvent, type JobState, type Order, type Reputation } from "./job.ts";
-import { createFileLedger, LedgerReadError, type Ledger } from "./ledger.ts";
+import { createFileLedger, isStorableAnswer, LedgerReadError, type Ledger } from "./ledger.ts";
 
 export type { JobEvent, JobState, Order, Reputation } from "./job.ts";
 export { createFileLedger };
@@ -424,7 +424,9 @@ async function fulfilQuiet(
   inference: Inference,
 ): Promise<{ ok: true; answer: Answer } | { ok: false; reason: string; retryable: boolean }> {
   try {
-    return await bound.provider.fulfil(paid, { inference });
+    const result = await bound.provider.fulfil(paid, { inference });
+    if (result.ok && !isStorableAnswer(result.answer)) return { ok: false, reason: "the shop's answer was malformed", retryable: false };
+    return result;
   } catch {
     return { ok: false, reason: "provider threw", retryable: true };
   }

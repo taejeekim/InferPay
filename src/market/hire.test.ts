@@ -202,6 +202,20 @@ test("a second hire waits while the first still holds the job", async () => {
   }
 });
 
+test("an answer the ledger could not read back is refused, and the job stays readable", async () => {
+  const claim = { label: "revenue", company: "Samsung Electronics", period: "Q3 2025", metric: "revenue", claimed: Number.NaN, unit: "KRW T" };
+  const malformed: Answer = { ...sampleAnswer(), checks: [{ kind: "number", claim, verdict: "unverifiable", evidence: null }] };
+  const { market, order, root } = await harness("none", async () => ({ ok: true, answer: malformed }));
+  try {
+    const outcome = await market.hire(order);
+    assert.deepEqual(outcome, { kind: "failed", jobId: order.jobId, reason: { kind: "provider-failed", reason: "the shop's answer was malformed" } });
+    const view = await market.job(order.jobId);
+    assert.deepEqual(view?.events.map((event) => event.type), ["opened", "payment-intended", "payment-settled", "fulfil-failed"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a second hire that pins a different root conflicts", async () => {
   const { market, order, root } = await harness("none");
   try {
