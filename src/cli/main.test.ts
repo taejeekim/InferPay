@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import type { Receipt } from "../consumer/task.ts";
 import test from "node:test";
 import { main } from "./main.ts";
 
@@ -436,6 +437,82 @@ test("the stub rail prints no attest line", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+const BRIEFING = "Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit";
+const POLICY_CHECK = "Check what this policy covers for an outpatient MRI and for cosmetic surgery";
+
+test("the briefing answers one part itself, carries its money forward, and buys the other three", async () => {
+  const { code, out, receipt, jobs } = await runTask(BRIEFING, "0.10");
+  assert.equal(code, 0);
+  assert.match(out, /^part 2\/4 {2}Does this NDA's unlimited indemnification clause fail our playbook\?\n {10}allot {3}0\.02 NEAR share \+ 0\.02 NEAR carried = 0\.04 NEAR$/m);
+  assert.match(out, /^ {10}allot {3}0\.03 NEAR share \+ 0\.026 NEAR carried = 0\.056 NEAR$/m);
+  assert.match(out, /^ {10}1  the buyer itself {19}- {5}nothing {16}own answer, confidence 0\.99$/m);
+  assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet {6}0\.03  0\.024 NEAR on counter  1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet {5}0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet  0\.02  0\.02 NEAR at list {6}2 verified, 1 mismatch; rated 4\/5$/m);
+  assert.match(out, /^total {5}spent 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
+  assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
+    ["answered-locally", "0.02", "0"],
+    ["bought", "0.04", "0.024"],
+    ["bought", "0.046", "0.02"],
+    ["bought", "0.056", "0.02"],
+  ]);
+  assert.equal(jobs.length, 3, "the part answered locally opens no job");
+  for (const row of receipt.parts) {
+    if (row.outcome.kind === "bought") assert.ok(jobs.includes(`${row.outcome.jobId}.jsonl`));
+  }
+});
+
+test("the tight policy check declines one part and stays inside its budget", async () => {
+  const { code, out, receipt, jobs } = await runTask(POLICY_CHECK, "0.04");
+  assert.equal(code, 0);
+  assert.match(out, /^ {10}1  nobody +- +nothing +declined: counter-offer refused$/m);
+  assert.match(out, /^total {5}spent 0\.014 NEAR of the 0\.04 NEAR budget, 0\.026 NEAR left$/m);
+  assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
+    ["declined", "0.02", "0"],
+    ["bought", "0.04", "0.014"],
+  ]);
+  assert.equal(receipt.spent.amount, "0.014");
+  assert.equal(receipt.left.amount, "0.026");
+  assert.equal(jobs.length, 1);
+});
+
+test("an unrecorded task stops before any payment and lists the recorded tasks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  const stderr = capture(process.stderr);
+  const stdout = capture(process.stdout);
+  try {
+    const code = await main(["task", "Plan my trip to Lisbon", "--budget", "0.10"], { INFERPAY_DATA_DIR: root });
+    assert.equal(code, 1);
+    assert.match(stderr.text(), /No NEAR moved\. The stub replays only these recorded tasks:/);
+    assert.ok(stderr.text().includes(`npx inferpay task "${POLICY_CHECK}" --budget 0.04`));
+    assert.deepEqual(await readdir(root), []);
+  } finally {
+    stderr.restore();
+    stdout.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function runTask(task: string, budget: string): Promise<{ code: number; out: string; receipt: Receipt; jobs: string[] }> {
+  const root = await mkdtemp(join(tmpdir(), "inferpay-"));
+  const stdout = capture(process.stdout);
+  try {
+    const code = await main(["task", task, "--budget", budget], { INFERPAY_DATA_DIR: root });
+    const out = stdout.text();
+    const saved = /^saved {5}(.+)$/m.exec(out)?.[1];
+    assert.ok(saved, "the receipt path is printed");
+    assert.equal(dirname(saved), join(root, "tasks"));
+    const receipt: Receipt = JSON.parse(await readFile(saved, "utf8"));
+    assert.equal(basename(saved), `${receipt.taskId}.json`);
+    assert.equal(receipt.task, task);
+    const jobs = await readdir(join(root, "jobs"));
+    return { code, out, receipt, jobs };
+  } finally {
+    stdout.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+}
 
 function capture(stream: NodeJS.WriteStream): { text(): string; restore(): void } {
   const chunks: string[] = [];

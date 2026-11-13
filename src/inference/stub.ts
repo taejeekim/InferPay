@@ -205,7 +205,49 @@ const RECORDINGS: readonly Recording[] = [
   },
 ];
 
-const BY_QUESTION = new Map(RECORDINGS.map((recording) => [normalize(recording.question), recording]));
+type PlanRecording = {
+  readonly task: string;
+  readonly budget: string;
+  readonly parts: readonly { readonly question: string; readonly share: number }[];
+};
+
+// Each part is a recorded question above, so the per-part fixtures replay as they do for ask.
+// On a fresh data directory the briefing answers part 1 locally, buys part 2 on a counter-offer and parts 3 and 4
+// at list price; parts 2 and 4 are affordable only with the money earlier parts left. The policy check declines
+// part 1 and buys part 2 on a counter-offer.
+const PLANS: readonly PlanRecording[] = [
+  {
+    task: "Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit",
+    budget: "0.10",
+    parts: [
+      { question: "What is the capital of France?", share: 0.2 },
+      { question: "Does this NDA's unlimited indemnification clause fail our playbook?", share: 0.2 },
+      { question: "Does this policy cover an outpatient MRI?", share: 0.3 },
+      { question: "What was Samsung's Q3 2025 operating profit?", share: 0.3 },
+    ],
+  },
+  {
+    task: "Check what this policy covers for an outpatient MRI and for cosmetic surgery",
+    budget: "0.04",
+    parts: [
+      { question: "Does this policy cover an outpatient MRI?", share: 0.5 },
+      { question: "Does this policy cover cosmetic surgery?", share: 0.5 },
+    ],
+  },
+];
+
+// A live model often fences its JSON, so the recording does too and the parser has to cope.
+function planFixture(plan: PlanRecording): Fixture {
+  return { output: `\`\`\`json\n${JSON.stringify({ parts: plan.parts }, null, 2)}\n\`\`\``, toolCalls: [] };
+}
+
+const BY_QUESTION = new Map<string, Recording>([
+  ...RECORDINGS.map((recording): [string, Recording] => [normalize(recording.question), recording]),
+  ...PLANS.map((plan): [string, Recording] => [
+    normalize(plan.task),
+    { question: plan.task, tasks: { "consumer.plan": planFixture(plan) } },
+  ]),
+]);
 
 // Providers receive the paid question as their input, so one key serves the buyer's assessment and the shop's answer.
 function normalize(question: string): string {
@@ -218,7 +260,9 @@ export function createStubInference(): Inference {
     attested: () => [],
     async run(task) {
       const fixture = BY_QUESTION.get(normalize(task.input))?.tasks[task.name];
-      if (fixture === undefined) return { ok: false, reason: "no-fixture", detail: unrecordedQuestion() };
+      if (fixture === undefined) {
+        return { ok: false, reason: "no-fixture", detail: task.name === "consumer.plan" ? unrecordedTask() : unrecordedQuestion() };
+      }
       const toolResults: { name: string; result: unknown }[] = [];
       for (const call of fixture.toolCalls) {
         const found = task.tools.find((item) => item.name === call.name);
@@ -234,6 +278,15 @@ export function createStubInference(): Inference {
       return { ok: true, value, model: stubModel, attestation: [] };
     },
   };
+}
+
+function unrecordedTask(): string {
+  const examples = PLANS.map((plan) => `  npx inferpay task "${plan.task}" --budget ${plan.budget}`).join("\n");
+  return [
+    "No NEAR moved. The stub replays only these recorded tasks:",
+    examples,
+    "Set NEAR_AI_API_KEY to give it any task.",
+  ].join("\n");
 }
 
 function unrecordedQuestion(): string {

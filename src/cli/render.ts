@@ -1,5 +1,5 @@
 import type { ConfigError } from "../config.ts";
-import { formatUnits, type Price } from "../domain.ts";
+import { formatUnits, toUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
 import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
@@ -21,6 +21,8 @@ import {
 import type { PaymentRail } from "../payment/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
 import { tally } from "../consumer/grade.ts";
+import type { NoDeal } from "../consumer/decide.ts";
+import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer/task.ts";
 import { verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
@@ -188,6 +190,7 @@ export function usageText(): string {
     "inferpay wallets",
     "inferpay providers",
     "inferpay ask <question> --budget <amount> [--from <bot>]",
+    "inferpay task <task> --budget <amount> [--from <bot>]",
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
     "inferpay testnet setup [--root <name>.testnet]",
@@ -608,4 +611,133 @@ function table(rows: readonly (readonly string[])[]): string {
     rows.reduce((max, row) => Math.max(max, (row[index] ?? "").length), 0)
   ));
   return rows.map((row) => row.map((cell, index) => cell.padEnd(widths[index] ?? 0)).join("  ").trimEnd()).join("\n");
+}
+
+export function taskProgressLine(progress: TaskProgress, rail: PaymentRail["kind"]): string {
+  switch (progress.step) {
+    case "plan":
+      return planBlock(progress);
+    case "part":
+      return [
+        "",
+        line(`part ${progress.index + 1}/${progress.count}`, progress.part.question),
+        field("allot", `${money(progress.base)} share + ${money(progress.carried)} carried = ${money(progress.allotted)}`),
+      ].join("\n");
+    case "part-done":
+      return partDoneRows(progress).join("\n");
+    default:
+      return progressLine(progress, rail);
+  }
+}
+
+function planBlock(progress: Extract<TaskProgress, { step: "plan" }>): string {
+  const { budget, parts, bases } = progress;
+  const rows = parts.map((part, index) => [
+    String(index + 1),
+    `${part.share}%`,
+    bases[index] === undefined ? "" : money(bases[index]),
+    part.question,
+  ]);
+  return [
+    line("plan", `${plural(parts.length, "part", "parts")} under one budget of ${money(budget)}, each given its share of it`),
+    ...table(rows).split("\n").map((row) => line("", row)),
+    field("carry", "parts run in order, and what a part leaves unspent is added to the next part's allotment,"),
+    field("", `so a cheap part can fund a dearer one and the task never pays more than ${money(budget)}`),
+  ].join("\n");
+}
+
+function partDoneRows(progress: Extract<TaskProgress, { step: "part-done" }>): string[] {
+  const { row, index, count } = progress;
+  const rows: string[] = [];
+  if (row.outcome.kind === "answered-locally") rows.push(localAnswerText(row.outcome.answer));
+  if (row.outcome.kind === "failed") rows.push(line("failed", failureText(row.outcome.reason)));
+  const unspent = toUnits(row.allotted.amount) - toUnits(row.spent.amount);
+  const where = index + 1 < count ? `carried to part ${index + 2}` : "kept: this was the last part";
+  rows.push(line("unspent", `${money(row.allotted)} - ${money(row.spent)} spent = ${formatUnits(unspent)} ${row.allotted.symbol}, ${where}`));
+  return rows;
+}
+
+export function receiptBlock(receipt: Receipt, saved: string): string {
+  const header = ["#", "DONE BY", "LIST", "PAID", "CHECK"];
+  const cells = receipt.parts.map((row, index) => [String(index + 1), ...receiptCells(row)]);
+  const [head, ...lines] = table([header, ...cells]).split("\n");
+  const pad = "".padEnd(String(receipt.parts.length).length + 2);
+  const detail = (name: string, value: string): string => line("", `${pad}${name.padEnd(7)}${value}`);
+  return [
+    line("receipt", receipt.taskId),
+    field("task", receipt.task),
+    line("", head ?? ""),
+    ...receipt.parts.flatMap((row, index) => [
+      line("", lines[index] ?? ""),
+      detail("asked", row.part.question),
+      ...receiptDetails(row).map(([name, value]) => detail(name, value)),
+    ]),
+    line("total", `spent ${money(receipt.spent)} of the ${money(receipt.budget)} budget, ${money(receipt.left)} left`),
+    line("saved", saved),
+  ].join("\n");
+}
+
+function receiptCells(row: ReceiptRow): [string, string, string, string] {
+  const { outcome, spent } = row;
+  const paid = toUnits(spent.amount) === 0n ? "nothing" : money(spent);
+  switch (outcome.kind) {
+    case "bought":
+      return [
+        outcome.account,
+        outcome.listPrice.amount,
+        `${money(spent)} ${outcome.negotiation === "list-price" ? "at list" : "on counter"}`,
+        boughtCheck(outcome),
+      ];
+    case "answered-locally":
+      return ["the buyer itself", "-", paid, `own answer, confidence ${share(outcome.confidence)}`];
+    case "declined":
+      return ["nobody", "-", paid, `declined: ${declineText(outcome.because)}`];
+    case "pending":
+      return ["-", "-", `${paid} held`, "PENDING: payment not settled"];
+    case "failed":
+      return ["-", "-", paid, "FAILED"];
+    default: {
+      const unreachable: never = outcome;
+      return unreachable;
+    }
+  }
+}
+
+function receiptDetails(row: ReceiptRow): (readonly [string, string])[] {
+  const { outcome } = row;
+  switch (outcome.kind) {
+    case "bought":
+      return outcome.tx === null ? [["job", outcome.jobId]] : [["job", outcome.jobId], ["tx", txUrl(outcome.tx)]];
+    case "pending":
+      return [["job", outcome.jobId], ["resume", `npx inferpay resume ${outcome.jobId}`]];
+    case "failed":
+      return [["why", failureText(outcome.reason).split("\n")[0] ?? ""]];
+    default:
+      return [];
+  }
+}
+
+function boughtCheck(outcome: Extract<PartOutcome, { kind: "bought" }>): string {
+  const parts = [`${outcome.verified} verified`];
+  if (outcome.mismatches > 0) parts.push(plural(outcome.mismatches, "mismatch", "mismatches"));
+  if (outcome.unproven > 0) parts.push(`${outcome.unproven} unproven`);
+  if (outcome.forged > 0) parts.push(`${outcome.forged} FORGED`);
+  return `${parts.join(", ")}; rated ${outcome.stars}/5`;
+}
+
+function declineText(because: NoDeal["kind"]): string {
+  switch (because) {
+    case "nothing-affordable":
+      return "every ask above its allotment";
+    case "no-coverage":
+      return "no shop covers it";
+    case "no-price-worth-paying":
+      return "no price worth paying";
+    case "counter-refused":
+      return "counter-offer refused";
+    default: {
+      const unreachable: never = because;
+      return unreachable;
+    }
+  }
 }
