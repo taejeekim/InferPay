@@ -55,8 +55,8 @@ test("ask still runs when an old job file has no payFrom", async () => {
     );
     assert.equal(code, 0);
     assert.match(stdout.text(), /settled  0\.02 NEAR/);
-    assert.match(stdout.text(), /from    researcher\.kyle\.near/);
-    assert.match(stdout.text(), /to      insurance\.ban\.near/);
+    assert.match(stdout.text(), /from    researcher\.kyle\.inferpay\.testnet/);
+    assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
     assert.match(stdout.text(), /via     Intents grant/);
   } finally {
     stdout.restore();
@@ -74,8 +74,8 @@ test("ask pays the named Kyle bot", async () => {
     );
     assert.equal(code, 0);
     assert.match(stdout.text(), /settled  0\.02 NEAR/);
-    assert.match(stdout.text(), /from    clerk\.kyle\.near/);
-    assert.match(stdout.text(), /to      insurance\.ban\.near/);
+    assert.match(stdout.text(), /from    clerk\.kyle\.inferpay\.testnet/);
+    assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
     assert.match(stdout.text(), /via     Intents grant/);
   } finally {
     stdout.restore();

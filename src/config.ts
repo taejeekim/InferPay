@@ -6,7 +6,6 @@ import {
   secret,
   type AssetId,
   type ModelId,
-  type ParentAccount,
   type Secret,
 } from "./domain.ts";
 import { resolveRoster, type Roster } from "./roster.ts";
@@ -45,12 +44,12 @@ const PAYMENT_ENV = [
   "NEAR_INTENTS_AGENT_API_KEY",
   "INFERPAY_AGENT_ID",
   "INFERPAY_GRANT_TOKEN",
-  "INFERPAY_PARENT_ACCOUNT",
 ];
 
 const DEFAULT_NEAR_ASSET = "nep141:wrap.near";
-const DEFAULT_CONSUMER_MODEL = "z-ai/glm-5.2";
-const DEFAULT_PROVIDER_MODEL = "zai-org/GLM-5.1-FP8";
+const DEFAULT_ROOT_ACCOUNT = "inferpay.testnet";
+const DEFAULT_CONSUMER_MODEL = "z-ai/glm-5.3-flash";
+const DEFAULT_PROVIDER_MODEL = "z-ai/glm-5.3-flash";
 
 export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } | { ok: false; error: ConfigError } {
   const present = PAYMENT_ENV.filter((name) => filled(env[name]));
@@ -64,11 +63,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   if (!asset) return invalid("INFERPAY_NEAR_ASSET", "asset id is empty");
 
   const livePayment = present.length === PAYMENT_ENV.length;
-  let kyleParent: ParentAccount | undefined;
-  if (livePayment) {
-    const parent = parseParentAccount(String(env.INFERPAY_PARENT_ACCOUNT));
-    if (!parent) return invalid("INFERPAY_PARENT_ACCOUNT", "named account must contain a dot, such as alice.near");
-    kyleParent = parent;
+  if (livePayment && !filled(env.INFERPAY_ROOT_ACCOUNT)) {
+    return invalid("INFERPAY_ROOT_ACCOUNT", "live payment needs a mainnet root account you own, such as inferpay.near");
+  }
+  const root = parseParentAccount(filled(env.INFERPAY_ROOT_ACCOUNT) ? String(env.INFERPAY_ROOT_ACCOUNT) : DEFAULT_ROOT_ACCOUNT);
+  if (!root) return invalid("INFERPAY_ROOT_ACCOUNT", "named account must contain a dot, such as inferpay.near");
+  if (livePayment && root.endsWith(".testnet")) {
+    return invalid("INFERPAY_ROOT_ACCOUNT", "NEAR Intents is mainnet only, so the root cannot end in .testnet");
   }
 
   const chaosRaw = env.INFERPAY_MOCK_CHAOS;
@@ -101,8 +102,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
     };
   }
 
-  const resolved = kyleParent === undefined ? resolveRoster() : resolveRoster({ kyleParent });
-  if (!resolved.ok) return invalid(livePayment ? "INFERPAY_PARENT_ACCOUNT" : "roster", resolved.detail);
+  const resolved = resolveRoster(root);
+  if (!resolved.ok) return invalid("INFERPAY_ROOT_ACCOUNT", resolved.detail);
 
   return {
     ok: true,

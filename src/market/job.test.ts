@@ -99,7 +99,7 @@ test("fold walks crash points and plan names the missing step", () => {
 test("a settled receipt must match the key, the recipient, and the quote", () => {
   const world = fixture();
   const otherKey = must(parseIdempotencyKey("other-key"), "key");
-  const otherPay = must(parseAccountId("legal.stella.near"), "recipient");
+  const otherPay = must(parseAccountId("legal.stella.inferpay.near"), "recipient");
   const otherAmount = must(parseDecimalAmount("0.03"), "amount");
   const matching = fold([opened(world), intended(world), settled(world)]);
   assert.equal(matching.ok, true);
@@ -156,12 +156,12 @@ function fixture() {
     providerId: must(parseProviderId("disclosure"), "provider"),
     question: "Does the filing match?",
     budget: price(budget),
-    payFrom: must(parseAccountId("researcher.kyle.near"), "payFrom"),
+    payFrom: must(parseAccountId("researcher.kyle.inferpay.near"), "payFrom"),
   };
   const key = must(parseIdempotencyKey("mock_key"), "key");
   const correlation = must(parseCorrelationId("mock-7f3a"), "correlation");
   const at = must(parseIsoTime("2026-10-24T14:02:11.000Z"), "time");
-  const payTo = must(parseAccountId("disclosure.david.near"), "payTo");
+  const payTo = must(parseAccountId("disclosure.david.inferpay.near"), "payTo");
   const model = must(parseModelId("stub"), "model");
   const receipt: PaymentReceipt = { key, correlationId: correlation, amount: price(quote), recipient: payTo, rail: "mock" };
   const answer: Answer = {

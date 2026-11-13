@@ -150,7 +150,7 @@ test("a second hire with a different payer conflicts", async () => {
   try {
     const done = await market.hire(order);
     assert.equal(done.kind, "completed");
-    const again = await market.hire({ ...order, payFrom: must(parseAccountId("clerk.kyle.near")) });
+    const again = await market.hire({ ...order, payFrom: must(parseAccountId("clerk.kyle.inferpay.near")) });
     assert.equal(again.kind, "failed");
     if (again.kind !== "failed") return;
     assert.equal(again.reason.kind, "order-conflict");
@@ -195,8 +195,8 @@ async function harness(
       listing: {
         ...provider.describe,
         price: price("0.02"),
-        owner: must(parseParentAccount("david.near")),
-        payTo: must(parseAccountId("disclosure.david.near")),
+        owner: must(parseParentAccount("david.inferpay.near")),
+        payTo: must(parseAccountId("disclosure.david.inferpay.near")),
       },
     }],
     clock: fixedClock,
@@ -223,7 +223,7 @@ function sampleOrder() {
     providerId: must(parseProviderId("disclosure")),
     question: "Does the filing match?",
     budget: price("0.10"),
-    payFrom: must(parseAccountId("researcher.kyle.near")),
+    payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),
   };
 }
 

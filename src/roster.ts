@@ -12,15 +12,14 @@ const BOT_NAME = /^[a-z][a-z0-9-]*$/;
 
 const BUYER = defineBuyer({
   id: "kyle",
-  defaultParent: "kyle.near",
   bots: ["researcher", "writer", "trader", "analyst", "clerk", "scout", "editor", "buyer", "reviewer", "assistant"],
   defaultBot: "researcher",
 });
 
 const SHOPS = [
-  { id: "stella", parent: "stella.near", providerId: "legal" },
-  { id: "ban", parent: "ban.near", providerId: "insurance" },
-  { id: "david", parent: "david.near", providerId: "disclosure" },
+  { id: "stella", providerId: "legal" },
+  { id: "ban", providerId: "insurance" },
+  { id: "david", providerId: "disclosure" },
 ] as const;
 
 export type KyleBot = (typeof BUYER.bots)[number];
@@ -52,7 +51,7 @@ export type ForestRow = {
 };
 
 export type Roster = {
-  readonly kyleParent: ParentAccount;
+  readonly root: ParentAccount;
   readonly defaultBuyer: BuyerSeat;
   buyer(name: string): BuyerSeat | null;
   shop(providerId: ProviderId): ShopSeat | null;
@@ -74,22 +73,20 @@ export type ResolveRoster =
 
 function defineBuyer<const B extends readonly [string, ...string[]]>(spec: {
   readonly id: "kyle";
-  readonly defaultParent: string;
   readonly bots: B;
   readonly defaultBot: B[number];
 }): {
   readonly id: "kyle";
-  readonly defaultParent: string;
   readonly bots: B;
   readonly defaultBot: B[number];
 } {
   return spec;
 }
 
-export function resolveRoster(input?: { readonly kyleParent: ParentAccount }): ResolveRoster {
-  const fallback = parseParentAccount(BUYER.defaultParent);
-  if (!fallback) return failRoster("underivable", `default parent ${BUYER.defaultParent} is not a named account`);
-  const kyleParent = input?.kyleParent ?? fallback;
+// Every person is a separate sub-account of the root. A NEAR parent has no control over a sub-account it created.
+export function resolveRoster(root: ParentAccount): ResolveRoster {
+  const kyleParent = personOf(BUYER.id, root);
+  if (!kyleParent) return failRoster("underivable", `${BUYER.id}.${root} is not a named account`);
   const buyers: BuyerSeat[] = [];
   const byBot = new Map<string, BuyerSeat>();
   const shops: ShopSeat[] = [];
@@ -116,13 +113,12 @@ export function resolveRoster(input?: { readonly kyleParent: ParentAccount }): R
   if (defaultBuyer === null) return failRoster("underivable", `default bot ${BUYER.defaultBot} was not sealed`);
 
   for (const shop of SHOPS) {
-    const parent = parseParentAccount(shop.parent);
-    if (!parent) return failRoster("underivable", `shop parent ${shop.parent} is not a named account`);
+    const parent = personOf(shop.id, root);
+    if (!parent) return failRoster("underivable", `${shop.id}.${root} is not a named account`);
     const providerId = parseProviderId(shop.providerId);
     if (!providerId) return failRoster("underivable", `shop provider ${shop.providerId} is not a provider id`);
     if (byBot.has(providerId)) return failRoster("overlap", `${providerId} names a Kyle bot and a shop`);
     if (byProvider.has(providerId)) return failRoster("overlap", `${providerId} is on more than one shop`);
-    if (parent === kyleParent) return failRoster("overlap", `kyle parent ${kyleParent} is also ${shop.id}'s parent`);
     const account = walletOf(providerId, parent);
     if (!account) return failRoster("underivable", `${providerId}.${parent} is not an account`);
     const clash = take(account, providerId);
@@ -137,7 +133,7 @@ export function resolveRoster(input?: { readonly kyleParent: ParentAccount }): R
   return {
     ok: true,
     roster: {
-      kyleParent,
+      root,
       defaultBuyer: payer,
       buyer(name) {
         return byBot.get(name) ?? null;
@@ -186,6 +182,10 @@ export function resolveRoster(input?: { readonly kyleParent: ParentAccount }): R
 
 function failRoster(fault: "underivable" | "duplicate-account" | "overlap", detail: string): ResolveRoster {
   return { ok: false, fault, detail };
+}
+
+function personOf(person: string, root: ParentAccount): ParentAccount | null {
+  return parseParentAccount(`${person}.${root}`);
 }
 
 // Account ids are minted only here.

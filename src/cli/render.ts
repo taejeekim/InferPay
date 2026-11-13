@@ -76,7 +76,7 @@ export function jobText(view: JobView): string {
 
 export function configErrorText(error: ConfigError): string {
   if (error.kind === "partial-payment-env") {
-    return `Payment configuration is partial. Present: ${error.present.join(", ")}. Missing: ${error.missing.join(", ")}. Set all four payment variables, or unset them to use the mock rail.`;
+    return `Payment configuration is partial. Present: ${error.present.join(", ")}. Missing: ${error.missing.join(", ")}. Set all three payment variables, or unset them to use the mock rail.`;
   }
   return `${error.variable} is invalid. ${error.detail}`;
 }
@@ -181,7 +181,7 @@ function field(name: string, value: string): string {
 }
 
 function rateText(rating: number, checks: readonly Check[]): string {
-  const penalties = checks.filter((check) => check.verdict === "mismatch" || check.verdict === "raised").length;
+  const penalties = checks.filter((check) => check.verdict === "mismatch").length;
   if (penalties === 0) return `${rating}/5`;
   return `${rating}/5 (${penalties} of ${checks.length} checks needed correction)`;
 }

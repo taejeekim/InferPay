@@ -16,14 +16,15 @@ test("a partial payment environment is refused", () => {
   assert.equal(result.error.kind, "partial-payment-env");
 });
 
-test("the parent variable does nothing unless the other payment variables are set", () => {
-  const result = loadConfig({ INFERPAY_PARENT_ACCOUNT: "kylebot.near" });
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.error.kind, "partial-payment-env");
+test("the root variable does nothing unless the other payment variables are set", () => {
+  const result = loadConfig({ INFERPAY_ROOT_ACCOUNT: "team.near" });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.payment.kind, "mock");
+  assert.equal(result.value.roster.root, "team.near");
 });
 
-test("no keys select the mock rail and Kyle's default parent", () => {
+test("no keys select the mock rail and the default testnet root", () => {
   const result = loadConfig({});
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -31,53 +32,60 @@ test("no keys select the mock rail and Kyle's default parent", () => {
   assert.equal(result.value.inference.kind, "stub");
   assert.equal(result.value.near.symbol, "NEAR");
   assert.equal(result.value.near.asset, "nep141:wrap.near");
-  assert.equal(result.value.roster.kyleParent, "kyle.near");
-  assert.equal(result.value.roster.defaultBuyer.account, "researcher.kyle.near");
+  assert.equal(result.value.roster.root, "inferpay.testnet");
+  assert.equal(result.value.roster.defaultBuyer.account, "researcher.kyle.inferpay.testnet");
   const insurance = parseProviderId("insurance");
   assert.ok(insurance);
-  assert.equal(result.value.roster.shop(insurance)?.account, "insurance.ban.near");
+  assert.equal(result.value.roster.shop(insurance)?.account, "insurance.ban.inferpay.testnet");
 });
 
-test("a live parent rewrites only Kyle", () => {
-  const result = loadConfig({ ...LIVE, INFERPAY_PARENT_ACCOUNT: "kylebot.near" });
+test("a live root derives every person and shop beneath it", () => {
+  const result = loadConfig({ ...LIVE, INFERPAY_ROOT_ACCOUNT: "inferpay.near" });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.payment.kind, "near-intents");
-  assert.equal(result.value.roster.kyleParent, "kylebot.near");
+  assert.equal(result.value.roster.root, "inferpay.near");
   const kyle = result.value.roster.forest().filter((row) => row.personId === "kyle");
   assert.equal(kyle.length, 10);
   assert.deepEqual(kyle.map((row) => row.account), [
-    "researcher.kylebot.near",
-    "writer.kylebot.near",
-    "trader.kylebot.near",
-    "analyst.kylebot.near",
-    "clerk.kylebot.near",
-    "scout.kylebot.near",
-    "editor.kylebot.near",
-    "buyer.kylebot.near",
-    "reviewer.kylebot.near",
-    "assistant.kylebot.near",
+    "researcher.kyle.inferpay.near",
+    "writer.kyle.inferpay.near",
+    "trader.kyle.inferpay.near",
+    "analyst.kyle.inferpay.near",
+    "clerk.kyle.inferpay.near",
+    "scout.kyle.inferpay.near",
+    "editor.kyle.inferpay.near",
+    "buyer.kyle.inferpay.near",
+    "reviewer.kyle.inferpay.near",
+    "assistant.kyle.inferpay.near",
   ]);
   assert.deepEqual(
     result.value.roster.forest().filter((row) => row.role === "specialist").map((row) => row.account),
-    ["legal.stella.near", "insurance.ban.near", "disclosure.david.near"],
+    ["legal.stella.inferpay.near", "insurance.ban.inferpay.near", "disclosure.david.inferpay.near"],
   );
 });
 
-test("a parent without a dot is refused on the live rail", () => {
-  const result = loadConfig({ ...LIVE, INFERPAY_PARENT_ACCOUNT: "alice" });
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.error.kind, "invalid");
-  if (result.error.kind !== "invalid") return;
-  assert.equal(result.error.variable, "INFERPAY_PARENT_ACCOUNT");
+test("live payment refuses a missing, undotted, or testnet root", () => {
+  const cases: readonly (readonly [NodeJS.ProcessEnv, RegExp])[] = [
+    [LIVE, /mainnet root/],
+    [{ ...LIVE, INFERPAY_ROOT_ACCOUNT: "alice" }, /must contain a dot/],
+    [{ ...LIVE, INFERPAY_ROOT_ACCOUNT: "inferpay.testnet" }, /mainnet only/],
+  ];
+  for (const [env, detail] of cases) {
+    const result = loadConfig(env);
+    assert.equal(result.ok, false);
+    if (result.ok) continue;
+    assert.equal(result.error.kind, "invalid");
+    if (result.error.kind !== "invalid") continue;
+    assert.equal(result.error.variable, "INFERPAY_ROOT_ACCOUNT");
+    assert.match(result.error.detail, detail);
+  }
 });
 
-test("a live parent that matches a specialist parent is refused", () => {
-  const result = loadConfig({ ...LIVE, INFERPAY_PARENT_ACCOUNT: "stella.near" });
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.error.kind, "invalid");
-  if (result.error.kind !== "invalid") return;
-  assert.equal(result.error.variable, "INFERPAY_PARENT_ACCOUNT");
+test("both NEAR AI models default to a model the live list serves", () => {
+  const result = loadConfig({ NEAR_AI_API_KEY: "key" });
+  assert.equal(result.ok, true);
+  if (!result.ok || result.value.inference.kind !== "near-ai") return;
+  assert.equal(result.value.inference.consumerModel, "z-ai/glm-5.3-flash");
+  assert.equal(result.value.inference.providerModel, "z-ai/glm-5.3-flash");
 });

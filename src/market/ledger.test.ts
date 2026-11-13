@@ -22,7 +22,7 @@ test("an opened line without payFrom is corrupt", async () => {
         budget: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.10" },
       },
       quote: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
-      payTo: "disclosure.david.near",
+      payTo: "disclosure.david.inferpay.near",
     });
     await writeFile(join(jobs, `${jobId}.jsonl`), `${line}\n`);
     await assert.rejects(() => createFileLedger(root).read(jobId), LedgerReadError);
@@ -48,7 +48,7 @@ test("all skips a job file that read would reject", async () => {
         budget: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.10" },
       },
       quote: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
-      payTo: "disclosure.david.near",
+      payTo: "disclosure.david.inferpay.near",
     });
     const live = JSON.stringify({
       type: "opened",
@@ -58,10 +58,10 @@ test("all skips a job file that read would reject", async () => {
         providerId: "insurance",
         question: "Does this policy cover an outpatient MRI?",
         budget: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.10" },
-        payFrom: "researcher.kyle.near",
+        payFrom: "researcher.kyle.inferpay.near",
       },
       quote: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
-      payTo: "insurance.ban.near",
+      payTo: "insurance.ban.inferpay.near",
     });
     await writeFile(join(jobs, `${staleId}.jsonl`), `${stale}\n`);
     await writeFile(join(jobs, `${liveId}.jsonl`), `${live}\n`);
