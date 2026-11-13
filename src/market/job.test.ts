@@ -170,6 +170,7 @@ function fixture() {
     checks: [],
     model,
     inference: "stub",
+    attestation: [],
   };
   return { order, quote: price(quote), payTo, key, correlation, at, receipt, answer };
 }

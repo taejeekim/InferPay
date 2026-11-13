@@ -83,6 +83,7 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
       checks: result.value.checks,
       model: result.model,
       inference: inference.kind,
+      attestation: result.attestation,
     },
   };
 }

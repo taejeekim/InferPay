@@ -16,6 +16,7 @@ import {
   type JobId,
 } from "../domain.ts";
 import type { JobEvent } from "./job.ts";
+import { UNVERIFIED_REASONS, type CallAttestation } from "../inference/attest.ts";
 
 export class LedgerReadError extends Error {
   constructor(message: string) {
@@ -157,11 +158,24 @@ const checkSchema = z.union([
   }),
 ]);
 
+const attestationSchema = z.discriminatedUnion("verdict", [
+  z.object({ verdict: z.literal("verified"), model: z.string(), completionId: z.string(), signer: z.string() }),
+  z.object({
+    verdict: z.literal("unverified"),
+    model: z.string(),
+    completionId: z.string().nullable(),
+    reason: z.enum(UNVERIFIED_REASONS),
+    detail: z.string(),
+  }),
+]);
+
 const answerSchema = z.object({
   text: z.string(),
   checks: z.array(checkSchema),
   model: z.string(),
   inference: z.enum(["near-ai", "stub"]),
+  // Jobs answered before attestation existed made no checked calls.
+  attestation: z.array(attestationSchema).default([]),
 });
 
 const receiptSchema = z.object({
@@ -218,6 +232,11 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
       return { type: "fulfil-failed", at, reason: event.reason, retryable: event.retryable };
     case "fulfilled": {
       if (!isModelId(event.answer.model)) return null;
+      const attestation: CallAttestation[] = [];
+      for (const item of event.answer.attestation) {
+        if (!isModelId(item.model)) return null;
+        attestation.push({ ...item, model: item.model });
+      }
       return {
         type: "fulfilled",
         at,
@@ -226,6 +245,7 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
           checks: event.answer.checks,
           model: event.answer.model,
           inference: event.answer.inference,
+          attestation,
         },
       };
     }

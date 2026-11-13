@@ -89,6 +89,7 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
       checks: result.value.checks,
       model: result.model,
       inference: inference.kind,
+      attestation: result.attestation,
     },
   };
 }

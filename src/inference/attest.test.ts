@@ -133,8 +133,8 @@ test("the attestor fetches the report once per model and retries a late signatur
     return Response.json(fixture.signature);
   };
   const attestor = createAttestor({ baseUrl: "https://example.test/v1", apiKey: "k", fetch: fakeFetch });
-  assert.equal((await attestor.attest(call())).verdict, "verified");
-  assert.equal((await attestor.attest(call())).verdict, "verified");
+  assert.equal((await attestor.attest(call(), await attestor.preflight(model))).verdict, "verified");
+  assert.equal((await attestor.attest(call(), await attestor.preflight(model))).verdict, "verified");
   assert.equal(seen.filter((path) => path.endsWith("/attestation/report")).length, 1);
   assert.equal(signatureCalls, 3);
 });
@@ -143,7 +143,8 @@ test("the attestor reports endpoint failures as unverified without throwing", as
   const down: typeof fetch = async () => {
     throw new Error("socket closed for sekrit-key");
   };
-  const result = await createAttestor({ baseUrl: "https://example.test/v1", apiKey: "sekrit-key", fetch: down }).attest(call());
+  const attestor = createAttestor({ baseUrl: "https://example.test/v1", apiKey: "sekrit-key", fetch: down });
+  const result = await attestor.attest(call(), await attestor.preflight(model));
   assert.equal(reasonOf(result), "report-unavailable");
   assert.doesNotMatch(result.verdict === "unverified" ? result.detail : "", /sekrit-key/);
 });

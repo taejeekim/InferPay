@@ -2,6 +2,7 @@ import type { AccountId, AssetId, DecimalAmount, JobId, ModelId, ParentAccount, 
 import type { Brand } from "../domain.ts";
 import type { PaymentReceipt } from "../payment/index.ts";
 import type { Inference } from "../inference/index.ts";
+import type { CallAttestation } from "../inference/attest.ts";
 
 export type NumberCheck =
   | {
@@ -67,6 +68,7 @@ export type Answer = {
   readonly checks: readonly Check[];
   readonly model: ModelId;
   readonly inference: "near-ai" | "stub";
+  readonly attestation: readonly CallAttestation[];
 };
 
 export type PriceFields = {

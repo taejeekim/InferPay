@@ -243,6 +243,7 @@ async function harness(
   const provider = sampleProvider(fulfil);
   const inference: Inference = {
     kind: "stub",
+    attested: () => [],
     async run() {
       return { ok: false, reason: "no-fixture", detail: "unused" };
     },
@@ -297,6 +298,7 @@ function sampleAnswer(): Answer {
     checks: [],
     model: must(parseModelId("stub")),
     inference: "stub",
+    attestation: [],
   };
 }
 

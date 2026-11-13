@@ -1,5 +1,6 @@
 import type { ModelId } from "../domain.ts";
 import type { InferenceConfig } from "../config.ts";
+import type { CallAttestation } from "./attest.ts";
 import { createNearAi } from "./near-ai.ts";
 import { createStubInference } from "./stub.ts";
 
@@ -46,11 +47,15 @@ export type InferenceTask<TOut> = {
 export type InferenceFailure = "unparseable-output" | "transport" | "no-fixture";
 
 export type InferenceResult<TOut> =
-  | { readonly ok: true; readonly value: TOut; readonly model: ModelId }
+  | { readonly ok: true; readonly value: TOut; readonly model: ModelId; readonly attestation: readonly CallAttestation[] }
   | { readonly ok: false; readonly reason: InferenceFailure; readonly detail: string };
+
+export type RoleAttestation = { readonly role: InferenceTask<unknown>["role"]; readonly attestation: CallAttestation };
 
 export interface Inference {
   readonly kind: "near-ai" | "stub";
+  // Every live model call this process made, in order. The stub makes none.
+  attested(): readonly RoleAttestation[];
   run<TOut>(task: InferenceTask<TOut>): Promise<InferenceResult<TOut>>;
 }
 

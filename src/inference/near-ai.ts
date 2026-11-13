@@ -1,27 +1,52 @@
 import type OpenAI from "openai";
 import type { ModelId } from "../domain.ts";
 import type { InferenceConfig } from "../config.ts";
-import type { Inference, InferenceResult, InferenceTask } from "./index.ts";
+import { createAttestor, type Attestor, type CallAttestation, type ReportEvidence } from "./attest.ts";
+import type { Inference, InferenceResult, InferenceTask, RoleAttestation } from "./index.ts";
 
 const NEAR_AI_BASE_URL = "https://cloud-api.near.ai/v1";
 const MAX_ROUNDS = 4;
 
 type Message = OpenAI.Chat.ChatCompletionMessageParam;
 
+type Exchange = { requestBody: Uint8Array | null; responseBody: Uint8Array };
+
 export function createNearAi(config: Extract<InferenceConfig, { kind: "near-ai" }>): Inference {
+  const attestor = createAttestor({ baseUrl: NEAR_AI_BASE_URL, apiKey: config.apiKey.reveal() });
+  const attested: RoleAttestation[] = [];
   return {
     kind: "near-ai",
+    attested: () => [...attested],
     async run(task) {
       const sdk = await import("openai");
-      const client = new sdk.default({ apiKey: config.apiKey.reveal(), baseURL: NEAR_AI_BASE_URL });
+      let last: Exchange | null = null;
+      const client = new sdk.default({
+        apiKey: config.apiKey.reveal(),
+        baseURL: NEAR_AI_BASE_URL,
+        defaultHeaders: { "x-no-aliasing": "true" },
+        fetch: async (input, init) => {
+          const response = await fetch(input, init);
+          const requestBody = typeof init?.body === "string" ? Buffer.from(init.body, "utf8") : null;
+          last = { requestBody, responseBody: new Uint8Array(await response.clone().arrayBuffer()) };
+          return response;
+        },
+      });
       const model = task.role === "consumer" ? config.consumerModel : config.providerModel;
-      return complete(client, model, task, config.apiKey.reveal());
+      const record = async (completionId: string, report: ReportEvidence): Promise<CallAttestation> => {
+        const exchange: Exchange = last ?? { requestBody: null, responseBody: new Uint8Array() };
+        const attestation = await attestor.attest({ model, completionId, ...exchange }, report);
+        attested.push({ role: task.role, attestation });
+        return attestation;
+      };
+      return complete(client, attestor, record, model, task, config.apiKey.reveal());
     },
   };
 }
 
 async function complete<TOut>(
   client: OpenAI,
+  attestor: Attestor,
+  record: (completionId: string, report: ReportEvidence) => Promise<CallAttestation>,
   model: ModelId,
   task: InferenceTask<TOut>,
   apiKey: string,
@@ -32,11 +57,15 @@ async function complete<TOut>(
   ];
   const tools = task.tools.map(functionTool);
   const toolResults: { name: string; result: unknown }[] = [];
+  const attestation: CallAttestation[] = [];
   try {
+    // NEAR AI requires the report to be fetched before the completion it vouches for.
+    const report = await attestor.preflight(model);
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = { model, messages };
       if (tools.length > 0) params.tools = tools;
       const completion = await client.chat.completions.create(params);
+      attestation.push(await record(completion.id, report));
       const message = completion.choices[0]?.message;
       if (!message) return { ok: false, reason: "transport", detail: "near ai returned no message" };
       const calls = message.tool_calls ?? [];
@@ -63,7 +92,7 @@ async function complete<TOut>(
       const text = message.content ?? "";
       const value = task.parseOutput(text, toolResults);
       if (value === null) return { ok: false, reason: "unparseable-output", detail: "model output failed its check" };
-      return { ok: true, value, model };
+      return { ok: true, value, model, attestation };
     }
     return { ok: false, reason: "unparseable-output", detail: "model did not finish" };
   } catch (error) {

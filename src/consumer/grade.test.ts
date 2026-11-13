@@ -19,7 +19,7 @@ test("grade scores checks the way a buyer can recompute", () => {
 function answer(checks: readonly Check[]): Answer {
   const model = parseModelId("stub");
   if (!model) throw new Error("model");
-  return { text: "answer", checks, model, inference: "stub" };
+  return { text: "answer", checks, model, inference: "stub", attestation: [] };
 }
 
 function match(label: string): Check {

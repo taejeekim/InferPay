@@ -4,15 +4,18 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { z } from "zod";
 import type { ModelId } from "../domain.ts";
 
-export type UnverifiedReason =
-  | "report-unavailable"
-  | "report-unbound"
-  | "body-not-captured"
-  | "no-signature"
-  | "unsupported-signature"
-  | "hash-mismatch"
-  | "bad-signature"
-  | "signer-not-in-report";
+export const UNVERIFIED_REASONS = [
+  "report-unavailable",
+  "report-unbound",
+  "body-not-captured",
+  "no-signature",
+  "unsupported-signature",
+  "hash-mismatch",
+  "bad-signature",
+  "signer-not-in-report",
+] as const;
+
+export type UnverifiedReason = (typeof UNVERIFIED_REASONS)[number];
 
 // "verified" means: the model's TEE key signed MODEL:sha256(request):sha256(response) over the exact
 // bytes we sent and received, and that key is listed in a NEAR AI attestation report that echoed our
@@ -167,8 +170,8 @@ export function recoverSigner(text: string, signatureHex: string): string | null
 }
 
 export type Attestor = {
-  attest(call: CapturedCall): Promise<CallAttestation>;
   preflight(model: ModelId): Promise<ReportEvidence>;
+  attest(call: CapturedCall, report: ReportEvidence): Promise<CallAttestation>;
 };
 
 const SIGNATURE_TRIES = 4;
@@ -221,8 +224,7 @@ export function createAttestor(deps: { readonly baseUrl: string; readonly apiKey
 
   return {
     preflight,
-    async attest(call) {
-      const report = await preflight(call.model);
+    async attest(call, report) {
       if (!report.ok) return checkCall(call, report, { ok: false, detail: "skipped" });
       return checkCall(call, report, await fetchSignature(call.completionId));
     },

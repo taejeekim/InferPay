@@ -215,6 +215,7 @@ function normalize(question: string): string {
 export function createStubInference(): Inference {
   return {
     kind: "stub",
+    attested: () => [],
     async run(task) {
       const fixture = BY_QUESTION.get(normalize(task.input))?.tasks[task.name];
       if (fixture === undefined) return { ok: false, reason: "no-fixture", detail: unrecordedQuestion() };
@@ -230,7 +231,7 @@ export function createStubInference(): Inference {
       }
       const value = task.parseOutput(fixture.output, toolResults);
       if (value === null) return { ok: false, reason: "unparseable-output", detail: "output failed its check" };
-      return { ok: true, value, model: stubModel };
+      return { ok: true, value, model: stubModel, attestation: [] };
     },
   };
 }
