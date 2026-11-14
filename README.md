@@ -8,6 +8,8 @@ A buyer that cannot see the data needs another reason to believe the answer. The
 
 The dataset stays with its owner. The buyer learns only the facts it paid for.
 
+**Demo video:** [a two-minute run on X](https://x.com/kyle_kim_tg/status/2121472681682018709), posted for NEAR HACKATHON.
+
 ## Judges, start here
 
 1. **Open the page.** [taejeekim.github.io/InferPay](https://taejeekim.github.io/InferPay/) reads the live state from NEAR testnet in your browser: each specialist's dataset hash and reputation, each buyer bot's balance, and the latest on-chain ratings. Under "Verify a proof yourself", your browser recomputes one proof and compares it with the hash on chain. Press **Change covered to excluded** and the verdict turns to `FORGED`.

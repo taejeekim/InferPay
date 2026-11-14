@@ -5,7 +5,7 @@ import { grade, rateLines } from "./grade.js";
 import { canonical, entryKey, factKey, keyHash, leafHash, slotOf, verifyChecks, verifyFact, walk } from "./scheme.js";
 
 // Set this to the demo post's URL to show a link to it at the top of the page. Empty hides the link.
-const DEMO_URL = "";
+const DEMO_URL = "https://x.com/kyle_kim_tg/status/2121472681682018709";
 
 const EXPLORER = "https://testnet.nearblocks.io";
 const TX_HASH = /^[1-9A-HJ-NP-Za-km-z]{43,44}$/;
