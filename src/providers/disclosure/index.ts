@@ -1,7 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { parseAssertedChecks, type Figure } from "../../commitment/index.ts";
+import { catalogOf, parseAssertedChecks, type Figure } from "../../commitment/index.ts";
 import { crossValidate, parseClaims } from "./crossValidate.ts";
 import { loadFacts } from "./facts.ts";
 
@@ -50,6 +50,7 @@ export const disclosure: Provider = {
       "Answers questions about company filings and earnings releases. Every cited figure is checked against filed disclosures.",
   },
   commitment: () => loadFacts().commitment,
+  catalog: () => catalogOf(loadFacts().entries),
   fulfil(paid, deps) {
     return answerDisclosure(paid, deps.inference);
   },

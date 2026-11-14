@@ -4,7 +4,7 @@ import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
 import type { RatingPost } from "../registry/index.ts";
 import type { PinnedCommitment } from "../commitment/index.ts";
-import { assess } from "./assess.ts";
+import { assess, type Needs } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
 import { grade, tally } from "./grade.ts";
 import { verifyChecks, type BuyerCheck } from "./verify.ts";
@@ -12,9 +12,10 @@ import { runTask, type TaskOutcome, type TaskProgress } from "./task.ts";
 
 export { LOCAL_FLOOR } from "./decide.ts";
 export type { Decision, Option, PricedOption } from "./decide.ts";
+export type { Dropped, Needs } from "./assess.ts";
 
 export type Progress =
-  | { readonly step: "decide"; readonly decision: Decision }
+  | { readonly step: "decide"; readonly decision: Decision; readonly needs: Needs }
   | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly commitment: PinnedCommitment }
   | {
       readonly step: "rate";
@@ -59,7 +60,7 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       const decision = plan.kind === "counter"
         ? settleCounter(plan, await market.counter(plan.option.providerId, plan.offer))
         : plan;
-      onProgress?.({ step: "decide", decision });
+      onProgress?.({ step: "decide", decision, needs: assessed.needs });
       if (decision.kind === "answer-locally") return { kind: "local", text: decision.local.answer };
       if (decision.kind === "decline") return { kind: "declined" };
       const providerId = decision.option.providerId;
@@ -70,6 +71,7 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
           jobId: newJobId(),
           providerId,
           question,
+          needs: assessed.needs.byShop.get(providerId) ?? [],
           offer: decision.agreed,
           budget,
           payFrom: buyer.account,

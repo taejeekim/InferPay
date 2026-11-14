@@ -1,7 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { parseAssertedChecks } from "../../commitment/index.ts";
+import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { flagClauses, parseClauses } from "./flagClauses.ts";
 import { loadPlaybook } from "./playbook.ts";
 
@@ -46,6 +46,7 @@ export const legal: Provider = {
       "Reviews NDAs and drafts. Flags clauses that fail a private playbook the caller does not hold.",
   },
   commitment: () => loadPlaybook().commitment,
+  catalog: () => catalogOf(loadPlaybook().entries),
   fulfil(paid, deps) {
     return answerLegal(paid, deps.inference);
   },

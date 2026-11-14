@@ -1,5 +1,5 @@
 import { compareSameAsset, type AccountId, type CorrelationId, type IdempotencyKey, type IsoTime, type JobId, type Price, type ProviderId, type Stars } from "../domain.ts";
-import type { PinnedCommitment } from "../commitment/index.ts";
+import type { Need, PinnedCommitment } from "../commitment/index.ts";
 import type { Answer } from "../providers/types.ts";
 import type { PaymentReceipt, Transfer } from "../payment/index.ts";
 
@@ -7,6 +7,8 @@ export type Order = {
   readonly jobId: JobId;
   readonly providerId: ProviderId;
   readonly question: string;
+  // The keys the buyer requires the shop to open. A needed key with no verified opening counts against the shop.
+  readonly needs: readonly Need[];
   // What the buyer offers to pay. The shop charges this, or its list price when the offer is higher.
   readonly offer: Price;
   readonly budget: Price;

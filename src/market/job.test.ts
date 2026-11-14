@@ -156,6 +156,7 @@ function fixture() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure"), "provider"),
     question: "Does the filing match?",
+    needs: [],
     offer: price(quote),
     budget: price(budget),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near"), "payFrom"),

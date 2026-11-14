@@ -6,6 +6,7 @@ import { entryKey, type ClauseClaim, type Entry, type FactClaim, type FigureClai
 export { canonical, DEPTH, leafHash, parseHash, slotOf } from "./merkle.ts";
 export type { Hash, Path } from "./merkle.ts";
 export * from "./rules.ts";
+export * from "./needs.ts";
 
 export const SCHEME = "inferpay-keyed-merkle-sha256-v1";
 

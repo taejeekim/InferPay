@@ -15,7 +15,7 @@ import {
   parseJobId,
   type JobId,
 } from "../domain.ts";
-import { assertedCheckSchema, pinnedCommitmentSchema } from "../commitment/index.ts";
+import { assertedCheckSchema, needSchema, pinnedCommitmentSchema } from "../commitment/index.ts";
 import type { JobEvent } from "./job.ts";
 import { UNVERIFIED_REASONS, type CallAttestation } from "../inference/attest.ts";
 
@@ -110,6 +110,7 @@ const orderSchema = z.object({
   jobId: z.string(),
   providerId: z.string(),
   question: z.string(),
+  needs: z.array(needSchema),
   offer: priceSchema,
   budget: priceSchema,
   payFrom: z.string(),
@@ -228,6 +229,7 @@ function brandOrder(order: z.infer<typeof orderSchema>) {
     jobId: order.jobId,
     providerId: order.providerId,
     question: order.question,
+    needs: order.needs,
     offer,
     budget,
     payFrom: order.payFrom,

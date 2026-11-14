@@ -1,7 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
-import { parseAssertedChecks } from "../../commitment/index.ts";
+import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { lookupCoverage, parseFactClaims } from "./lookup.ts";
 import { loadCoverage } from "./schedule.ts";
 
@@ -49,6 +49,7 @@ export const insurance: Provider = {
       "Answers coverage questions from a private policy schedule the caller does not hold. Use for MRI, copay, and exclusions.",
   },
   commitment: () => loadCoverage().commitment,
+  catalog: () => catalogOf(loadCoverage().entries),
   fulfil(paid, deps) {
     return answerInsurance(paid, deps.inference);
   },

@@ -285,6 +285,7 @@ async function harness(
         owner: must(parseParentAccount("david.inferpay.near")),
         payTo: must(parseAccountId("disclosure.david.inferpay.near")),
         declared: provider.commitment(),
+        catalog: provider.catalog(),
       },
       floor: price("0.015"),
     }],
@@ -305,6 +306,7 @@ function sampleProvider(fulfil?: Provider["fulfil"]): Provider {
       routingHint: "filings",
     },
     commitment: sampleCommitment,
+    catalog: () => [],
     fulfil: fulfil ?? (async () => ({ ok: true, answer: sampleAnswer() })),
   };
 }
@@ -314,6 +316,7 @@ function sampleOrder() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure")),
     question: "Does the filing match?",
+    needs: [],
     offer: price("0.02"),
     budget: price("0.10"),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),

@@ -11,7 +11,7 @@ import type { Inference } from "../inference/index.ts";
 import type { PaymentRail, PaymentReceipt } from "../payment/index.ts";
 import type { Answer, PaidOrder } from "../providers/types.ts";
 import type { AccountId, IsoTime, Price } from "../domain.ts";
-import { canonical, type PinnedCommitment } from "../commitment/index.ts";
+import { canonical, type Need, type PinnedCommitment } from "../commitment/index.ts";
 import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
 import type { RatingPost, Registry } from "../registry/index.ts";
@@ -26,6 +26,7 @@ export type CompletedJob = Brand<
     readonly jobId: JobId;
     readonly providerId: ProviderId;
     readonly question: string;
+    readonly needs: readonly Need[];
     readonly payFrom: AccountId;
     readonly commitment: PinnedCommitment;
     readonly paid: PaymentReceipt;
@@ -126,8 +127,8 @@ export function createMarketplace(deps: {
     async listings() {
       const read = registry === null ? await fromLedger(ledger) : await fromRegistry(registry, providers);
       return providers.map(({ listing }) => {
-        const { id, name, specialty, routingHint, price, owner, payTo } = listing;
-        return { id, name, specialty, routingHint, price, owner, payTo, ...read(listing) };
+        const { id, name, specialty, routingHint, price, owner, payTo, catalog } = listing;
+        return { id, name, specialty, routingHint, price, owner, payTo, catalog, ...read(listing) };
       });
     },
 
@@ -372,6 +373,7 @@ function sameOrder(a: Order, b: Order): boolean {
   return a.jobId === b.jobId
     && a.providerId === b.providerId
     && a.question === b.question
+    && canonical(a.needs) === canonical(b.needs)
     && a.payFrom === b.payFrom
     && canonical(a.commitment) === canonical(b.commitment)
     && samePrice(a.offer, b.offer)
@@ -439,12 +441,12 @@ async function fulfilQuiet(
 }
 
 function paidOrder(state: Extract<JobState, { phase: "paid" }>): PaidOrder | null {
-  const value = { jobId: state.order.jobId, question: state.order.question, receipt: state.receipt };
+  const value = { jobId: state.order.jobId, question: state.order.question, needs: state.order.needs, receipt: state.receipt };
   if (!isPaidOrder(value)) return null;
   return value;
 }
 
-function isPaidOrder(value: { jobId: JobId; question: string; receipt: PaymentReceipt }): value is PaidOrder {
+function isPaidOrder(value: { jobId: JobId; question: string; needs: readonly Need[]; receipt: PaymentReceipt }): value is PaidOrder {
   return value.question.length > 0 && value.receipt.key.length > 0;
 }
 
@@ -454,6 +456,7 @@ function completedJob(state: JobState): CompletedJob | null {
     jobId: state.order.jobId,
     providerId: state.order.providerId,
     question: state.order.question,
+    needs: state.order.needs,
     payFrom: state.order.payFrom,
     commitment: state.order.commitment,
     paid: state.receipt,
@@ -468,6 +471,7 @@ function isCompletedJob(value: {
   jobId: JobId;
   providerId: ProviderId;
   question: string;
+  needs: readonly Need[];
   payFrom: AccountId;
   commitment: PinnedCommitment;
   paid: PaymentReceipt;

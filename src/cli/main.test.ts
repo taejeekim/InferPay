@@ -160,7 +160,6 @@ test("each recorded purchase at a 0.10 budget pays the covering shop its list pr
   const purchases: readonly (readonly [string, string, string])[] = [
     ["What was Samsung's Q3 2025 operating profit?", "disclosure", "0.02"],
     ["Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?", "disclosure", "0.02"],
-    ["What was Samsung's Q3 2025 capex?", "disclosure", "0.02"],
     ["Does this NDA's unlimited indemnification clause fail our playbook?", "legal", "0.03"],
     ["Does this policy cover an outpatient MRI?", "insurance", "0.02"],
     ["Does this policy cover cosmetic surgery?", "insurance", "0.02"],
@@ -283,11 +282,12 @@ test("a shop's net rises after a good rating and falls after a poor one", async 
     assert.match(second.out, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.80 = quality 0\.80 {2}net \+0\.060$/m);
   });
   await withDataDir(async (root) => {
-    const first = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
-    assert.match(first.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.70 = quality 0\.56 {2}net \+0\.036$/m);
-    assert.match(first.out, /^rate {6}3\/5 {2}\(1 claim the shop could not back; nothing verified in the answer's favour, so at most 3\)$/m);
-    const second = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
-    assert.match(second.out, /disclosure {2}ask 0\.02 {2}cover 0\.80 x rep 0\.63 = quality 0\.50 {2}net \+0\.030$/m);
+    const question = "What was Samsung's Q3 2025 operating profit?";
+    const first = await ask(root, question, "0.10", { INFERPAY_TEST_LIAR: "disclosure" });
+    assert.match(first.out, /disclosure {2}ask 0\.02 {2}cover 1\.00 x rep 0\.70 = quality 0\.70 {2}net \+0\.050$/m);
+    assert.match(first.out, /^rate {6}1\/5/m);
+    const second = await ask(root, question, "0.10");
+    assert.match(second.out, /disclosure {2}ask 0\.02 {2}cover 1\.00 x rep 0\.47 = quality 0\.47 {2}net \+0\.027$/m);
   });
 });
 
@@ -318,12 +318,13 @@ test("on the mock rail the buyer verifies each check against the listed root, an
   });
 });
 
-test("the buyer verifies that a shop holds no entry, and that a raised flag is about the clause in the question", async () => {
+test("a need outside the shop's catalog is dropped before any payment, and a raised flag is about the clause in the question", async () => {
   await withDataDir(async (root) => {
     const capex = await ask(root, "What was Samsung's Q3 2025 capex?", "0.10");
-    assert.match(capex.out, /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
-    assert.match(capex.out, /^ {10}verified {2}no entry {6}capex Q3 2025 {2}1\.0T KRW$/m);
-    assert.match(capex.out, /^ {20}the slot for this key in the shop's committed tree is empty: the shop holds nothing on it$/m);
+    assert.match(capex.out, /^decide {4}decline, pay nothing$/m);
+    assert.match(capex.out, /^ {10}dropped disclosure {2}Samsung Electronics \/ Q3 2025 \/ capex: not in its catalog$/m);
+    assert.match(capex.out, /disclosure {2}ask 0\.02 {2}cover 0\.00 x rep 0\.70/m);
+    assert.deepEqual(await jobFiles(root), []);
     const legal = await ask(root, "Does this NDA's unlimited indemnification clause fail our playbook?", "0.10");
     assert.match(legal.out, /^ {10}verified {2}raised {8}indemnity$/m);
     assert.match(legal.out, /^rate {6}5\/5$/m);
@@ -407,11 +408,11 @@ async function withDataDir(body: (root: string) => Promise<void>): Promise<void>
   }
 }
 
-async function ask(root: string, question: string, budget: string): Promise<{ code: number; out: string; err: string }> {
+async function ask(root: string, question: string, budget: string, env: NodeJS.ProcessEnv = {}): Promise<{ code: number; out: string; err: string }> {
   const stdout = capture(process.stdout);
   const stderr = capture(process.stderr);
   try {
-    const code = await main(["ask", question, "--budget", budget], { INFERPAY_DATA_DIR: root });
+    const code = await main(["ask", question, "--budget", budget], { ...env, INFERPAY_DATA_DIR: root });
     return { code, out: stdout.text(), err: stderr.text() };
   } finally {
     stdout.restore();

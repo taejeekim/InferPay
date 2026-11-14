@@ -9,6 +9,8 @@ import type { CallAttestation } from "../inference/attest.ts";
 import { resolveRoster } from "../roster.ts";
 import { attestLines, progressLine, railsLine, walletsTable } from "./render.ts";
 
+const NO_NEEDS = { byShop: new Map(), dropped: [] };
+
 test("when the shop is no better than the buyer, the decide block shows a reservation at or below zero", () => {
   const insurance = must(parseProviderId("insurance"));
   const plan = decide({
@@ -23,12 +25,13 @@ test("when the shop is no better than the buyer, the decide block shows a reserv
   });
   assert.ok(plan.kind !== "counter");
   assert.equal(
-    progressLine({ step: "decide", decision: plan }, "mock"),
+    progressLine({ step: "decide", decision: plan, needs: { byShop: new Map([[insurance, [{ kind: "fact", topic: "mri-copay" }]]]), dropped: [] } }, "mock"),
     [
       "decide    answer locally, pay nothing",
       "          value   0.10 NEAR, the budget: the most a right answer is worth",
       "          local   confidence 0.90 x value = worth 0.090 NEAR",
       "          missing the policy schedule; the copay table",
+      "          needs   insurance  mri-copay",
       "          option  insurance  ask 0.02  cover 1.00 x rep 0.70 = quality 0.70  net +0.050",
       "          rule    net = quality x value - ask; buy when net >= local worth: 0.050 < 0.090",
       "          rule    counter only when the reservation is above zero: (0.70 - 0.90) x 0.10 = -0.020 NEAR",
@@ -50,7 +53,7 @@ test("an amount finer than a thousandth prints up to six decimals", () => {
     listings: [{ id: insurance, price: near("0.02"), reputation: { kind: "unrated", completedJobs: 0 } }],
   });
   assert.ok(plan.kind !== "counter");
-  const block = progressLine({ step: "decide", decision: plan }, "mock");
+  const block = progressLine({ step: "decide", decision: plan, needs: NO_NEEDS }, "mock");
   assert.match(block, /^ {10}local {3}confidence 0\.20 x value = worth 0\.00866 NEAR$/m);
   assert.match(block, /^ {10}missing nothing$/m);
   assert.match(block, /net \+0\.01031$/m);

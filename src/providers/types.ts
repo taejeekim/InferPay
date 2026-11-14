@@ -3,7 +3,7 @@ import type { Brand } from "../domain.ts";
 import type { PaymentReceipt } from "../payment/index.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
-import type { AssertedCheck, Commitment } from "../commitment/index.ts";
+import type { AssertedCheck, CatalogItem, Commitment, Need } from "../commitment/index.ts";
 
 export type Answer = {
   readonly text: string;
@@ -29,12 +29,16 @@ export type ProviderListing = {
   readonly payTo: AccountId;
   // The shop's own statement of its root. A buyer on a chain rail reads the root from chain instead.
   readonly declared: Commitment;
+  // The keys the shop holds entries for, without their values. A buyer may name only these as needs.
+  readonly catalog: readonly CatalogItem[];
 };
 
 export type PaidOrder = Brand<
   {
     readonly jobId: JobId;
     readonly question: string;
+    // The keys the buyer requires opened in the answer.
+    readonly needs: readonly Need[];
     readonly receipt: PaymentReceipt;
   },
   "PaidOrder"
@@ -48,7 +52,8 @@ export interface Provider {
   readonly quoteNear: DecimalAmount;
   // The lowest price the shop accepts. It stays out of the listing, so a buyer learns it only by making an offer.
   readonly floorNear: DecimalAmount;
-  readonly describe: Omit<ProviderListing, "price" | "owner" | "payTo" | "declared">;
+  readonly describe: Omit<ProviderListing, "price" | "owner" | "payTo" | "declared" | "catalog">;
   commitment(): Commitment;
+  catalog(): readonly CatalogItem[];
   fulfil(paid: PaidOrder, deps: { readonly inference: Inference }): Promise<Fulfilment>;
 }

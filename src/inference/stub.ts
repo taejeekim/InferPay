@@ -21,6 +21,7 @@ function assessment(report: {
   readonly confidence: number;
   readonly missing: readonly string[];
   readonly coverage: { readonly [providerId: string]: number };
+  readonly needs: { readonly [providerId: string]: readonly { readonly key: string; readonly clause?: string }[] };
 }): Fixture {
   return { output: JSON.stringify(report), toolCalls: [] };
 }
@@ -62,6 +63,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.3,
         missing: ["the operating profit Samsung filed for Q3 2025"],
         coverage: { disclosure: 1 },
+        needs: { disclosure: [{ key: "Samsung Electronics / Q3 2025 / operating profit" }] },
       }),
       "disclosure.answer": SAMSUNG_OPERATING_PROFIT,
     },
@@ -74,6 +76,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.1,
         missing: ["the earnings release figure", "the quarterly report figure"],
         coverage: { disclosure: 1 },
+        needs: { disclosure: [{ key: "Samsung Electronics / Q3 2025 / operating profit" }] },
       }),
       "disclosure.answer": SAMSUNG_OPERATING_PROFIT,
     },
@@ -81,12 +84,14 @@ const RECORDINGS: readonly Recording[] = [
   {
     question: "What was Samsung's Q3 2025 capex?",
     tasks: {
-      // The buyer cannot see that the shop holds no capex figure, so it expects most of the answer to be covered.
+      // The model names a capex figure the shop's catalog does not list. Code drops that need, so the buyer does
+      // not pay for an answer the shop cannot give.
       "consumer.assess": assessment({
         answer: "I do not know Samsung's Q3 2025 capex.",
         confidence: 0.15,
         missing: ["the capex Samsung filed for Q3 2025"],
         coverage: { disclosure: 0.8 },
+        needs: { disclosure: [{ key: "Samsung Electronics / Q3 2025 / capex" }] },
       }),
       "disclosure.answer": {
         output: "Samsung Electronics Q3 2025 capex is not in the filed figures this provider holds.",
@@ -114,6 +119,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.55,
         missing: ["the revenue Samsung filed for Q3 2025"],
         coverage: { disclosure: 1 },
+        needs: { disclosure: [{ key: "Samsung Electronics / Q3 2025 / revenue" }] },
       }),
       "disclosure.answer": {
         output: "Samsung Electronics reported Q3 2025 revenue of KRW 86.1T.",
@@ -141,6 +147,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.1,
         missing: ["the playbook's position on indemnification"],
         coverage: { legal: 1 },
+        needs: { legal: [{ key: "uncapped-indemnity", clause: "unlimited indemnification clause" }] },
       }),
       "legal.answer": {
         output: "The unlimited indemnification clause fails the playbook.",
@@ -165,6 +172,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.2,
         missing: ["this policy's schedule of covered procedures"],
         coverage: { insurance: 1 },
+        needs: { insurance: [{ key: "outpatient-mri" }] },
       }),
       "insurance.answer": {
         output: "Outpatient MRI is covered at a 20 percent copay.",
@@ -183,6 +191,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.35,
         missing: ["this policy's exclusions"],
         coverage: { insurance: 1 },
+        needs: { insurance: [{ key: "cosmetic-surgery" }] },
       }),
       "insurance.answer": {
         output: "Cosmetic surgery is excluded under this policy.",
@@ -201,6 +210,7 @@ const RECORDINGS: readonly Recording[] = [
         confidence: 0.99,
         missing: [],
         coverage: {},
+        needs: {},
       }),
     },
   },

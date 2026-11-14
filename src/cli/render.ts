@@ -1,10 +1,11 @@
 import type { ConfigError } from "../config.ts";
 import { formatUnits, toUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
-import { LOCAL_FLOOR, type Decision, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
+import { LOCAL_FLOOR, type Decision, type Needs, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
 import type { FailReason, JobView, Listing } from "../market/index.ts";
 import {
   canonical,
+  catalogName,
   entryKey,
   leafHash,
   slotOf,
@@ -12,6 +13,7 @@ import {
   type Evidence,
   type Hash,
   type Key,
+  type Need,
   type PinnedCommitment,
 } from "../commitment/index.ts";
 import type { PaymentRail } from "../payment/index.ts";
@@ -37,7 +39,7 @@ export function liarLine(shop: string): string {
 export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
   switch (progress.step) {
     case "decide":
-      return decideBlock(progress.decision);
+      return decideBlock(progress.decision, progress.needs);
     case "pay":
       return payBlock(progress, rail);
     case "answer":
@@ -94,6 +96,8 @@ export function providersTable(listings: readonly Listing[], rail: PaymentRail["
       ? `each root is from the shop's listing, ${noChain}`
       : `each root is on NEAR testnet under <shop>/inferpay/commitment in SocialDB ${chain}`),
     ...listings.map((listing) => footer("", `${listing.id.padEnd(idWidth)}${listedRoot(listing.commitment)}`)),
+    footer("catalog", "the keys each shop holds an entry for, without their values; a buyer may require only these opened"),
+    ...listings.map((listing) => footer("", `${listing.id.padEnd(idWidth)}${listing.catalog.map(catalogName).join("; ")}`)),
   ].join("\n");
 }
 
@@ -114,6 +118,7 @@ export function jobText(view: JobView): string {
         return [
           `${label}${time}  ${event.order.providerId}  quote ${event.quote.amount} ${event.quote.symbol}  budget ${event.order.budget.amount} ${event.order.budget.symbol}  ${event.order.payFrom} -> ${event.payTo}`,
           ...pinnedRows(event.order.commitment).map(under),
+          under(`needs      ${event.order.needs.length === 0 ? "none" : event.order.needs.map(needText).join("; ")}`),
         ].join("\n");
       case "payment-intended":
         return `${label}${time}  key ${event.key}`;
@@ -238,7 +243,7 @@ function roleLabel(role: ForestRow["role"]): string {
   }
 }
 
-function decideBlock(decision: Decision): string {
+function decideBlock(decision: Decision, needs: Needs): string {
   const { value, local } = decision;
   const idWidth = decision.options.reduce((max, option) => Math.max(max, option.providerId.length), 0) + 2;
   return [
@@ -246,9 +251,26 @@ function decideBlock(decision: Decision): string {
     field("value", `${money(value)}, the budget: the most a right answer is worth`),
     field("local", `confidence ${share(local.confidence)} x value = worth ${near(local.worth)} ${value.symbol}`),
     field("missing", local.missing.length === 0 ? "nothing" : local.missing.join("; ")),
+    ...needsRows(needs, idWidth),
     ...decision.options.map((option) => field("option", optionText(option, idWidth, value))),
     ...ruleRows(decision),
   ].join("\n");
+}
+
+// The keys the buyer will require each shop to open, from that shop's catalog. A shop with none covers nothing.
+function needsRows(needs: Needs, idWidth: number): string[] {
+  const rows = [...needs.byShop].map(([shop, list]) => field("needs", `${shop.padEnd(idWidth)}${list.map(needText).join("; ")}`));
+  if (rows.length === 0) rows.push(field("needs", "no key from any shop's catalog"));
+  for (const drop of needs.dropped) {
+    const why = drop.why === "not-in-catalog" ? "not in its catalog" : "no clause quoted from the question";
+    rows.push(field("dropped", `${drop.shop.padEnd(idWidth)}${drop.key}: ${why}`));
+  }
+  if (needs.dropped.length > 0) rows.push(field("", "a dropped key is never ordered, and a shop left with no needed key counts as cover 0"));
+  return rows;
+}
+
+export function needText(need: Need): string {
+  return need.kind === "rule" ? `${need.id} on "${need.clause}"` : catalogName(need);
 }
 
 function headline(decision: Decision): string {

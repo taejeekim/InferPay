@@ -40,6 +40,7 @@ export function bindProviders(
         owner: seat.parent,
         payTo: seat.account,
         declared: provider.commitment(),
+        catalog: provider.catalog(),
       },
       floor: { asset: near.asset, symbol: near.symbol, amount: provider.floorNear },
     });
