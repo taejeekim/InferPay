@@ -188,8 +188,10 @@ function apply(state: JobState, event: JobEvent): JobState | null {
       if (toUnits(event.payout.amount.amount) === 0n) return { phase: "settled", ...next, settlement: { kind: "unpaid" } };
       return { phase: "payable", ...next };
     }
+    // A rejected transfer never landed, so a resume may try again under a fresh key: the shop delivered and the
+    // buyer verified, and stopping for good would leave an earned payout unpaid.
     case "payment-intended":
-      if (state.phase !== "payable") return null;
+      if (state.phase !== "payable" && state.phase !== "payment-rejected") return null;
       return { phase: "paying", ...decided(state), key: event.key, correlationId: null };
     case "payment-pending":
       if (state.phase !== "paying") return null;

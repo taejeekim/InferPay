@@ -102,6 +102,32 @@ test("a partial payout transfers only its share of the agreed price", async () =
   }
 });
 
+test("a rejected transfer after delivery stops the run, and a resume pays under a fresh key without asking the shop again", async () => {
+  let asked = 0;
+  const { deps, order, root } = await harness("none", async () => {
+    asked += 1;
+    return { ok: true, answer: sampleAnswer() };
+  });
+  try {
+    let refuse = true;
+    const rail = { ...deps.rail, settle: async (transfer: Parameters<typeof deps.rail.settle>[0]) => (refuse ? { kind: "rejected" as const, reason: "no saved key" } : deps.rail.settle(transfer)) };
+    const market = createMarketplace({ ...deps, rail });
+    const first = await market.hire(order);
+    assert.deepEqual(first, { kind: "failed", jobId: order.jobId, reason: { kind: "payment-rejected", reason: "no saved key" } });
+    const again = await market.hire(order);
+    assert.equal(again.kind, "failed", "a resume retries once and stops while the rail still refuses");
+    refuse = false;
+    const paid = await market.hire(order);
+    assert.ok(paid.kind === "settled");
+    assert.equal(paidOf(paid.job).amount.amount, "0.02");
+    assert.equal(asked, 1);
+    const types = (await market.job(order.jobId))?.events.map((event) => event.type);
+    assert.deepEqual(types, ["opened", "delivered", "payout-decided", "payment-intended", "payment-rejected", "payment-intended", "payment-rejected", "payment-intended", "payment-settled"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("an uncertain transfer settles on resume with the same key", async () => {
   const { market, order, root } = await harness("uncertain-once");
   try {

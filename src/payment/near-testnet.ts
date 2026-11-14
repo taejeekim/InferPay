@@ -27,7 +27,8 @@ export type TestnetRailDeps = Omit<OutboxDeps, "onCrash" | "chain"> & {
 };
 
 // A native transfer burns 0.446 TGas under the current protocol fees: two receipt creations and one transfer action.
-const TRANSFER_GAS = 500_000_000_000n;
+// The bound allows twice that, so a rise in the gas price while the job runs stays inside the reserve.
+const TRANSFER_GAS = 1_000_000_000_000n;
 
 
 // The idempotency key is the outbox key, so a retried settle can never move NEAR twice.

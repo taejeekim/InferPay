@@ -260,6 +260,8 @@ export function createMarketplace(deps: {
     }
 
     let transfer: "called" | "skipped" | "none" = "skipped";
+    // Only a resume retries a rejected transfer, once, so a run never loops on a rail that keeps refusing.
+    let retryRejected = phaseOf(events) === "payment-rejected";
     for (let step = 0; step < HIRE_STEPS; step += 1) {
       const folded = fold(events);
       if (!folded.ok) return fail(order.jobId, { kind: "corrupt-ledger", jobId: order.jobId, detail: folded.corrupt });
@@ -337,6 +339,11 @@ export function createMarketplace(deps: {
           return { kind: "settled", job: settledJob(state), transfer: state.settlement.kind === "unpaid" ? "none" : transfer };
         }
         case "stop":
+          if (effect.reason.kind === "payment-rejected" && retryRejected) {
+            retryRejected = false;
+            events = await commit(order.jobId, { type: "payment-intended", at: clock(), key: rail.mintKey() });
+            break;
+          }
           if (effect.reason.kind === "payment-rejected") {
             return fail(order.jobId, { kind: "payment-rejected", reason: effect.reason.reason });
           }
@@ -383,6 +390,11 @@ export function createMarketplace(deps: {
 
 function fail(jobId: JobId, reason: FailReason): HireOutcome {
   return { kind: "failed", jobId, reason };
+}
+
+function phaseOf(events: readonly JobEvent[]): JobState["phase"] | null {
+  const folded = fold(events);
+  return folded.ok ? folded.state.phase : null;
 }
 
 function openedProgress(order: Order, quote: Price, payTo: AccountId, resumed: boolean): MarketProgress {

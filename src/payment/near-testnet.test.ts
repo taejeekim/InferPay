@@ -216,7 +216,7 @@ function must<T>(value: T | null): T {
   return value;
 }
 
-test("the payment fee bound is a transfer's gas at the current price plus a tenth", async () => {
+test("the payment fee bound is twice a transfer's gas at the current price plus a tenth", async () => {
   const { rail } = await railOn(fakeChain());
-  assert.equal(await rail.paymentFeeBound(), 55_000_000_000_000_000_000n);
+  assert.equal(await rail.paymentFeeBound(), 110_000_000_000_000_000_000n);
 });
