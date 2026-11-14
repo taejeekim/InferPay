@@ -259,3 +259,7 @@ fieldset .hint { margin: 0.5rem 0 0; }
 @media (prefers-reduced-motion: reduce) {
   .verdict { transition: none; }
 }
+.calc fieldset.needs { display: block; }
+.calc fieldset.needs legend { font-size: 0.85rem; color: var(--muted); padding: 0 0.25rem; }
+#c-needs { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; }
+#c-needs label.check { display: inline-flex; align-items: baseline; gap: 0.35rem; margin: 0; font-size: 0.85rem; color: var(--text); overflow-wrap: anywhere; }

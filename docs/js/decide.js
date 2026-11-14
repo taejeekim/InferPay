@@ -42,8 +42,10 @@ function order(a, b) {
   return 0;
 }
 
-// value and each ask are decimal strings; confidence and coverage are whole percents.
-export function decide({ value, confidence, missing = [], coverage, listings }) {
+// value and each ask are decimal strings; confidence and coverage are whole percents. needs maps a shop to the
+// keys from its catalog the question needs. As in src/consumer/assess.ts, a shop with no
+// needed key covers nothing, whatever coverage says.
+export function decide({ value, confidence, missing = [], coverage, needs = {}, listings }) {
   const valueUnits = toUnits(value);
   const worth = portion(confidence, valueUnits);
   const priced = [];
@@ -53,7 +55,7 @@ export function decide({ value, confidence, missing = [], coverage, listings }) 
       unaffordable.push({ kind: "unaffordable", providerId: listing.id, ask: listing.price });
       continue;
     }
-    const cover = coverage[listing.id] ?? 0;
+    const cover = (needs[listing.id]?.length ?? 0) > 0 ? coverage[listing.id] ?? 0 : 0;
     const reputation = reputationQuality(listing.reputation);
     const quality = Math.round((cover * reputation) / 100);
     const gross = portion(quality, valueUnits);
@@ -168,8 +170,23 @@ function ruleRows(decision) {
   }
 }
 
-// The decide block the CLI prints, line for line.
-export function decideLines(decision) {
+// A catalog key as the CLI names it, with the clause a rule is to be tested against.
+export function needText(need) {
+  if (need.kind === "figure") return `${need.company} / ${need.period} / ${need.metric}`;
+  if (need.kind === "fact") return need.topic;
+  return need.clause === undefined ? need.id : `${need.id} on "${need.clause}"`;
+}
+
+function needsRows(needs, idWidth) {
+  const rows = Object.entries(needs)
+    .filter(([, list]) => list.length > 0)
+    .map(([shop, list]) => field("needs", `${shop.padEnd(idWidth)}${list.map(needText).join("; ")}`));
+  if (rows.length === 0) rows.push(field("needs", "no key from any shop's catalog"));
+  return rows;
+}
+
+// The decide block the CLI prints, line for line, for needs the buyer picked from each catalog.
+export function decideLines(decision, needs) {
   const { value, local } = decision;
   const idWidth = decision.options.reduce((max, option) => Math.max(max, option.providerId.length), 0) + 2;
   return [
@@ -177,6 +194,7 @@ export function decideLines(decision) {
     field("value", `${value} NEAR, the budget: the most a right answer is worth`),
     field("local", `confidence ${share(local.confidence)} x value = worth ${near(local.worth)} NEAR`),
     field("missing", local.missing.length === 0 ? "nothing" : local.missing.join("; ")),
+    ...needsRows(needs, idWidth),
     ...decision.options.map((option) => field("option", optionText(option, idWidth, value))),
     ...ruleRows(decision),
   ];

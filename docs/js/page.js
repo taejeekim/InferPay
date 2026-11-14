@@ -1,5 +1,5 @@
 import { DEFAULT_ROOT, formatNear, readState, rosterOf } from "./chain.js";
-import { decide, decideLines, isDecimal, reputationQuality, replyOf, settleCounter } from "./decide.js";
+import { decide, decideLines, isDecimal, needText, reputationQuality, replyOf, settleCounter } from "./decide.js";
 import evidence from "./evidence.js";
 import { canonical, entryKey, factKey, keyHash, leafHash, slotOf, verifyFact, walk } from "./scheme.js";
 
@@ -352,12 +352,33 @@ Promise.all([slotOf(entryKey(honest.entry)), leafHash(honest.entry, honest.salt)
 
 
 const PRESETS = {
-  list: { shop: "insurance", budget: "0.10", confidence: "0.20", coverage: "1.00", average: "", count: "0", ask: "0.02", floor: "0.012", missing: "this policy's schedule of covered procedures" },
-  accepted: { shop: "insurance", budget: "0.03", confidence: "0.20", coverage: "1.00", average: "5", count: "1", ask: "0.02", floor: "0.012", missing: "this policy's schedule of covered procedures" },
-  refused: { shop: "disclosure", budget: "0.10", confidence: "0.55", coverage: "1.00", average: "", count: "0", ask: "0.02", floor: "0.018", missing: "the revenue Samsung filed for Q3 2025" },
-  decline: { shop: "disclosure", budget: "0.10", confidence: "0.45", coverage: "1.00", average: "3", count: "3", ask: "0.02", floor: "0.018", missing: "the revenue Samsung filed for Q3 2025" },
-  local: { shop: "insurance", budget: "0.10", confidence: "0.99", coverage: "0.00", average: "5", count: "1", ask: "0.02", floor: "0.012", missing: "" },
+  list: { shop: "insurance", budget: "0.10", confidence: "0.20", coverage: "1.00", average: "", count: "0", ask: "0.02", floor: "0.012", missing: "this policy's schedule of covered procedures", needs: ["outpatient-mri", "mri-copay"] },
+  accepted: { shop: "insurance", budget: "0.03", confidence: "0.20", coverage: "1.00", average: "5", count: "1", ask: "0.02", floor: "0.012", missing: "this policy's schedule of covered procedures", needs: ["outpatient-mri", "mri-copay"] },
+  refused: { shop: "disclosure", budget: "0.10", confidence: "0.55", coverage: "1.00", average: "", count: "0", ask: "0.02", floor: "0.018", missing: "the revenue Samsung filed for Q3 2025", needs: ["Samsung Electronics / Q3 2025 / revenue"] },
+  decline: { shop: "disclosure", budget: "0.10", confidence: "0.45", coverage: "1.00", average: "3", count: "3", ask: "0.02", floor: "0.018", missing: "the revenue Samsung filed for Q3 2025", needs: ["Samsung Electronics / Q3 2025 / revenue"] },
+  local: { shop: "insurance", budget: "0.10", confidence: "0.99", coverage: "0.00", average: "5", count: "1", ask: "0.02", floor: "0.012", missing: "", needs: [] },
 };
+// A rule is tested against a clause quoted from the question, so each rule carries the clause from a recorded question.
+const CLAUSES = { "uncapped-indemnity": "unlimited indemnification clause", "perpetual-nda": "three-year confidentiality term" };
+
+function catalogNeeds(shop) {
+  return (evidence.catalogs[shop] ?? []).map((item) => (item.kind === "rule" ? { ...item, clause: CLAUSES[item.id] } : item));
+}
+
+function renderNeeds(shop, checked) {
+  const boxes = catalogNeeds(shop).map((need, index) => {
+    const id = `c-need-${index}`;
+    return h("label", { class: "check", for: id },
+      h("input", { type: "checkbox", id, "data-need": String(index), checked: checked.includes(needText({ ...need, clause: undefined })) }),
+      " ", h("span", { class: "mono" }, needText(need)));
+  });
+  $("c-needs").replaceChildren(...boxes);
+}
+
+function checkedNeeds(shop) {
+  const all = catalogNeeds(shop);
+  return [...$("c-needs").querySelectorAll("input:checked")].map((box) => all[Number(box.dataset.need)]);
+}
 const FIELDS = ["shop", "budget", "confidence", "coverage", "average", "count", "ask", "floor"];
 let missing = PRESETS.list.missing;
 
@@ -402,15 +423,17 @@ function runCalc() {
     $("calc-out").textContent = "";
     return;
   }
+  const needs = { [input.shop]: checkedNeeds(input.shop) };
   const plan = decide({
     value: input.value,
     confidence: input.confidence,
     missing: missing === "" ? [] : [missing],
     coverage: { [input.shop]: input.coverage },
+    needs,
     listings: [{ id: input.shop, price: input.ask, reputation: input.reputation }],
   });
   const decision = plan.kind === "counter" ? settleCounter(plan, replyOf(plan.offer, input.floor)) : plan;
-  $("calc-out").textContent = decideLines(decision).join("\n");
+  $("calc-out").textContent = decideLines(decision, needs).join("\n");
   outcome.className = "outcome";
   const refused = decision.because?.kind === "counter-refused";
   outcome.textContent = decision.kind === "buy"
@@ -425,6 +448,7 @@ function runCalc() {
 function loadPreset(name) {
   const preset = PRESETS[name];
   for (const field of FIELDS) $(`c-${field}`).value = preset[field];
+  renderNeeds(preset.shop, preset.needs);
   missing = preset.missing;
   for (const button of document.querySelectorAll("#presets button")) button.setAttribute("aria-pressed", String(button.dataset.preset === name));
   delete $("c-live-note").dataset.live;
@@ -432,7 +456,8 @@ function loadPreset(name) {
 }
 
 for (const button of document.querySelectorAll("#presets button")) button.addEventListener("click", () => loadPreset(button.dataset.preset));
-$("calc").addEventListener("input", () => {
+$("calc").addEventListener("input", (event) => {
+  if (event.target.id === "c-shop") renderNeeds(event.target.value, []);
   for (const button of document.querySelectorAll("#presets button")) button.setAttribute("aria-pressed", "false");
   delete $("c-live-note").dataset.live;
   runCalc();

@@ -6,6 +6,57 @@ export default {
     "root": "d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f",
     "leaves": 3
   },
+  "catalogs": {
+    "insurance": [
+      {
+        "kind": "fact",
+        "topic": "outpatient-mri"
+      },
+      {
+        "kind": "fact",
+        "topic": "cosmetic-surgery"
+      },
+      {
+        "kind": "fact",
+        "topic": "mri-copay"
+      }
+    ],
+    "disclosure": [
+      {
+        "kind": "figure",
+        "company": "Samsung Electronics",
+        "period": "Q3 2025",
+        "metric": "operating profit"
+      },
+      {
+        "kind": "figure",
+        "company": "Samsung Electronics",
+        "period": "Q3 2025",
+        "metric": "revenue"
+      }
+    ],
+    "legal": [
+      {
+        "kind": "rule",
+        "id": "uncapped-indemnity"
+      },
+      {
+        "kind": "rule",
+        "id": "perpetual-nda"
+      }
+    ]
+  },
+  "question": "Is an outpatient MRI covered under this policy, and what copay do I pay?",
+  "needs": [
+    {
+      "kind": "fact",
+      "topic": "outpatient-mri"
+    },
+    {
+      "kind": "fact",
+      "topic": "mri-copay"
+    }
+  ],
   "present": {
     "kind": "fact",
     "claim": {
@@ -54,6 +105,58 @@ export default {
         null,
         null,
         "8e40665dd381bd01781149ce8b210ddc7ea07112aee780e879a58e2bc7369b64",
+        null
+      ]
+    }
+  },
+  "copay": {
+    "kind": "fact",
+    "claim": {
+      "label": "MRI copay",
+      "topic": "mri-copay",
+      "claimed": "20"
+    },
+    "verdict": "match",
+    "evidence": {
+      "entry": {
+        "kind": "fact",
+        "topic": "mri-copay",
+        "value": "20",
+        "source": "Policy schedule §4.2. Outpatient MRI copay is 20 percent."
+      },
+      "salt": "5a927035662b4f89f4742c4b089283dae6b093d223f4064234f412d8b9abbb6a",
+      "path": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "5323d542af2b947d201fb0b1582d43dbb8d0a1bf546b9c2ca11c7fc098479438",
+        null,
+        null,
+        null,
+        "4f1c9d36919a68103d82544c9a7b031a30ea3272b46787aad2ce4980eb817868",
         null
       ]
     }

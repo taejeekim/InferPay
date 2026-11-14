@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { factKey, sealDataset, type Dataset, type Entry, type Fact, type Hash } from "../commitment/index.ts";
+import { catalogOf, factKey, sealDataset, type Dataset, type Entry, type Fact, type Hash } from "../commitment/index.ts";
 
 type Row = { readonly salt: Hash } & { readonly [field: string]: unknown };
 
@@ -24,21 +24,40 @@ export function sampleDatasets() {
 
 const ABSENT_TOPIC = "dental-implants";
 
-// One check the insurance shop proves with an entry, and one it proves it holds nothing for.
+// One question the insurance shop answered, the keys the buyer needed for it, and three checks the shop sent: one
+// for each needed key, and one about a key the buyer did not ask for, which the shop proves it holds nothing for.
+// The catalogs let the page's calculator offer only keys a shop lists, as the buyer's assessment does.
 export function siteEvidence() {
-  const insurance = sampleDatasets().insurance;
-  const mri = insurance.entries.find((entry) => entry.topic === "outpatient-mri");
-  if (!mri) throw new Error("the insurance sample has no outpatient-mri entry");
+  const datasets = sampleDatasets();
+  const insurance = datasets.insurance;
+  const proved = (topic: string) => {
+    const entry = insurance.entries.find((item) => item.topic === topic);
+    if (!entry) throw new Error(`the insurance sample has no ${topic} entry`);
+    return { ...insurance.prove(entry), entry };
+  };
   const vacancy = insurance.proveAbsent(factKey({ topic: ABSENT_TOPIC }));
   if (!vacancy) throw new Error(`another entry sits in the slot of ${ABSENT_TOPIC}`);
   return {
     shop: "insurance",
     commitment: insurance.commitment,
+    catalogs: {
+      insurance: catalogOf(insurance.entries),
+      disclosure: catalogOf(datasets.disclosure.entries),
+      legal: catalogOf(datasets.legal.entries),
+    },
+    question: "Is an outpatient MRI covered under this policy, and what copay do I pay?",
+    needs: [{ kind: "fact", topic: "outpatient-mri" }, { kind: "fact", topic: "mri-copay" }],
     present: {
       kind: "fact",
       claim: { label: "outpatient MRI", topic: "outpatient-mri", claimed: "covered" },
       verdict: "match",
-      evidence: { ...insurance.prove(mri), entry: mri },
+      evidence: proved("outpatient-mri"),
+    },
+    copay: {
+      kind: "fact",
+      claim: { label: "MRI copay", topic: "mri-copay", claimed: "20" },
+      verdict: "match",
+      evidence: proved("mri-copay"),
     },
     absent: {
       kind: "fact",

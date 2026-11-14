@@ -162,6 +162,7 @@
       <select id="c-shop"><option>insurance</option><option>disclosure</option><option>legal</option></select></div>
     <div class="field"><label for="c-budget">Budget, NEAR</label><input id="c-budget" inputmode="decimal" class="mono"></div>
     <div class="field"><label for="c-confidence">Buyer's confidence, 0 to 1</label><input id="c-confidence" inputmode="decimal" class="mono"></div>
+    <fieldset class="field wide needs"><legend>Keys the question needs from this shop's catalog</legend><div id="c-needs"></div></fieldset>
     <div class="field"><label for="c-coverage">Shop's coverage, 0 to 1</label><input id="c-coverage" inputmode="decimal" class="mono"></div>
     <div class="field"><label for="c-average">Average stars, 1 to 5</label><input id="c-average" inputmode="decimal" class="mono" placeholder="unrated"></div>
     <div class="field"><label for="c-count">Number of ratings</label><input id="c-count" inputmode="numeric" class="mono"></div>
@@ -171,7 +172,7 @@
   </form>
   <p id="calc-outcome" class="outcome" role="status"></p>
   <pre id="calc-out" class="terminal" tabindex="0" aria-label="Decide block"></pre>
-  <p class="hint">Confidence and coverage come from the buyer's model call in a real run; here you set them. Reputation with no ratings is the prior, 0.70, which counts as two ratings. A shop accepts any counter-offer at or above its floor.</p>
+  <p class="hint">Confidence, coverage, and the needed keys come from the buyer's model call in a real run; here you set them. The buyer may name only keys the shop lists in its catalog, and the CLI drops any other key it names. A shop with no needed key counts as coverage 0, whatever the coverage field says. If the buyer buys, the shop must open every needed key. Reputation with no ratings is the prior, 0.70, which counts as two ratings. A shop accepts any counter-offer at or above its floor.</p>
 </section>
 
 <section id="run" class="wrap" aria-labelledby="run-title">
