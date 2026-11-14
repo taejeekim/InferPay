@@ -378,7 +378,7 @@ test("a shop with nothing on chain has only its word, so the key it was paid to 
     assert.match(text, /^ {10}unproven {4}match {9}outpatient MRI {2}covered$/m);
     assert.match(text, /^ {10}WITHHELD {18}outpatient-mri$/m);
     assert.match(text, /^ {10}root {6}none: insurance\.ban\.inferpay\.testnet has published no commitment in SocialDB v1\.social08\.testnet$/m);
-    assert.match(text, /^rate {6}2\/5 /m);
+    assert.match(text, /^rate {6}3\/5 /m);
   });
 });
 

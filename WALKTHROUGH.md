@@ -25,7 +25,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRT72S8706R40ZMRH53X
+          job     job_01M7BY0X6W2NPHNRS9HMS11ZFD
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
@@ -35,8 +35,8 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
 rate      5/5  = 5
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 ```
 
@@ -92,7 +92,7 @@ pay       settled  0.018 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRV7E801H8JEBMPA6M5Z
+          job     job_01M7BY0X7YHP3DYZ8PTK4CVDMA
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
@@ -102,8 +102,8 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
 rate      5/5  = 5
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 ```
 
@@ -157,7 +157,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRW25W927HKM77FJWACN
+          job     job_01M7BY0X8QDCWM6ACPVXX2JZTS
 answer    Outpatient MRI is covered with a 10 percent copay.
 checks    2 of 2 needed keys opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
@@ -169,8 +169,8 @@ checks    2 of 2 needed keys opened and verified against the shop's committed ro
 rate      4/5  = 5 - 1 x 1 mismatch = 4
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 ```
 
@@ -198,7 +198,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRWV4F3EYN64X1RS2FY2
+          job     job_01M7BY0X9F81R8FVGQQF1KRQ95
 hook      insurance forged 1 check; the buyer should mark it FORGED and rate insurance 1/5
 answer    Outpatient MRI is covered with a 10 percent copay.
 checks    1 of 2 needed keys opened and verified against the shop's committed root, 1 WITHHELD, 1 FORGED
@@ -213,8 +213,8 @@ checks    1 of 2 needed keys opened and verified against the shop's committed ro
 rate      1/5  forged evidence sets the rating to 1
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 ```
 
@@ -242,7 +242,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRXKQDTYXJBKC9KZNYA4
+          job     job_01M7BY0XA6NS8AFD8G161VF9HV
 hook      insurance dropped 1 check; the buyer should mark each needed key it dropped WITHHELD
 answer    Outpatient MRI is covered with a 10 percent copay.
 checks    1 of 2 needed keys opened and verified against the shop's committed root, 1 WITHHELD
@@ -255,8 +255,8 @@ checks    1 of 2 needed keys opened and verified against the shop's committed ro
 rate      3/5  = 5 - 2 x 1 withheld = 3
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 ```
 
@@ -312,7 +312,7 @@ pay       settled  0.024 NEAR
           from    researcher.kyle.inferpay.testnet
           to      legal.stella.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRYG33H02DE08SN4QT1C
+          job     job_01M7BY0XB0511WGSBCMSAN80C0
 answer    The unlimited indemnification clause fails the playbook.
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    raised        indemnity
@@ -322,8 +322,8 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
 rate      5/5  = 5
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 unspent   0.04 NEAR - 0.024 NEAR spent = 0.016 NEAR, carried to part 3
 
@@ -342,7 +342,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      insurance.ban.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFRZA1TZQZYRNDF9ZNXQ9
+          job     job_01M7BY0XBSVTFVETFCPRDG95VZ
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
@@ -352,8 +352,8 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
 rate      5/5  = 5
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 unspent   0.046 NEAR - 0.02 NEAR spent = 0.026 NEAR, carried to part 4
 
@@ -372,7 +372,7 @@ pay       settled  0.02 NEAR
           from    researcher.kyle.inferpay.testnet
           to      disclosure.david.inferpay.testnet
           via     mock receipt (no NEAR moved)
-          job     job_01M7BWFS043DFEQFCKSVJGQ11K
+          job     job_01M7BY0XCGSVY68QYQTGJGWH2P
 answer    Operating profit matches across both documents: KRW 12.2T.
 checks    1 of 1 needed key opened and verified against the shop's committed root, 1 unrequested
           verified    match         operating profit Q3 2025  12.2T KRW
@@ -385,28 +385,28 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
 rate      5/5  = 5
           rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
                   -1 per key opened with no claim, -2 per key withheld;
-                  at most 2 when no needed key backs the answer;
-                  1 if any check is forged; checks the buyer did not ask for never count
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
 unspent   0.056 NEAR - 0.02 NEAR spent = 0.036 NEAR, kept: this was the last part
 
-receipt   task_01M7BWFS17ZD2YDZTD4RD8QWHX
+receipt   task_01M7BY0XD8YB25T0B2PCZFN7NX
           task    Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit
           #  DONE BY                            LIST  PAID                   CHECK
           1  the buyer itself                   -     nothing                own answer, confidence 0.99
              asked  What is the capital of France?
           2  legal.stella.inferpay.testnet      0.03  0.024 NEAR on counter  1 verified; rated 5/5
              asked  Does this NDA's unlimited indemnification clause fail our playbook?
-             job    job_01M7BWFRYG33H02DE08SN4QT1C
+             job    job_01M7BY0XB0511WGSBCMSAN80C0
           3  insurance.ban.inferpay.testnet     0.02  0.02 NEAR at list      1 verified; rated 5/5
              asked  Does this policy cover an outpatient MRI?
-             job    job_01M7BWFRZA1TZQZYRNDF9ZNXQ9
+             job    job_01M7BY0XBSVTFVETFCPRDG95VZ
           4  disclosure.david.inferpay.testnet  0.02  0.02 NEAR at list      1 verified; rated 5/5
              asked  What was Samsung's Q3 2025 operating profit?
-             job    job_01M7BWFS043DFEQFCKSVJGQ11K
+             job    job_01M7BY0XCGSVY68QYQTGJGWH2P
 total     spent 0.064 NEAR of the 0.10 NEAR budget, 0.036 NEAR left
 fees      none: this rail reports no network fees
-saved     .inferpay/tasks/task_01M7BWFS17ZD2YDZTD4RD8QWHX.json
+saved     .inferpay/tasks/task_01M7BY0XD8YB25T0B2PCZFN7NX.json
 ```
 
 ## 9. Ask something with no recording
@@ -466,18 +466,18 @@ catalog     the keys each shop holds an entry for, without their values; a buyer
 This is the job from the counter-offer step. The `quote` is the agreed price, and the lines under `fulfilled` are the evidence for each check.
 
 ```sh
-npx inferpay job job_01M7BWFRV7E801H8JEBMPA6M5Z
+npx inferpay job job_01M7BY0X7YHP3DYZ8PTK4CVDMA
 ```
 
 ```text
 rails: payment=mock inference=stub
-opened            01:59:23 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
+opened            02:26:13 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
                   commitment d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f
                              3 leaves, inferpay-keyed-merkle-sha256-v1, from the shop's listing
                   needs      outpatient-mri
-payment-intended  01:59:23 UTC  key mock_acc31fcf-ad55-48e3-b53c-ac563e1f5ce5
-payment-settled   01:59:23 UTC  correlation mock-9567
-fulfilled         01:59:23 UTC  1 check; 1 of 1 needed key opened, 0 withheld
+payment-intended  02:26:13 UTC  key mock_f53fb59e-06af-4c09-af59-1faac5c66d41
+payment-settled   02:26:13 UTC  correlation mock-3279
+fulfilled         02:26:13 UTC  1 check; 1 of 1 needed key opened, 0 withheld
                   verified  match  outpatient MRI
                     key       ["fact","outpatient-mri"]
                     slot      2246468
@@ -487,5 +487,5 @@ fulfilled         01:59:23 UTC  1 check; 1 of 1 needed key opened, 0 withheld
                     level 30  8e40665dd381bd01781149ce8b210ddc7ea07112aee780e879a58e2bc7369b64
                     path      32 levels, 31 of them empty subtrees
                     root      equals the commitment above
-rated             01:59:23 UTC  5/5
+rated             02:26:13 UTC  5/5
 ```

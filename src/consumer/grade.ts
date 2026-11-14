@@ -2,25 +2,23 @@ import { isStars, type Stars } from "../domain.ts";
 import type { BuyerCheck } from "./verify.ts";
 
 // The grading rule, in the one place that applies it. Only the keys the buyer named before paying count.
-// A withheld key costs more than a proven mismatch, so hiding an entry always rates below showing it. A needed
-// key opened with no claim costs the same as a mismatch, so swapping a wrong claim for a bare opening gains
-// nothing. A rule that raises or clears the clause is the legal shop doing its job, so both back the answer.
+// A withheld key costs more than a proven mismatch, and an honest delivery never falls to the rating a forgery
+// gets, so for any number of needed keys: all proven in the answer's favour > one honest mismatch > one key
+// withheld > anything forged. A needed key opened with no claim costs the same as a mismatch, so swapping a wrong
+// claim for a bare opening gains nothing.
 export const RULE = {
   start: 5,
   perMismatch: 1,
   perEmpty: 1,
   perUnclaimed: 1,
   perWithheld: 2,
-  // An answer that no needed key backs is worth little whatever else the shop sent.
-  withoutBacking: 2,
+  floor: 2,
   forged: 1,
 } as const;
 
 export type Tally = {
   // Checks that opened a needed key, in or against the answer's favour.
   readonly verified: number;
-  // Needed keys opened in the answer's favour: a match, or a rule raised or cleared on the needed clause.
-  readonly backing: number;
   readonly mismatches: number;
   // Needed keys the shop listed in its catalog and then proved it holds nothing for.
   readonly empty: number;
@@ -35,9 +33,8 @@ export type Tally = {
 export type Grade = {
   readonly stars: Stars;
   readonly tally: Tally;
-  // The score before the cap, the floor, and forgery, as start minus the costs.
+  // The score before the floor and forgery, as start minus the costs.
   readonly score: number;
-  readonly capped: boolean;
 };
 
 export function tally(checks: readonly BuyerCheck[]): Tally {
@@ -45,7 +42,6 @@ export function tally(checks: readonly BuyerCheck[]): Tally {
   const count = (status: BuyerCheck["status"]): number => checks.filter((check) => check.status === status).length;
   return {
     verified: verified.length,
-    backing: verified.filter((check) => check.verdict === "match" || check.verdict === "raised" || check.verdict === "clear").length,
     mismatches: verified.filter((check) => check.verdict === "mismatch").length,
     empty: verified.filter((check) => check.verdict === "absent").length,
     unclaimed: verified.filter((check) => check.verdict === "opened").length,
@@ -63,8 +59,7 @@ export function grade(checks: readonly BuyerCheck[]): Grade {
     - RULE.perEmpty * counts.empty
     - RULE.perUnclaimed * counts.unclaimed
     - RULE.perWithheld * counts.withheld;
-  const capped = counts.backing === 0 && score > RULE.withoutBacking;
-  const stars = counts.forged > 0 ? RULE.forged : Math.max(1, capped ? RULE.withoutBacking : score);
+  const stars = counts.forged > 0 ? RULE.forged : Math.max(RULE.floor, score);
   if (!isStars(stars)) throw new Error("grade left the 1..5 range");
-  return { stars, tally: counts, score, capped };
+  return { stars, tally: counts, score };
 }

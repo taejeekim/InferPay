@@ -18,7 +18,7 @@ import {
 } from "../commitment/index.ts";
 import type { Json } from "../commitment/merkle.ts";
 import { progressLine } from "../cli/render.ts";
-import { grade } from "../consumer/grade.ts";
+import { grade, RULE } from "../consumer/grade.ts";
 import { verifyChecks, type BuyerCheck } from "../consumer/verify.ts";
 import { newJobId } from "../domain.ts";
 import { evidenceModule, EVIDENCE_MODULE, sampleDatasets, siteEvidence } from "./evidence.ts";
@@ -35,6 +35,7 @@ type SiteScheme = {
   verifyChecks(checks: readonly unknown[], committed: string, needs: readonly Need[]): Promise<readonly SiteResult[]>;
 };
 type SiteGrade = {
+  readonly RULE: unknown;
   grade(results: readonly unknown[]): unknown;
   rateLines(graded: unknown): readonly string[];
 };
@@ -177,14 +178,18 @@ test("the browser verifier and grade reach the buyer's statuses and rating on ho
     "withheld:outpatient-mri",
   ]);
   assert.deepEqual([...ratings].sort(), [
-    "rate      1/5  = 5 - 2 x 2 withheld = 1",
     "rate      1/5  forged evidence sets the rating to 1",
+    "rate      2/5  = 5 - 2 x 2 withheld = 1, and an honest delivery rates at least 2",
     "rate      3/5  = 5 - 2 x 1 withheld = 3",
     "rate      5/5  = 5",
   ]);
   const honest = cases()[0]?.checks[0];
   assert.ok(honest);
   assert.equal((await site.verifyFact(honest, flip(root, 0))).forgery, "wrong-root", "a different committed root");
+});
+
+test("the browser grade states the same rule as src/consumer/grade.ts", () => {
+  assert.deepEqual(siteGrade.RULE, RULE);
 });
 
 test("the evidence the site embeds is what the generator makes from the sample data today", () => {

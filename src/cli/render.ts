@@ -71,8 +71,8 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
         line("rate", rateText(progress.grade)),
         field("rule", `start at ${RULE.start}; for each key the buyer needed, -${RULE.perMismatch} per mismatch, -${RULE.perEmpty} per empty slot,`),
         field("", `-${RULE.perUnclaimed} per key opened with no claim, -${RULE.perWithheld} per key withheld;`),
-        field("", `at most ${RULE.withoutBacking} when no needed key backs the answer;`),
-        field("", `${RULE.forged} if any check is forged; checks the buyer did not ask for never count`),
+        field("", `at least ${RULE.floor} unless a check is forged, and ${RULE.forged} if any check is forged;`),
+        field("", "checks the buyer did not ask for never count"),
         ...ratingRows(progress.onChain, progress.jobId, rail).map((row) => line("", row)),
       ].join("\n");
     case "pending":
@@ -467,7 +467,7 @@ function field(name: string, value: string): string {
 
 // The rating as arithmetic over the buyer's own counts, so a reader can redo it.
 function rateText(graded: Grade): string {
-  const { stars, tally: counts, score, capped } = graded;
+  const { stars, tally: counts, score } = graded;
   if (counts.forged > 0) return `${stars}/5  forged evidence sets the rating to ${RULE.forged}`;
   const costs = [
     counts.mismatches > 0 ? `${RULE.perMismatch} x ${plural(counts.mismatches, "mismatch", "mismatches")}` : null,
@@ -476,8 +476,7 @@ function rateText(graded: Grade): string {
     counts.withheld > 0 ? `${RULE.perWithheld} x ${counts.withheld} withheld` : null,
   ].filter((cost) => cost !== null);
   const sum = costs.length === 0 ? `= ${RULE.start}` : `= ${RULE.start} - ${costs.join(" - ")} = ${score}`;
-  if (capped) return `${stars}/5  ${sum}, at most ${RULE.withoutBacking}: no needed key backs the answer`;
-  if (score < 1) return `${stars}/5  ${sum}, and the lowest rating is 1`;
+  if (score < RULE.floor) return `${stars}/5  ${sum}, and an honest delivery rates at least ${RULE.floor}`;
   return `${stars}/5  ${sum}`;
 }
 

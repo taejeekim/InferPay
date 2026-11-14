@@ -3,14 +3,13 @@
 
 import { field, line } from "./decide.js";
 
-export const RULE = { start: 5, perMismatch: 1, perEmpty: 1, perUnclaimed: 1, perWithheld: 2, withoutBacking: 2, forged: 1 };
+export const RULE = { start: 5, perMismatch: 1, perEmpty: 1, perUnclaimed: 1, perWithheld: 2, floor: 2, forged: 1 };
 
 export function tally(results) {
   const verified = results.filter((result) => result.status === "verified");
   const count = (status) => results.filter((result) => result.status === status).length;
   return {
     verified: verified.length,
-    backing: verified.filter((result) => ["match", "raised", "clear"].includes(result.verdict)).length,
     mismatches: verified.filter((result) => result.verdict === "mismatch").length,
     empty: verified.filter((result) => result.verdict === "absent").length,
     unclaimed: verified.filter((result) => result.verdict === "opened").length,
@@ -28,16 +27,15 @@ export function grade(results) {
     - RULE.perEmpty * counts.empty
     - RULE.perUnclaimed * counts.unclaimed
     - RULE.perWithheld * counts.withheld;
-  const capped = counts.backing === 0 && score > RULE.withoutBacking;
-  const stars = counts.forged > 0 ? RULE.forged : Math.max(1, capped ? RULE.withoutBacking : score);
-  return { stars, tally: counts, score, capped };
+  const stars = counts.forged > 0 ? RULE.forged : Math.max(RULE.floor, score);
+  return { stars, tally: counts, score };
 }
 
 function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-function rateText({ stars, tally: counts, score, capped }) {
+function rateText({ stars, tally: counts, score }) {
   if (counts.forged > 0) return `${stars}/5  forged evidence sets the rating to ${RULE.forged}`;
   const costs = [
     counts.mismatches > 0 ? `${RULE.perMismatch} x ${plural(counts.mismatches, "mismatch", "mismatches")}` : null,
@@ -46,8 +44,7 @@ function rateText({ stars, tally: counts, score, capped }) {
     counts.withheld > 0 ? `${RULE.perWithheld} x ${counts.withheld} withheld` : null,
   ].filter((cost) => cost !== null);
   const sum = costs.length === 0 ? `= ${RULE.start}` : `= ${RULE.start} - ${costs.join(" - ")} = ${score}`;
-  if (capped) return `${stars}/5  ${sum}, at most ${RULE.withoutBacking}: no needed key backs the answer`;
-  if (score < 1) return `${stars}/5  ${sum}, and the lowest rating is 1`;
+  if (score < RULE.floor) return `${stars}/5  ${sum}, and an honest delivery rates at least ${RULE.floor}`;
   return `${stars}/5  ${sum}`;
 }
 
@@ -57,7 +54,7 @@ export function rateLines(graded) {
     line("rate", rateText(graded)),
     field("rule", `start at ${RULE.start}; for each key the buyer needed, -${RULE.perMismatch} per mismatch, -${RULE.perEmpty} per empty slot,`),
     field("", `-${RULE.perUnclaimed} per key opened with no claim, -${RULE.perWithheld} per key withheld;`),
-    field("", `at most ${RULE.withoutBacking} when no needed key backs the answer;`),
-    field("", `${RULE.forged} if any check is forged; checks the buyer did not ask for never count`),
+    field("", `at least ${RULE.floor} unless a check is forged, and ${RULE.forged} if any check is forged;`),
+    field("", "checks the buyer did not ask for never count"),
   ];
 }

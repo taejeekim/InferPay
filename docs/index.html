@@ -158,7 +158,7 @@
 
   <div class="needs-panel" aria-labelledby="needs-title">
     <h3 id="needs-title">The keys the buyer needed</h3>
-    <p class="lede">Before it pays, the buyer names the keys from the shop's catalog that a right answer needs, and the shop must open each one. A needed key the shop does not open is withheld and costs 2 stars, more than a wrong value costs, so hiding an entry always rates lower than showing it. A check on a key the buyer did not ask for counts neither for nor against the shop.</p>
+    <p class="lede">Before it pays, the buyer names the keys from the shop's catalog that a right answer needs, and the shop must open each one. A needed key the shop does not open is withheld and costs 2 stars, more than a wrong value costs, so for any number of needed keys hiding an entry rates lower than showing it. Any honest delivery rates at least 2, above a forgery. A check on a key the buyer did not ask for counts neither for nor against the shop.</p>
     <p class="kv-line"><span class="label">Question</span> <q id="n-question"></q></p>
     <p class="kv-line"><span class="label">Needed keys</span> <span id="n-needs" class="mono"></span></p>
     <div class="table-wrap"><table id="n-checks">
@@ -249,7 +249,7 @@ attest    buyer 1/1 calls verified
   <h3>Real</h3>
   <ul>
     <li>The buy-or-answer decision, the one counter-offer, the check verification, and the grade run in every mode.</li>
-    <li>The grade counts only the keys the buyer named before it paid. It starts at 5 and loses 1 per mismatch, 1 per empty slot, 1 per needed key opened with no claim, and 2 per needed key withheld. It is at most 2 when no needed key backs the answer, and 1 if any check is forged.</li>
+    <li>The grade counts only the keys the buyer named before it paid. It starts at 5 and loses 1 per mismatch, 1 per empty slot, 1 per needed key opened with no claim, and 2 per needed key withheld. It is at least 2 unless a check is forged, and 1 if any check is forged.</li>
     <li><code>--budget</code> bounds the price paid to shops. On testnet the bot also pays network fees for the payment and the rating, and the CLI prints them separately.</li>
     <li>On the testnet rail, payment is a native NEAR transfer from the buyer bot's own sub-account, and the buyer reads each shop's dataset hash from NEAR testnet before it pays.</li>
     <li>Reputation on the testnet rail comes from ratings that the buyer bots write on NEAR testnet. The 18 accounts are real named accounts on testnet, created through the faucet.</li>
