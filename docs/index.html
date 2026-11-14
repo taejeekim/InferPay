@@ -98,6 +98,13 @@
         <p id="claim-verdict" class="mono"></p>
       </div>
 
+      <div class="actions" id="tamper-actions">
+        <button type="button" id="tamper-value">Change <code>covered</code> to <code>excluded</code></button>
+        <button type="button" id="tamper-salt">Flip one salt character</button>
+        <button type="button" id="reset-proof">Reset</button>
+      </div>
+      <div id="verdict" class="verdict" role="status" aria-live="polite"></div>
+
       <fieldset id="entry-fields">
         <legend>Dataset entry the shop revealed</legend>
         <label for="f-topic">topic</label>
@@ -117,12 +124,6 @@
         <p class="hint">The evidence is the path from this key's slot, which is empty. Point the claim at a key the shop does hold, such as <code>mri-copay</code>, and the empty-slot proof no longer opens to the root.</p>
       </fieldset>
 
-      <div class="actions" id="tamper-actions">
-        <button type="button" id="tamper-value">Change <code>covered</code> to <code>excluded</code></button>
-        <button type="button" id="tamper-salt">Flip one salt character</button>
-        <button type="button" id="reset-proof">Reset</button>
-      </div>
-      <div id="verdict" class="verdict" role="status" aria-live="polite"></div>
     </div>
 
     <div class="proof-work">
