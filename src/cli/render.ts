@@ -9,7 +9,9 @@ import {
   entryKey,
   leafHash,
   slotOf,
+  subjectKey,
   type AssertedCheck,
+  type Entry,
   type Evidence,
   type Hash,
   type Key,
@@ -18,10 +20,10 @@ import {
 } from "../commitment/index.ts";
 import type { PaymentRail } from "../payment/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
-import { tally } from "../consumer/grade.ts";
+import { RULE, tally, type Grade } from "../consumer/grade.ts";
 import type { NoDeal } from "../consumer/decide.ts";
 import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer/task.ts";
-import { claimKey, verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
+import { verifyChecks, type BuyerCheck, type Forgery, type UnprovenCheck, type VerifiedCheck } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
 import type { RatingPost } from "../registry/index.ts";
@@ -45,10 +47,13 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
     case "answer":
       return [line("answer", progress.answer.text), ...attestLines("specialist", progress.answer.attestation)].join("\n");
     case "verify":
-      return checksBlock(progress.checks, progress.commitment, rail).join("\n");
+      return checksBlock(progress.checks, progress.needs, progress.commitment, rail).join("\n");
     case "rate":
       return [
-        line("rate", rateText(progress.rating, progress.checks)),
+        line("rate", rateText(progress.grade)),
+        field("rule", `start at ${RULE.start}; for each key the buyer needed, -${RULE.perMismatch} per mismatch, -${RULE.perEmpty} per empty slot,`),
+        field("", `-${RULE.perWithheld} per key withheld; at most ${RULE.withoutBacking} when no needed key backs the answer;`),
+        field("", `${RULE.forged} if any check is forged; checks the buyer did not ask for never count`),
         ...ratingRows(progress.onChain, progress.jobId, rail).map((row) => line("", row)),
       ].join("\n");
     case "pending":
@@ -134,7 +139,7 @@ export function jobText(view: JobView): string {
         return [
           `${label}${time}  ${event.answer.checks.length} checks`,
           ...attestLines("specialist", event.answer.attestation).map(under),
-          ...verifyChecks(event.answer.checks, view.order.commitment, view.order.question).flatMap(proofRows).map(under),
+          ...verifyChecks(event.answer.checks, view.order.commitment, view.order.question, view.order.needs).flatMap(proofRows).map(under),
         ].join("\n");
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
@@ -420,18 +425,23 @@ function field(name: string, value: string): string {
   return line("", `${name.padEnd(8)}${value}`);
 }
 
-function rateText(rating: number, checks: readonly BuyerCheck[]): string {
-  const counts = tally(checks);
-  if (counts.forged > 0) return `${rating}/5  (forged evidence sets the rating to 1)`;
-  const reasons: string[] = [];
-  if (counts.mismatches > 0) reasons.push(`${plural(counts.mismatches, "mismatch", "mismatches")} among ${plural(counts.verified, "verified check", "verified checks")}`);
-  if (counts.unbacked > 0) reasons.push(`${plural(counts.unbacked, "claim", "claims")} the shop could not back`);
-  if (counts.supporting === 0) reasons.push("nothing verified in the answer's favour, so at most 3");
-  return reasons.length === 0 ? `${rating}/5` : `${rating}/5  (${reasons.join("; ")})`;
+// The rating as arithmetic over the buyer's own counts, so a reader can redo it.
+function rateText(graded: Grade): string {
+  const { stars, tally: counts, score, capped } = graded;
+  if (counts.forged > 0) return `${stars}/5  forged evidence sets the rating to ${RULE.forged}`;
+  const costs = [
+    counts.mismatches > 0 ? `${RULE.perMismatch} x ${plural(counts.mismatches, "mismatch", "mismatches")}` : null,
+    counts.empty > 0 ? `${RULE.perEmpty} x ${counts.empty} empty` : null,
+    counts.withheld > 0 ? `${RULE.perWithheld} x ${counts.withheld} withheld` : null,
+  ].filter((cost) => cost !== null);
+  const sum = costs.length === 0 ? `= ${RULE.start}` : `= ${RULE.start} - ${costs.join(" - ")} = ${score}`;
+  if (capped) return `${stars}/5  ${sum}, at most ${RULE.withoutBacking}: no needed key backs the answer`;
+  if (score < 1) return `${stars}/5  ${sum}, and the lowest rating is 1`;
+  return `${stars}/5  ${sum}`;
 }
 
 function ratingRows(onChain: RatingPost | null, jobId: string, rail: PaymentRail["kind"]): string[] {
-  const row = (name: string, value: string): string => `${name.padEnd(STATUS)}${value}`;
+  const row = (name: string, value: string): string => `${name.padEnd(DETAIL)}${value}`;
   if (onChain === null) {
     const why = rail === "mock" ? "because the mock rail has no chain" : "because this rail keeps no rating on chain";
     return [row("kept", `in this machine's ledger, ${why}`)];
@@ -458,16 +468,27 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-const STATUS = 10;
+const STATUS = 12;
 const VERDICT = 14;
+// The name column of the root and on-chain rows under a block.
+const DETAIL = 10;
 
-export function checksBlock(checks: readonly BuyerCheck[], pinned: PinnedCommitment, rail: PaymentRail["kind"]): string[] {
-  if (checks.length === 0) return [line("checks", "none: the shop sent nothing to verify")];
+export function checksBlock(
+  checks: readonly BuyerCheck[],
+  needs: readonly Need[],
+  pinned: PinnedCommitment,
+  rail: PaymentRail["kind"],
+): string[] {
+  if (checks.length === 0) return [line("checks", "none: the buyer needed no key and the shop sent nothing to verify")];
   const counts = tally(checks);
-  const headline = [`${counts.verified} of ${checks.length} verified by the buyer against the shop's committed root`];
+  const opened = needs.length - counts.withheld;
+  const headline = [`${opened} of ${plural(needs.length, "needed key", "needed keys")} opened and verified against the shop's committed root`];
+  if (counts.withheld > 0) headline.push(`${counts.withheld} WITHHELD`);
+  if (counts.unrequested > 0) headline.push(`${counts.unrequested} unrequested`);
   if (counts.unproven > 0) headline.push(`${counts.unproven} unproven`);
   if (counts.forged > 0) headline.push(`${counts.forged} FORGED`);
-  const width = checks.reduce((max, check) => Math.max(max, checkLabel(check).length), 0) + 2;
+  // A withheld row has nothing after its label, so its long need name does not widen the column.
+  const width = checks.reduce((max, check) => (check.status === "withheld" ? max : Math.max(max, checkLabel(check).length)), 0) + 2;
   return [
     line("checks", headline.join(", ")),
     ...checks.flatMap((check) => checkRows(check, width)).map((row) => line("", row)),
@@ -476,8 +497,25 @@ export function checksBlock(checks: readonly BuyerCheck[], pinned: PinnedCommitm
 }
 
 function checkLabel(check: BuyerCheck): string {
-  if (check.status === "verified") return check.claim.label;
-  return check.check.claim.label;
+  switch (check.status) {
+    case "verified":
+      return subjectLabel(check);
+    case "unrequested":
+      return subjectLabel(check.verified);
+    case "withheld":
+      return needText(check.need);
+    case "unproven":
+    case "forged":
+      return subjectLabel(check.check);
+    default: {
+      const unreachable: never = check;
+      return unreachable;
+    }
+  }
+}
+
+function subjectLabel(subject: { readonly kind: "opening"; readonly key: Key } | { readonly kind: "number" | "fact" | "flag"; readonly claim: { readonly label: string } }): string {
+  return subject.kind === "opening" ? subject.key.slice(1).join(" / ") : subject.claim.label;
 }
 
 function checkRows(check: BuyerCheck, width: number): string[] {
@@ -485,31 +523,56 @@ function checkRows(check: BuyerCheck, width: number): string[] {
     `${status.padEnd(STATUS)}${verdict.padEnd(VERDICT)}${checkLabel(check).padEnd(width)}${rest}`.trimEnd()
   );
   const under = (text: string): string => `${"".padEnd(STATUS)}${text}`;
-  if (check.status === "unproven") {
-    return [head("unproven", check.check.verdict, claimedText(check.check)), under(unprovenText(check))];
+  switch (check.status) {
+    case "unproven":
+      return [head("unproven", check.check.verdict, claimedText(check.check)), under(unprovenText(check))];
+    case "forged":
+      return [head("FORGED", check.check.verdict, claimedText(check.check)), under(forgeryText(check.forgery, check.check))];
+    case "withheld":
+      return [head("WITHHELD", "", ""), under("the buyer needed this key and the shop sent no verified opening of it")];
+    case "unrequested":
+      return [
+        ...verifiedRows(check.verified, (verdict, rest) => head("unrequested", verdict, rest), under),
+        under("the buyer did not ask for this key, so it counts neither for nor against the shop"),
+      ];
+    case "verified":
+      return verifiedRows(check, (verdict, rest) => head("verified", verdict, rest), under);
+    default: {
+      const unreachable: never = check;
+      return unreachable;
+    }
   }
-  if (check.status === "forged") {
-    return [head("FORGED", check.check.verdict, claimedText(check.check)), under(forgeryText(check.forgery, check.check))];
-  }
+}
+
+function verifiedRows(check: VerifiedCheck, head: (verdict: string, rest: string) => string, under: (text: string) => string): string[] {
   if (check.verdict === "absent") {
     const claimed = check.kind === "number" ? formatFigure(check.claim.claimed, check.claim.unit) : check.kind === "fact" ? check.claim.claimed : "";
-    return [head("verified", "no entry", claimed), under("the slot for this key in the shop's committed tree is empty: the shop holds nothing on it")];
+    return [head("no entry", claimed), under("the slot for this key in the shop's committed tree is empty: the shop holds nothing on it")];
+  }
+  if (check.kind === "opening") {
+    return [head("no claim", entryValue(check.entry)), under("the shop opened this key and its model made no claim about it, so nothing backs the answer")];
   }
   if (check.kind === "flag") {
-    if (check.verdict === "raised") return [head("verified", "raised", ""), under(check.entry.detail)];
-    return [head("verified", "clear", ""), under(`the playbook rule ${check.entry.id} does not apply to "${check.claim.text}"`)];
+    if (check.verdict === "raised") return [head("raised", ""), under(check.entry.detail)];
+    return [head("clear", ""), under(`the playbook rule ${check.entry.id} does not apply to "${check.claim.text}"`)];
   }
   if (check.kind === "fact") {
     const ref = check.verdict === "mismatch" ? `   ref ${check.entry.value}` : "";
-    return [head("verified", check.verdict, `${check.claim.claimed}${ref}`), under(check.entry.source)];
+    return [head(check.verdict, `${check.claim.claimed}${ref}`), under(check.entry.source)];
   }
   const claimed = formatFigure(check.claim.claimed, check.claim.unit);
-  if (check.verdict === "match") return [head("verified", check.verdict, claimed), under(check.entry.source)];
+  if (check.verdict === "match") return [head(check.verdict, claimed), under(check.entry.source)];
   const signed = check.deltaPct < 0 ? check.deltaPct.toFixed(2) : `+${check.deltaPct.toFixed(2)}`;
   return [
-    head("verified", check.verdict, `${claimed}   ref ${formatFigure(check.entry.value, check.entry.unit)} (${signed}%)`),
+    head(check.verdict, `${claimed}   ref ${formatFigure(check.entry.value, check.entry.unit)} (${signed}%)`),
     under(check.entry.source),
   ];
+}
+
+function entryValue(entry: Entry): string {
+  if (entry.kind === "figure") return formatFigure(entry.value, entry.unit);
+  if (entry.kind === "fact") return entry.value;
+  return entry.label;
 }
 
 function claimedText(check: AssertedCheck): string {
@@ -518,10 +581,9 @@ function claimedText(check: AssertedCheck): string {
   return "";
 }
 
-function unprovenText(check: Extract<BuyerCheck, { status: "unproven" }>): string {
+function unprovenText(check: UnprovenCheck): string {
   if (check.why === "no-commitment") return "the shop's word only: it has published no root to check this against";
   if (check.why === "unquoted") return "the rule is real, but the clause is not quoted from the question, so it shows nothing about what was asked";
-  if (check.check.kind === "flag") return "the shop's word only: it says no playbook rule matched, and that carries no proof";
   return "the shop's word only: it sent no proof that it holds no entry for this";
 }
 
@@ -532,7 +594,7 @@ function forgeryText(forgery: Forgery, check: AssertedCheck): string {
     case "wrong-root":
       return `the shop said ${check.verdict}, but its evidence does not open to the committed root`;
     case "wrong-entry":
-      return `the shop said ${check.verdict}, but the entry it proved is not about this claim`;
+      return `the shop said ${check.verdict}, but the entry it proved is not about this key`;
     case "wrong-verdict":
       return `the shop said ${check.verdict}, but the entry it proved gives ${forgery.recomputed}`;
     default: {
@@ -543,7 +605,7 @@ function forgeryText(forgery: Forgery, check: AssertedCheck): string {
 }
 
 function commitmentRows(pinned: PinnedCommitment, rail: PaymentRail["kind"]): string[] {
-  const row = (name: string, value: string): string => `${name.padEnd(STATUS)}${value}`;
+  const row = (name: string, value: string): string => `${name.padEnd(DETAIL)}${value}`;
   if (pinned.status === "missing") {
     return [row("root", `none: ${pinned.account} has published no commitment in SocialDB ${pinned.contract}`)];
   }
@@ -572,23 +634,35 @@ function pinnedRows(pinned: PinnedCommitment): string[] {
 
 // Every value a reader needs to recompute the leaf and walk it to the root by hand.
 function proofRows(check: BuyerCheck): string[] {
-  if (check.status === "verified") {
-    const key = check.verdict === "absent" ? claimKey(check) : entryKey(check.entry);
-    const evidence: Evidence = check.verdict === "absent" ? { vacant: true, path: check.path } : check;
-    return [
-      `verified  ${check.verdict === "absent" ? "no entry" : check.verdict}  ${checkLabel(check)}`,
-      ...evidenceRows(key, evidence),
-      "  root      equals the commitment above",
-    ];
+  switch (check.status) {
+    case "verified":
+    case "unrequested": {
+      const verified = check.status === "verified" ? check : check.verified;
+      const evidence: Evidence = verified.verdict === "absent" ? { vacant: true, path: verified.path } : verified;
+      const verdict = verified.verdict === "absent" ? "no entry" : verified.verdict === "opened" ? "no claim" : verified.verdict;
+      return [
+        `${check.status}  ${verdict}  ${checkLabel(check)}`,
+        ...evidenceRows(subjectKey(verified), evidence),
+        "  root      equals the commitment above",
+      ];
+    }
+    case "withheld":
+      return [`WITHHELD  ${checkLabel(check)}`, "  the buyer needed this key and the shop sent no verified opening of it"];
+    case "unproven":
+    case "forged": {
+      const rows = [`${check.status === "forged" ? "FORGED" : "unproven"}  ${check.check.verdict}  ${checkLabel(check)}`];
+      rows.push(`  ${check.status === "forged" ? forgeryText(check.forgery, check.check) : unprovenText(check)}`);
+      const { evidence } = check.check;
+      if (evidence !== null) rows.push(...evidenceRows("vacant" in evidence ? subjectKey(check.check) : entryKey(evidence.entry), evidence));
+      if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  opens to  ${check.forgery.opensTo ?? "nothing: the path is not a full path"}`);
+      return rows;
+    }
+    default: {
+      const unreachable: never = check;
+      return unreachable;
+    }
   }
-  const rows = [`${check.status === "forged" ? "FORGED" : "unproven"}  ${check.check.verdict}  ${checkLabel(check)}`];
-  rows.push(`  ${check.status === "forged" ? forgeryText(check.forgery, check.check) : unprovenText(check)}`);
-  const { evidence } = check.check;
-  if (evidence !== null) rows.push(...evidenceRows("vacant" in evidence ? claimKey(check.check) : entryKey(evidence.entry), evidence));
-  if (check.status === "forged" && check.forgery.kind === "wrong-root") rows.push(`  opens to  ${check.forgery.opensTo ?? "nothing: the path is not a full path"}`);
-  return rows;
 }
-
 
 function evidenceRows(key: Key, evidence: Evidence): string[] {
   const siblings = evidence.path.flatMap((hash, level) => (hash === null ? [] : [`  ${`level ${level}`.padEnd(10)}${hash}`]));
@@ -736,6 +810,7 @@ function receiptDetails(row: ReceiptRow): (readonly [string, string])[] {
 function boughtCheck(outcome: Extract<PartOutcome, { kind: "bought" }>): string {
   const parts = [`${outcome.verified} verified`];
   if (outcome.mismatches > 0) parts.push(plural(outcome.mismatches, "mismatch", "mismatches"));
+  if (outcome.withheld > 0) parts.push(`${outcome.withheld} WITHHELD`);
   if (outcome.unproven > 0) parts.push(`${outcome.unproven} unproven`);
   if (outcome.forged > 0) parts.push(`${outcome.forged} FORGED`);
   return `${parts.join(", ")}; rated ${outcome.stars}/5`;

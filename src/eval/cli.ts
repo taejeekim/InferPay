@@ -97,7 +97,7 @@ export async function ask(question: string, budget: string, opts: { readonly dat
   }));
   const confidence = Number(out.match(/^ {10}local {3}confidence ([\d.]+)/m)?.[1] ?? "NaN");
   const jobId = out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
-  const buyerChecks = [...out.matchAll(/^ {10}(verified|FORGED|unproven) {2}(.{14})/gm)].map((match) => ({ status: match[1] ?? "", verdict: (match[2] ?? "").trim() }));
+  const buyerChecks = [...out.matchAll(/^ {10}(verified|unrequested|WITHHELD|unproven|FORGED) +(.{14})/gm)].map((match) => ({ status: match[1] ?? "", verdict: (match[2] ?? "").trim() }));
   const forged = Number(out.match(/^checks .* (\d+) FORGED$/m)?.[1] ?? 0);
   const countered = /^decide {4}buy from \S+ at [\d.]+ NEAR \(counter-offer accepted\)$/m.test(out);
   if (jobId === undefined) {
@@ -127,4 +127,4 @@ export function units(decimal: string): bigint {
   return toUnits(amount);
 }
 
-export const supports = (run: Run): boolean => run.buyerChecks.some((check) => check.status === "verified" && (check.verdict === "match" || check.verdict === "raised"));
+export const supports = (run: Run): boolean => run.buyerChecks.some((check) => check.status === "verified" && ["match", "raised", "clear"].includes(check.verdict));

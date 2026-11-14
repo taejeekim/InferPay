@@ -158,7 +158,7 @@ test("the same stars stay recorded and different stars are rejected", async () =
     const stars = parseStars(4);
     const other = parseStars(5);
     assert.ok(stars && other);
-    const counts = { verified: 1, unproven: 0, forged: 0 };
+    const counts = { verified: 1, unproven: 0, forged: 0, withheld: 0 };
     assert.deepEqual(await market.rate(done.job, { stars, ...counts }), { kind: "recorded", onChain: null });
     assert.deepEqual((await market.listings())[0]?.reputation, { kind: "rated", completedJobs: 1, ratings: 1, average: 4 });
     assert.deepEqual(await market.rate(done.job, { stars, ...counts }), { kind: "unchanged", onChain: null });

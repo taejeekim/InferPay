@@ -61,8 +61,8 @@ function toPost(result: TxResult, tx: string, key: string): RatingPost {
 }
 
 export function ratingValue(rating: OnChainRating): SocialValue {
-  const { shop, stars, payment, root, verified, unproven, forged } = rating;
-  return { inferpay: { ratings: { [rating.jobId]: JSON.stringify({ shop, stars, payment, root, verified, unproven, forged }) } } };
+  const { shop, stars, payment, root, verified, unproven, forged, withheld } = rating;
+  return { inferpay: { ratings: { [rating.jobId]: JSON.stringify({ shop, stars, payment, root, verified, unproven, forged, withheld }) } } };
 }
 
 const count = z.number().int().nonnegative();
@@ -75,6 +75,7 @@ const ratingSchema = z.object({
   verified: count,
   unproven: count,
   forged: count,
+  withheld: count,
 });
 
 // Anyone can write anything under an account they hold, so a value that is not a rating is skipped, not trusted.
@@ -87,9 +88,9 @@ export function readRatings(raw: unknown, raters: readonly AccountId[]): readonl
       const leaf = leafAt(jobs, [jobId]);
       const parsed = leaf === null ? null : ratingSchema.safeParse(parseJson(leaf.value));
       if (!isJobId(jobId) || !parsed?.success) continue;
-      const { shop, stars, payment, root, verified, unproven, forged } = parsed.data;
+      const { shop, stars, payment, root, verified, unproven, forged, withheld } = parsed.data;
       if (!isAccountId(shop) || !isStars(stars) || (root !== null && !isHash(root))) continue;
-      ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged });
+      ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged, withheld });
     }
   }
   return ratings;

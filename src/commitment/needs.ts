@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { factKey, figureKey, ruleKey, type Entry, type Key } from "./rules.ts";
+import {
+  factKey,
+  figureKey,
+  ruleKey,
+  sameClause,
+  sameKey,
+  type ClauseClaim,
+  type Entry,
+  type FactClaim,
+  type FigureClaim,
+  type Key,
+} from "./rules.ts";
 
 // A key a shop holds an entry for, named without its value. A shop lists these so a buyer can say which it needs.
 export type CatalogItem =
@@ -39,3 +50,34 @@ export const needSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("fact"), topic: z.string() }),
   z.object({ kind: z.literal("rule"), id: z.string(), clause: z.string().min(1) }),
 ]);
+
+// What a check is about: the key its claim names, or the key it opens.
+export type Subject =
+  | { readonly kind: "number"; readonly claim: FigureClaim }
+  | { readonly kind: "fact"; readonly claim: FactClaim }
+  | { readonly kind: "flag"; readonly claim: ClauseClaim }
+  | { readonly kind: "opening"; readonly key: Key };
+
+export function subjectKey(subject: Subject): Key {
+  switch (subject.kind) {
+    case "number":
+      return figureKey(subject.claim);
+    case "fact":
+      return factKey(subject.claim);
+    case "flag":
+      return ruleKey({ id: subject.claim.rule });
+    case "opening":
+      return subject.key;
+    default: {
+      const unreachable: never = subject;
+      return unreachable;
+    }
+  }
+}
+
+// A check answers a need when it is about the needed key. A flag must also test the clause the buyer named, so a
+// rule cannot be shown clear on some harmless fragment in place of the clause in question.
+export function answersNeed(subject: Subject, need: Need): boolean {
+  if (!sameKey(subjectKey(subject), needKey(need))) return false;
+  return need.kind !== "rule" || subject.kind !== "flag" || sameClause(subject.claim.text, need.clause);
+}

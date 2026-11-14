@@ -37,7 +37,10 @@ export type Evidence = Membership | Vacancy;
 export type AssertedCheck =
   | { readonly kind: "number"; readonly claim: FigureClaim; readonly verdict: "match" | "mismatch" | "unverifiable"; readonly evidence: Evidence | null }
   | { readonly kind: "fact"; readonly claim: FactClaim; readonly verdict: "match" | "mismatch" | "unverifiable"; readonly evidence: Evidence | null }
-  | { readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" | "clear" | "unverifiable"; readonly evidence: Evidence | null };
+  | { readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" | "clear" | "unverifiable"; readonly evidence: Evidence | null }
+  // A slot the buyer needed opened, about which the shop's model made no claim. opened holds an entry and
+  // unverifiable is the empty slot.
+  | { readonly kind: "opening"; readonly key: Key; readonly verdict: "opened" | "unverifiable"; readonly evidence: Evidence | null };
 
 export type CommitmentSource =
   | { readonly kind: "listing" }
@@ -148,6 +151,12 @@ export const assertedCheckSchema = z.discriminatedUnion("kind", [
     kind: z.literal("flag"),
     claim: clauseClaimSchema,
     verdict: z.enum(["raised", "clear", "unverifiable"]),
+    evidence: evidenceSchema.nullable(),
+  }),
+  z.object({
+    kind: z.literal("opening"),
+    key: z.array(z.string()).min(1),
+    verdict: z.enum(["opened", "unverifiable"]),
     evidence: evidenceSchema.nullable(),
   }),
 ]);

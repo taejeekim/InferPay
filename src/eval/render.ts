@@ -66,7 +66,7 @@ function sum(values: readonly number[]): number {
 
 const NOTES = [
   "a. Recorded questions replayed by the stub, not a benchmark of model accuracy. The liar is a test hook that flips each check to the shop's favour and cannot change its committed root. Caught means the buyer printed FORGED for it.",
-  "b. verified means at least one buyer-verified match or raised check supports the answer. Baselines reuse the decide block's options and list prices. always buy pays the best-covering affordable shop its list price and credits it the checks that shop returns when bought at 1.00 NEAR. Both baselines answer alone at confidence >= 0.50, else give no answer. always buy pays list price where InferPay judged it not worth paying, so it leaves fewer questions unanswered.",
+  "b. verified means at least one needed key opened in the answer's favour: a buyer-verified match, or a rule raised or cleared. Baselines reuse the decide block's options and list prices. always buy pays the best-covering affordable shop its list price and credits it the checks that shop returns when bought at 1.00 NEAR. Both baselines answer alone at confidence >= 0.50, else give no answer. always buy pays list price where InferPay judged it not worth paying, so it leaves fewer questions unanswered.",
   "c. Reputation rows are the shop's rep in the decide block of the next job; job two runs with the liar. Lies planted are checks whose asserted verdict differs from the honest run's, read from jobs/*.jsonl. A shop with no mismatch to flip has nothing to lie about, so its liar run equals its honest run.",
 ];
 

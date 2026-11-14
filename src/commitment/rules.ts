@@ -118,8 +118,16 @@ export function ruleHits(rule: Rule, text: string): boolean {
 
 // A flag is about the buyer's clause only when the clause is quoted from the question the buyer asked.
 export function quotedFrom(question: string, clause: string): boolean {
-  const quote = words(clause).replace(/^["'“”‘’\s]+|["'“”‘’.,;:\s]+$/g, "");
+  const quote = bare(clause);
   return quote.length > 0 && words(question).includes(quote);
+}
+
+export function sameClause(a: string, b: string): boolean {
+  return bare(a) === bare(b);
+}
+
+function bare(clause: string): string {
+  return words(clause).replace(/^["'“”‘’\s]+|["'“”‘’.,;:\s]+$/g, "");
 }
 
 function words(value: string): string {

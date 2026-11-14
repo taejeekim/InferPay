@@ -3,10 +3,10 @@ import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
 import type { RatingPost } from "../registry/index.ts";
-import type { PinnedCommitment } from "../commitment/index.ts";
+import type { Need, PinnedCommitment } from "../commitment/index.ts";
 import { assess, type Needs } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
-import { grade, tally } from "./grade.ts";
+import { grade, type Grade } from "./grade.ts";
 import { verifyChecks, type BuyerCheck } from "./verify.ts";
 import { runTask, type TaskOutcome, type TaskProgress } from "./task.ts";
 
@@ -16,11 +16,10 @@ export type { Dropped, Needs } from "./assess.ts";
 
 export type Progress =
   | { readonly step: "decide"; readonly decision: Decision; readonly needs: Needs }
-  | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly commitment: PinnedCommitment }
+  | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly needs: readonly Need[]; readonly commitment: PinnedCommitment }
   | {
       readonly step: "rate";
-      readonly rating: Stars;
-      readonly checks: readonly BuyerCheck[];
+      readonly grade: Grade;
       readonly jobId: JobId;
       // Where the rating went on chain, or null on a rail that keeps it only in the local ledger.
       readonly onChain: RatingPost | null;
@@ -113,12 +112,13 @@ async function publishRating(
   job: CompletedJob,
   onProgress?: (progress: Progress) => void,
 ): Promise<Stars> {
-  const checks = verifyChecks(job.answer.checks, job.commitment, job.question);
-  onProgress?.({ step: "verify", checks, commitment: job.commitment });
-  const rating = job.rating ?? grade(checks);
-  const { verified, unproven, forged } = tally(checks);
+  const checks = verifyChecks(job.answer.checks, job.commitment, job.question, job.needs);
+  onProgress?.({ step: "verify", checks, needs: job.needs, commitment: job.commitment });
+  const graded = grade(checks);
+  const rating = job.rating ?? graded.stars;
+  const { verified, unproven, forged, withheld } = graded.tally;
   // Rating again is how a resumed job finishes an on-chain post that a crash interrupted.
-  const rated = await market.rate(job, { stars: rating, verified, unproven, forged });
-  onProgress?.({ step: "rate", rating, checks, jobId: job.jobId, onChain: rated.kind === "rejected" ? null : rated.onChain });
+  const rated = await market.rate(job, { stars: rating, verified, unproven, forged, withheld });
+  onProgress?.({ step: "rate", grade: graded, jobId: job.jobId, onChain: rated.kind === "rejected" ? null : rated.onChain });
   return rating;
 }

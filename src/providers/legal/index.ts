@@ -1,6 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
+import { needsPrompt, openNeeds } from "../open.ts";
 import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { flagClauses, parseClauses } from "./flagClauses.ts";
 import { loadPlaybook } from "./playbook.ts";
@@ -69,7 +70,8 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
       "Call flag_clauses with every clause you cite, and name the playbook rule to test each one against.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
-    ].join(" "),
+      needsPrompt(paid.needs),
+    ].join(" ").trim(),
     input: paid.question,
     tools: [flag],
     parseOutput: (raw, toolResults) => {
@@ -86,7 +88,7 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
     ok: true,
     answer: {
       text: result.value.text,
-      checks: result.value.checks,
+      checks: openNeeds(result.value.checks, paid.needs, playbook),
       model: result.model,
       inference: inference.kind,
       attestation: result.attestation,

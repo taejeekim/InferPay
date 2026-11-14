@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseModelId, parseProviderId, parseStars, type Price } from "../domain.ts";
-import { sealDataset, type AssertedCheck, type Entry, type Figure, type PinnedCommitment } from "../commitment/index.ts";
+import { parseAccountId, parseAssetId, parseCorrelationId, parseDecimalAmount, parseIdempotencyKey, parseJobId, parseParentAccount, parseModelId, parseProviderId, type Price } from "../domain.ts";
+import { sealDataset, type AssertedCheck, type Entry, type Figure, type Need, type PinnedCommitment } from "../commitment/index.ts";
+import { grade } from "../consumer/grade.ts";
 import { parseHash } from "../commitment/merkle.ts";
 import { decide, percentOf } from "../consumer/decide.ts";
 import { verifyChecks } from "../consumer/verify.ts";
@@ -142,18 +143,21 @@ function figure(entry: Figure, claimed: number, verdict: "match" | "mismatch" | 
   return { kind: "number", claim, verdict, evidence: verdict === "unverifiable" ? null : evidence };
 }
 
-function verifyBlock(checks: readonly AssertedCheck[], pinned: PinnedCommitment, rail: "mock" | "near-testnet"): string[] {
-  return progressLine({ step: "verify", checks: verifyChecks(checks, pinned, "What was Samsung's Q3 2025 revenue?"), commitment: pinned }, rail).split("\n");
+const NEEDS: readonly Need[] = [PROFIT, REVENUE].map(({ company, period, metric }) => ({ kind: "figure", company, period, metric }));
+
+function verifyBlock(checks: readonly AssertedCheck[], pinned: PinnedCommitment, rail: "mock" | "near-testnet", needs = NEEDS): string[] {
+  const verified = verifyChecks(checks, pinned, "What was Samsung's Q3 2025 revenue?", needs);
+  return progressLine({ step: "verify", checks: verified, needs, commitment: pinned }, rail).split("\n");
 }
 
 test("the checks block marks each verified check, shows the entry it rests on, and says the root came from the listing", () => {
   const root = SHOP.commitment.root;
   assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match"), figure(REVENUE, 86, "mismatch")], LISTED, "mock"), [
-    "checks    2 of 2 verified by the buyer against the shop's committed root",
-    "          verified  match         operating profit Q3 2025  12.2T KRW",
-    "                    Samsung Electronics Q3 2025 earnings release",
-    "          verified  mismatch      revenue Q3 2025           86.0T KRW   ref 86.1T KRW (-0.12%)",
-    "                    Samsung Electronics Q3 2025 earnings release",
+    "checks    2 of 2 needed keys opened and verified against the shop's committed root",
+    "          verified    match         operating profit Q3 2025  12.2T KRW",
+    "                      Samsung Electronics Q3 2025 earnings release",
+    "          verified    mismatch      revenue Q3 2025           86.0T KRW   ref 86.1T KRW (-0.12%)",
+    "                      Samsung Electronics Q3 2025 earnings release",
     `          root      ${root.slice(0, 12)}…${root.slice(-4)}  2 leaves  inferpay-keyed-merkle-sha256-v1`,
     "          from      the shop's listing, because the mock rail has no chain",
   ]);
@@ -162,26 +166,25 @@ test("the checks block marks each verified check, shows the entry it rests on, a
 test("an unproven check and a forged one are labelled, and neither prints as a match", () => {
   const rewritten = { ...SHOP.prove(REVENUE), entry: { ...REVENUE, value: 86 } };
   const block = verifyBlock([figure(PROFIT, 1, "unverifiable"), figure(REVENUE, 86, "match", rewritten)], LISTED, "mock");
-  assert.deepEqual(block.slice(0, 5), [
-    "checks    0 of 2 verified by the buyer against the shop's committed root, 1 unproven, 1 FORGED",
-    "          unproven  unverifiable  operating profit Q3 2025  1.0T KRW",
-    "                    the shop's word only: it sent no proof that it holds no entry for this",
-    "          FORGED    match         revenue Q3 2025           86.0T KRW",
-    "                    the shop said match, but its evidence does not open to the committed root",
+  assert.deepEqual(block.slice(0, 9), [
+    "checks    0 of 2 needed keys opened and verified against the shop's committed root, 2 WITHHELD, 1 unproven, 1 FORGED",
+    "          unproven    unverifiable  operating profit Q3 2025  1.0T KRW",
+    "                      the shop's word only: it sent no proof that it holds no entry for this",
+    "          FORGED      match         revenue Q3 2025           86.0T KRW",
+    "                      the shop said match, but its evidence does not open to the committed root",
+    "          WITHHELD                  Samsung Electronics / Q3 2025 / operating profit",
+    "                      the buyer needed this key and the shop sent no verified opening of it",
+    "          WITHHELD                  Samsung Electronics / Q3 2025 / revenue",
+    "                      the buyer needed this key and the shop sent no verified opening of it",
   ]);
+  const checks = verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED, "What was Samsung's Q3 2025 revenue?", NEEDS);
   assert.equal(
-    progressLine(
-      {
-        step: "rate",
-        rating: must(parseStars(1)),
-        checks: verifyChecks([figure(REVENUE, 86, "match", rewritten)], LISTED, "What was Samsung's Q3 2025 revenue?"),
-        jobId: must(parseJobId("job_01M7BGGX58BF3B8VB4ADYKXYZA")),
-        onChain: null,
-      },
-      "mock",
-    ),
+    progressLine({ step: "rate", grade: grade(checks), jobId: must(parseJobId("job_01M7BGGX58BF3B8VB4ADYKXYZA")), onChain: null }, "mock"),
     [
-      "rate      1/5  (forged evidence sets the rating to 1)",
+      "rate      1/5  forged evidence sets the rating to 1",
+      "          rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,",
+      "                  -2 per key withheld; at most 2 when no needed key backs the answer;",
+      "                  1 if any check is forged; checks the buyer did not ask for never count",
       "          kept      in this machine's ledger, because the mock rail has no chain",
     ].join("\n"),
   );
@@ -191,17 +194,20 @@ test("a root read from chain names its block, its SocialDB key, and a link to th
   const account = must(parseAccountId("disclosure.david.inferpay.testnet"));
   const contract = must(parseAccountId("v1.social08.testnet"));
   const pinned: PinnedCommitment = { status: "published", commitment: SHOP.commitment, source: { kind: "chain", contract, account, block: 277573383 } };
-  assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match")], pinned, "near-testnet").slice(3), [
+  const profitOnly = NEEDS.slice(0, 1);
+  assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match")], pinned, "near-testnet", profitOnly).slice(3), [
     `          root      ${SHOP.commitment.root.slice(0, 12)}…${SHOP.commitment.root.slice(-4)}  2 leaves  inferpay-keyed-merkle-sha256-v1`,
     "          from      NEAR testnet, written at block 277573383 and read before paying",
     "          key       disclosure.david.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet",
     "          link      https://testnet.nearblocks.io/address/disclosure.david.inferpay.testnet",
   ]);
-  const missing = verifyBlock([figure(PROFIT, 12.2, "match")], { status: "missing", contract, account }, "near-testnet");
+  const missing = verifyBlock([figure(PROFIT, 12.2, "match")], { status: "missing", contract, account }, "near-testnet", profitOnly);
   assert.deepEqual(missing, [
-    "checks    0 of 1 verified by the buyer against the shop's committed root, 1 unproven",
-    "          unproven  match         operating profit Q3 2025  12.2T KRW",
-    "                    the shop's word only: it has published no root to check this against",
+    "checks    0 of 1 needed key opened and verified against the shop's committed root, 1 WITHHELD, 1 unproven",
+    "          unproven    match         operating profit Q3 2025  12.2T KRW",
+    "                      the shop's word only: it has published no root to check this against",
+    "          WITHHELD                  Samsung Electronics / Q3 2025 / operating profit",
+    "                      the buyer needed this key and the shop sent no verified opening of it",
     "          root      none: disclosure.david.inferpay.testnet has published no commitment in SocialDB v1.social08.testnet",
   ]);
 });

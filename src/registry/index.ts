@@ -14,6 +14,8 @@ export type OnChainRating = {
   readonly verified: number;
   readonly unproven: number;
   readonly forged: number;
+  // Keys the buyer needed that the shop did not open.
+  readonly withheld: number;
 };
 
 export type RatingPost =

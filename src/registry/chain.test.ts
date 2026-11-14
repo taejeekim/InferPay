@@ -320,11 +320,11 @@ function ratingCalls(chain: ReturnType<typeof fakeChain>): Call[] {
 test("the buyer verifies against the root it read from chain and says where it read it", async () => {
   await withRoot(async (root) => {
     const text = await askOn(await published(), root, MRI);
-    assert.match(text, /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
+    assert.match(text, /^checks {4}1 of 1 needed key opened and verified against the shop's committed root$/m);
     assert.match(text, /^ {10}from {6}NEAR testnet, written at block 1003 and read before paying$/m);
     assert.match(text, /^ {10}key {7}insurance\.ban\.inferpay\.testnet\/inferpay\/commitment in SocialDB v1\.social08\.testnet$/m);
     assert.match(text, /^ {10}link {6}https:\/\/testnet\.nearblocks\.io\/address\/insurance\.ban\.inferpay\.testnet$/m);
-    assert.match(text, /^rate {6}5\/5$/m);
+    assert.match(text, /^rate {6}5\/5 {2}= 5$/m);
   });
 });
 
@@ -361,13 +361,14 @@ test("a forged check is rated 1 on chain, with the forgery counted and the root 
   });
 });
 
-test("a shop with nothing on chain has only its word, and the rating cannot pass 3", async () => {
+test("a shop with nothing on chain has only its word, so the key it was paid to open counts as withheld", async () => {
   await withRoot(async (root) => {
     const chain = fakeChain({});
     const text = await askOn(chain, root, MRI);
-    assert.match(text, /^ {10}unproven {2}match {9}outpatient MRI {2}covered$/m);
+    assert.match(text, /^ {10}unproven {4}match {9}outpatient MRI {2}covered$/m);
+    assert.match(text, /^ {10}WITHHELD {18}outpatient-mri$/m);
     assert.match(text, /^ {10}root {6}none: insurance\.ban\.inferpay\.testnet has published no commitment in SocialDB v1\.social08\.testnet$/m);
-    assert.match(text, /^rate {6}3\/5 /m);
+    assert.match(text, /^rate {6}2\/5 /m);
   });
 });
 
@@ -395,6 +396,7 @@ test("the buyer bot writes its rating under its own account, with the shop, the 
                   verified: 1,
                   unproven: 0,
                   forged: 0,
+                  withheld: 0,
                 }),
               },
             },
@@ -420,7 +422,7 @@ test("reputation comes from the ratings on chain, so it survives losing the loca
     const { runtime } = await runtimeOn(chain, fresh);
     const listings = await runtime.market.listings();
     assert.deepEqual(listings.map((listing) => [listing.id, listing.reputation]), [
-      ["disclosure", { kind: "rated", completedJobs: 1, ratings: 1, average: 4 }],
+      ["disclosure", { kind: "rated", completedJobs: 1, ratings: 1, average: 5 }],
       ["legal", { kind: "unrated", completedJobs: 0 }],
       ["insurance", { kind: "rated", completedJobs: 1, ratings: 1, average: 5 }],
     ]);
@@ -455,7 +457,7 @@ test("a crash after the rating was signed or broadcast keeps the local rating, a
       assert.doesNotMatch(ledger, /rating-posted/, crash);
 
       const resumed = await resumeOn(chain, root);
-      assert.match(resumed, /^rate {6}5\/5$/m, crash);
+      assert.match(resumed, /^rate {6}5\/5 {2}= 5$/m, crash);
       assert.match(resumed, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m, crash);
       assert.equal(chain.signed.size, 4, crash);
       assert.equal(ratingCalls(chain).length, 1, crash);
@@ -482,7 +484,7 @@ test("a rating that cannot reach the chain stays pending with a resume hint, and
     const chain = await published();
     chain.failNext = { kind: "unreachable", detail: "fetch failed" };
     const text = await askOn(chain, root, MRI);
-    assert.match(text, /^rate {6}5\/5$/m);
+    assert.match(text, /^rate {6}5\/5 {2}= 5$/m);
     assert.match(text, /^ {10}on chain {2}not yet: fetch failed$/m);
     assert.match(text, /^ {20}the rating is in the local ledger\. Run: npx inferpay resume job_\w+$/m);
     assert.equal(ratingCalls(chain).length, 0);
@@ -493,7 +495,7 @@ test("a rating that cannot reach the chain stays pending with a resume hint, and
 });
 
 test("only a well-formed rating under a known bot's account counts", () => {
-  const good = JSON.stringify({ shop: INSURANCE, stars: 4, payment: "hash", root: null, verified: 1, unproven: 1, forged: 0 });
+  const good = JSON.stringify({ shop: INSURANCE, stars: 4, payment: "hash", root: null, verified: 1, unproven: 1, forged: 0, withheld: 0 });
   const leaf = (value: string) => ({ ":block": 9, "": value });
   const raw = {
     [RESEARCHER]: {
@@ -503,6 +505,8 @@ test("only a well-formed rating under a known bot's account counts", () => {
           job_01M7BGGX58BF3B8VB4ADYKXYZA: leaf(good),
           job_01M7BGGX58BF3B8VB4ADYKXYZB: leaf(JSON.stringify({ shop: INSURANCE, stars: 9, payment: "hash", root: null, verified: 0, unproven: 0, forged: 0 })),
           job_01M7BGGX58BF3B8VB4ADYKXYZC: leaf("five stars"),
+          // Written before the buyer named its needs, so it says nothing about withheld keys.
+          job_01M7BGGX58BF3B8VB4ADYKXYZE: leaf(JSON.stringify({ shop: INSURANCE, stars: 5, payment: "hash", root: null, verified: 1, unproven: 0, forged: 0 })),
           "not-a-job": leaf(good),
         },
       },
@@ -519,5 +523,6 @@ test("only a well-formed rating under a known bot's account counts", () => {
     verified: 1,
     unproven: 1,
     forged: 0,
+    withheld: 0,
   }]);
 });

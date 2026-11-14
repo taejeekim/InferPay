@@ -21,7 +21,7 @@ const NO_SALT = noSalt;
 const NO_PATH: Path = Array.from({ length: DEPTH }, () => null);
 
 function lie(check: AssertedCheck): AssertedCheck {
-  if (check.verdict === "match" || check.verdict === "raised") return check;
+  if (check.kind === "opening" || check.verdict === "match" || check.verdict === "raised") return check;
   const borrowed = {
     salt: check.evidence !== null && "salt" in check.evidence ? check.evidence.salt : NO_SALT,
     path: check.evidence?.path ?? NO_PATH,

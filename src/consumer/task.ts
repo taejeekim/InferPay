@@ -36,6 +36,7 @@ export type PartOutcome =
       readonly mismatches: number;
       readonly unproven: number;
       readonly forged: number;
+      readonly withheld: number;
       readonly stars: Stars;
       readonly jobId: JobId;
       // The payment transaction, on a rail that has one on chain.
@@ -224,7 +225,7 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcom
     case "outsourced": {
       if (decision === null || decision.kind !== "buy") throw new Error("a purchase came without its decision");
       const { job } = outcome;
-      const counts = tally(verifyChecks(job.answer.checks, job.commitment, job.question));
+      const counts = tally(verifyChecks(job.answer.checks, job.commitment, job.question, job.needs));
       return {
         kind: "bought",
         shop: job.providerId,
@@ -236,6 +237,7 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcom
         mismatches: counts.mismatches,
         unproven: counts.unproven,
         forged: counts.forged,
+        withheld: counts.withheld,
         stars: outcome.rating,
         jobId: job.jobId,
         tx: job.paid.rail === "near-testnet" ? job.paid.correlationId : null,

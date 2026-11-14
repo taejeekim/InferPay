@@ -1,6 +1,7 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
 import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
+import { needsPrompt, openNeeds } from "../open.ts";
 import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { lookupCoverage, parseFactClaims } from "./lookup.ts";
 import { loadCoverage } from "./schedule.ts";
@@ -72,7 +73,8 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
       "Call lookup_coverage with every coverage claim you cite.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
-    ].join(" "),
+      needsPrompt(paid.needs),
+    ].join(" ").trim(),
     input: paid.question,
     tools: [lookup],
     parseOutput: (raw, toolResults) => {
@@ -89,7 +91,7 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
     ok: true,
     answer: {
       text: result.value.text,
-      checks: result.value.checks,
+      checks: openNeeds(result.value.checks, paid.needs, data),
       model: result.model,
       inference: inference.kind,
       attestation: result.attestation,

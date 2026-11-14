@@ -277,7 +277,7 @@ test("a shop's net rises after a good rating and falls after a poor one", async 
   await withDataDir(async (root) => {
     const first = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
     assert.match(first.out, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.70 = quality 0\.70 {2}net \+0\.050$/m);
-    assert.match(first.out, /^rate {6}5\/5$/m);
+    assert.match(first.out, /^rate {6}5\/5 {2}= 5$/m);
     const second = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
     assert.match(second.out, /insurance {3}ask 0\.02 {2}cover 1\.00 x rep 0\.80 = quality 0\.80 {2}net \+0\.060$/m);
   });
@@ -295,11 +295,12 @@ test("on the mock rail the buyer verifies each check against the listed root, an
   await withDataDir(async (root) => {
     const asked = await ask(root, "What was Samsung's Q3 2025 operating profit?", "0.10");
     assert.equal(asked.code, 0);
-    assert.match(asked.out, /^checks {4}2 of 2 verified by the buyer against the shop's committed root$/m);
-    assert.match(asked.out, /^ {10}verified {2}match {9}operating profit Q3 2025 {2}12\.2T KRW$/m);
-    assert.match(asked.out, /^ {10}verified {2}mismatch {6}revenue Q3 2025 {11}86\.0T KRW {3}ref 86\.1T KRW \(-0\.12%\)$/m);
+    assert.match(asked.out, /^checks {4}1 of 1 needed key opened and verified against the shop's committed root, 1 unrequested$/m);
+    assert.match(asked.out, /^ {10}verified {4}match {9}operating profit Q3 2025 {2}12\.2T KRW$/m);
+    assert.match(asked.out, /^ {10}unrequested mismatch {6}revenue Q3 2025 {11}86\.0T KRW {3}ref 86\.1T KRW \(-0\.12%\)$/m);
+    assert.match(asked.out, /^ {22}the buyer did not ask for this key, so it counts neither for nor against the shop$/m);
     assert.match(asked.out, /^ {10}from {6}the shop's listing, because the mock rail has no chain$/m);
-    assert.match(asked.out, /^rate {6}4\/5 {2}\(1 mismatch among 2 verified checks\)$/m);
+    assert.match(asked.out, /^rate {6}5\/5 {2}= 5$/m);
     const short = asked.out.match(/^ {10}root {6}([0-9a-f]{12})…([0-9a-f]{4}) {2}2 leaves/m);
     assert.ok(short);
     const jobId = asked.out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
@@ -326,8 +327,8 @@ test("a need outside the shop's catalog is dropped before any payment, and a rai
     assert.match(capex.out, /disclosure {2}ask 0\.02 {2}cover 0\.00 x rep 0\.70/m);
     assert.deepEqual(await jobFiles(root), []);
     const legal = await ask(root, "Does this NDA's unlimited indemnification clause fail our playbook?", "0.10");
-    assert.match(legal.out, /^ {10}verified {2}raised {8}indemnity$/m);
-    assert.match(legal.out, /^rate {6}5\/5$/m);
+    assert.match(legal.out, /^ {10}verified {4}raised {8}indemnity$/m);
+    assert.match(legal.out, /^rate {6}5\/5 {2}= 5$/m);
     for (const row of `${capex.out}${legal.out}`.split("\n")) assert.ok(row.length <= 110, row);
   });
 });
@@ -340,12 +341,12 @@ test("a shop that forges its evidence is caught on the mock rail and rated 1/5",
       assert.equal(await main(["ask", "What was Samsung's Q3 2025 operating profit?", "--budget", "0.10"], env), 0);
       const text = stdout.text();
       assert.match(text, /^hook {6}INFERPAY_TEST_LIAR=disclosure: /m);
-      assert.match(text, /^checks {4}1 of 2 verified by the buyer against the shop's committed root, 1 FORGED$/m);
-      assert.match(text, /^ {10}verified {2}match {9}operating profit Q3 2025 {2}12\.2T KRW$/m);
-      assert.match(text, /^ {10}FORGED {4}match {9}revenue Q3 2025 {11}86\.0T KRW$/m);
-      assert.match(text, /^ {20}the shop said match, but its evidence does not open to the committed root$/m);
-      assert.match(text, /^rate {6}1\/5 {2}\(forged evidence sets the rating to 1\)$/m);
-      assert.doesNotMatch(text, /mismatch/);
+      assert.match(text, /^checks {4}1 of 1 needed key opened and verified against the shop's committed root, 1 FORGED$/m);
+      assert.match(text, /^ {10}verified {4}match {9}operating profit Q3 2025 {2}12\.2T KRW$/m);
+      assert.match(text, /^ {10}FORGED {6}match {9}revenue Q3 2025 {11}86\.0T KRW$/m);
+      assert.match(text, /^ {22}the shop said match, but its evidence does not open to the committed root$/m);
+      assert.match(text, /^rate {6}1\/5 {2}forged evidence sets the rating to 1$/m);
+      assert.doesNotMatch(text, /^ {10}\S+ +mismatch/m);
     } finally {
       stdout.restore();
     }
@@ -355,7 +356,7 @@ test("a shop that forges its evidence is caught on the mock rail and rated 1/5",
   });
   await withDataDir(async (root) => {
     const honest = await ask(root, "What was Samsung's Q3 2025 operating profit?", "0.10");
-    assert.match(honest.out, /^rate {6}4\/5 /m);
+    assert.match(honest.out, /^rate {6}5\/5 /m);
     assert.doesNotMatch(honest.out, /FORGED|^hook/m);
   });
 });
@@ -373,8 +374,8 @@ test("the liar hook names a shop, and a liar with nothing to hide changes nothin
     try {
       const env = { INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "insurance" };
       assert.equal(await main(["ask", "Does this policy cover an outpatient MRI?", "--budget", "0.10"], env), 0);
-      assert.match(stdout.text(), /^checks {4}1 of 1 verified by the buyer against the shop's committed root$/m);
-      assert.match(stdout.text(), /^rate {6}5\/5$/m);
+      assert.match(stdout.text(), /^checks {4}1 of 1 needed key opened and verified against the shop's committed root$/m);
+      assert.match(stdout.text(), /^rate {6}5\/5 {2}= 5$/m);
     } finally {
       stdout.restore();
     }
@@ -384,7 +385,7 @@ test("the liar hook names a shop, and a liar with nothing to hide changes nothin
 test("on the mock rail the rating stays in the ledger and providers says where reputation and each root came from", async () => {
   await withDataDir(async (root) => {
     const asked = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
-    assert.match(asked.out, /^rate {6}5\/5\n {10}kept {6}in this machine's ledger, because the mock rail has no chain$/m);
+    assert.match(asked.out, /^rate {6}5\/5 {2}= 5\n(?: {10}.*\n){3} {10}kept {6}in this machine's ledger, because the mock rail has no chain$/m);
     const stdout = capture(process.stdout);
     try {
       assert.equal(await main(["providers"], { INFERPAY_DATA_DIR: root }), 0);
@@ -450,7 +451,7 @@ test("the briefing answers one part itself, carries its money forward, and buys 
   assert.match(out, /^ {10}1  the buyer itself {19}- {5}nothing {16}own answer, confidence 0\.99$/m);
   assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet {6}0\.03  0\.024 NEAR on counter  1 verified; rated 5\/5$/m);
   assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet {5}0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
-  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet  0\.02  0\.02 NEAR at list {6}2 verified, 1 mismatch; rated 4\/5$/m);
+  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet  0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
   assert.match(out, /^total {5}spent 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
   assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
     ["answered-locally", "0.02", "0"],

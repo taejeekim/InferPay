@@ -86,12 +86,14 @@ export type MarketProgress =
 
 export type JobView = { readonly order: Order; readonly state: JobState; readonly events: readonly JobEvent[] };
 
-// What the buyer concluded: the stars, and how many checks it verified, could not verify, or found forged.
+// What the buyer concluded: the stars, how many checks opened a needed key, could not be verified, or were
+// forged, and how many needed keys the shop withheld.
 export type Rating = {
   readonly stars: Stars;
   readonly verified: number;
   readonly unproven: number;
   readonly forged: number;
+  readonly withheld: number;
 };
 
 // onChain is null on a rail with no registry, where the ledger line is the whole record.
@@ -328,6 +330,7 @@ export function createMarketplace(deps: {
         verified: rating.verified,
         unproven: rating.unproven,
         forged: rating.forged,
+        withheld: rating.withheld,
       });
     } catch (error) {
       posted = { kind: "pending", tx: null, detail: error instanceof Error ? error.message : String(error) };

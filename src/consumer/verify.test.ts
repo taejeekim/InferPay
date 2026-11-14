@@ -9,6 +9,7 @@ import {
   SCHEME,
   type AssertedCheck,
   type Entry,
+  type Need,
   type Fact,
   type Figure,
   type PinnedCommitment,
@@ -44,10 +45,24 @@ function flag(text: string, verdict: "raised" | "clear" = "raised"): AssertedChe
   return { kind: "flag", claim: { label: "indemnity", text, rule: "uncapped" }, verdict, evidence: SHOP.prove(INDEMNITY) };
 }
 
+// Each check here answers the one key the buyer needed, so its own result comes first.
 function only(check: AssertedCheck, pinned: PinnedCommitment = PINNED): BuyerCheck {
-  const [result] = verifyChecks([check], pinned, QUESTION);
+  const [result] = verifyChecks([check], pinned, QUESTION, [needOf(check)]);
   assert.ok(result);
   return result;
+}
+
+function needOf(check: AssertedCheck): Need {
+  switch (check.kind) {
+    case "number":
+      return { kind: "figure", company: check.claim.company, period: check.claim.period, metric: check.claim.metric };
+    case "fact":
+      return { kind: "fact", topic: check.claim.topic };
+    case "flag":
+      return { kind: "rule", id: check.claim.rule, clause: check.claim.text };
+    case "opening":
+      throw new Error("an opening names no claim");
+  }
 }
 
 test("the buyer recomputes match, mismatch, and raised from entries that open to the committed root", () => {
@@ -172,4 +187,29 @@ test("with no published root every positive verdict is the shop's word only", ()
   assert.ok(contract && account);
   const result = only(revenue(86.1, "match"), { status: "missing", contract, account });
   assert.deepEqual([result.status, result.status === "unproven" && result.why], ["unproven", "no-commitment"]);
+});
+
+test("a needed key no verified check opens is withheld, and a verified check for a key nobody asked for is unrequested", () => {
+  const profit: Need = { kind: "figure", company: "Samsung Electronics", period: "Q3 2025", metric: "operating profit" };
+  const [extra, withheld] = verifyChecks([revenue(86.1, "match")], PINNED, QUESTION, [profit]);
+  assert.ok(extra?.status === "unrequested" && extra.verified.verdict === "match");
+  assert.deepEqual(withheld, { status: "withheld", need: profit });
+
+  const forgedNeed = verifyChecks([{ ...revenue(86, "match"), evidence: { ...SHOP.prove(REVENUE), entry: { ...REVENUE, value: 86 } } }], PINNED, QUESTION, [needOf(revenue(86, "match"))]);
+  assert.deepEqual(forgedNeed.map((check) => check.status), ["forged", "withheld"]);
+});
+
+test("a shop opens a needed key with no claim, and a rule tested on another clause does not answer the needed clause", () => {
+  const opening: AssertedCheck = { kind: "opening", key: figureKey(REVENUE), verdict: "opened", evidence: SHOP.prove(REVENUE) };
+  const [opened] = verifyChecks([opening], PINNED, QUESTION, [needOf(revenue(86.1, "match"))]);
+  assert.ok(opened?.status === "verified" && opened.kind === "opening" && opened.verdict === "opened");
+  assert.equal(opened.entry, REVENUE);
+
+  const lied: AssertedCheck = { ...opening, evidence: SHOP.prove(PROFIT) };
+  const [moved] = verifyChecks([lied], PINNED, QUESTION, []);
+  assert.ok(moved?.status === "forged" && moved.forgery.kind === "wrong-entry");
+
+  const needed: Need = { kind: "rule", id: "uncapped", clause: "unlimited indemnification clause" };
+  const elsewhere = verifyChecks([flag("this NDA's", "clear")], PINNED, QUESTION, [needed]);
+  assert.deepEqual(elsewhere.map((check) => check.status), ["unrequested", "withheld"]);
 });
