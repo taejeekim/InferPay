@@ -133,6 +133,25 @@ export function judgeFact(claim, entry) {
   return stated(entry.value) === stated(claim.claimed) ? "match" : "mismatch";
 }
 
+// A check answers a need when its claim is about the needed key. The key of a need has the shape of an entry's.
+function answers(check, need) {
+  return sameKey(factKey(check.claim), entryKey(need));
+}
+
+// The buyer's verification of the fact checks a shop sent against the keys it needed, as src/consumer/verify.ts
+// runs it: every check in order, a verified check that answers no need marked unrequested, then each needed key
+// that no verified check opened, marked withheld.
+export async function verifyChecks(checks, committed, needs) {
+  const results = await Promise.all(checks.map((check) => verifyFact(check, committed)));
+  const opened = (need) => checks.some((check, index) => results[index].status === "verified" && answers(check, need));
+  return [
+    ...results.map((result, index) => (
+      result.status === "verified" && !needs.some((need) => answers(checks[index], need)) ? { ...result, status: "unrequested" } : result
+    )),
+    ...needs.filter((need) => !opened(need)).map((need) => ({ status: "withheld", need })),
+  ];
+}
+
 // The buyer's verification of one fact check, as src/consumer/verify.ts runs it. The result names the status the
 // buyer prints and, for a forgery, which step failed.
 export async function verifyFact(check, committed) {

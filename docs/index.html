@@ -82,7 +82,7 @@
 
 <section id="verify" class="wrap" aria-labelledby="verify-title">
   <h2 id="verify-title">Verify a proof yourself</h2>
-  <p class="lede">This is one real check the insurance shop sent a buyer, with its evidence. Your browser recomputes the shop's Merkle root from it with WebCrypto and compares the result with the root the shop published on chain. Edit the evidence and watch the proof fail.</p>
+  <p class="lede">These are real checks the insurance shop sends a buyer, with their evidence. Your browser recomputes the shop's Merkle root from each one with WebCrypto and compares the result with the root the shop published on chain. Edit the evidence and watch the proof fail.</p>
 
   <div class="tabs" role="tablist" aria-label="Proof">
     <button role="tab" id="tab-present" aria-controls="proof" aria-selected="true">An entry the shop holds</button>
@@ -154,6 +154,20 @@
         </li>
       </ol>
     </div>
+  </div>
+
+  <div class="needs-panel" aria-labelledby="needs-title">
+    <h3 id="needs-title">The keys the buyer needed</h3>
+    <p class="lede">Before it pays, the buyer names the keys from the shop's catalog that a right answer needs, and the shop must open each one. A needed key the shop does not open is withheld and costs 2 stars, more than a wrong value costs, so hiding an entry always rates lower than showing it. A check on a key the buyer did not ask for counts neither for nor against the shop.</p>
+    <p class="kv-line"><span class="label">Question</span> <q id="n-question"></q></p>
+    <p class="kv-line"><span class="label">Needed keys</span> <span id="n-needs" class="mono"></span></p>
+    <div class="table-wrap"><table id="n-checks">
+      <thead><tr><th scope="col">Key</th><th scope="col">Status</th><th scope="col">Verdict</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="actions"><button type="button" id="withhold" aria-pressed="false">Withhold <code>outpatient-mri</code></button></div>
+    <pre id="n-rate" class="terminal" tabindex="0" aria-label="Rate block"></pre>
+    <p class="hint">The status and rate lines are what the CLI prints for these checks. Edits above change them too.</p>
   </div>
 </section>
 

@@ -262,6 +262,12 @@ fieldset .hint { margin: 0.5rem 0 0; }
 .calc fieldset.needs { display: block; }
 .calc fieldset.needs legend { font-size: 0.85rem; color: var(--muted); padding: 0 0.25rem; }
 #c-needs { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; }
-#c-needs label.check { display: inline-flex; align-items: baseline; gap: 0.35rem; margin: 0; font-size: 0.85rem; color: var(--text); overflow-wrap: anywhere; }
+#c-needs label.check { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font-size: 0.85rem; color: var(--text); min-width: 0; }
+#c-needs input[type="checkbox"] { width: 1rem; height: 1rem; min-width: 1rem; padding: 0; margin: 0; flex: none; }
+#c-needs .mono { overflow-wrap: anywhere; }
 .earlier { margin-top: 1rem; }
 .earlier summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.needs-panel { margin-top: 2rem; display: grid; gap: 0.75rem; min-width: 0; }
+.needs-panel h3, .needs-panel p { margin: 0; }
+.needs-panel .label { color: var(--muted); font-size: 0.85rem; margin-right: 0.5rem; }
+#n-checks .low { color: var(--bad); font-weight: 600; }

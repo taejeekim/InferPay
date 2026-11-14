@@ -14,12 +14,16 @@ import {
   type Evidence,
   type Hash,
   type Key,
+  type Need,
 } from "../commitment/index.ts";
 import type { Json } from "../commitment/merkle.ts";
-import { verifyChecks } from "../consumer/verify.ts";
+import { progressLine } from "../cli/render.ts";
+import { grade } from "../consumer/grade.ts";
+import { verifyChecks, type BuyerCheck } from "../consumer/verify.ts";
+import { newJobId } from "../domain.ts";
 import { evidenceModule, EVIDENCE_MODULE, sampleDatasets, siteEvidence } from "./evidence.ts";
 
-type SiteResult = { readonly status: string; readonly verdict?: string; readonly forgery?: string };
+type SiteResult = { readonly status: string; readonly verdict?: string; readonly forgery?: string; readonly need?: { readonly topic: string } };
 
 type SiteScheme = {
   canonical(value: unknown): string;
@@ -28,9 +32,15 @@ type SiteScheme = {
   leafHash(entry: Entry, salt: string): Promise<string | null>;
   opensTo(key: Key, evidence: unknown): Promise<string | null>;
   verifyFact(check: unknown, committed: string): Promise<SiteResult>;
+  verifyChecks(checks: readonly unknown[], committed: string, needs: readonly Need[]): Promise<readonly SiteResult[]>;
+};
+type SiteGrade = {
+  grade(results: readonly unknown[]): unknown;
+  rateLines(graded: unknown): readonly string[];
 };
 
 const site = (await import(new URL("../../docs/js/scheme.js", import.meta.url).href)) as SiteScheme;
+const siteGrade = (await import(new URL("../../docs/js/grade.js", import.meta.url).href)) as SiteGrade;
 
 // The roots the three shops published on NEAR testnet under inferpay.testnet.
 const ON_CHAIN = {
@@ -85,49 +95,75 @@ function flip(hex: string, at: number): Hash {
 
 type FactCheck = Extract<AssertedCheck, { kind: "fact" }>;
 
-function cases(): readonly { readonly name: string; readonly check: FactCheck }[] {
-  const { present, absent } = siteEvidence();
+// Each case is the list of checks a shop sends for the embedded question: the outpatient MRI check, the copay
+// check, and the dental check the buyer did not ask for, with one of them tampered with or left out.
+function cases(): readonly { readonly name: string; readonly checks: readonly FactCheck[] }[] {
+  const { present, copay, absent } = siteEvidence();
   const base: FactCheck = { kind: "fact", claim: present.claim, verdict: "match", evidence: present.evidence };
+  const second: FactCheck = { kind: "fact", claim: copay.claim, verdict: "match", evidence: copay.evidence };
   const evidence = present.evidence;
   const path = evidence.path;
   const firstSibling = path.findIndex((sibling) => sibling !== null);
   const vacant: FactCheck = { kind: "fact", claim: absent.claim, verdict: "unverifiable", evidence: absent.evidence };
+  const sent = (check: FactCheck): readonly FactCheck[] => [check, second, vacant];
+  const sentAbsent = (check: FactCheck): readonly FactCheck[] => [base, second, check];
   return [
-    { name: "honest match", check: base },
-    { name: "value changed to excluded", check: { ...base, evidence: { ...evidence, entry: { ...evidence.entry, value: "excluded" } } } },
-    { name: "source changed", check: { ...base, evidence: { ...evidence, entry: { ...evidence.entry, source: "made up" } } } },
-    { name: "topic changed", check: { ...base, evidence: { ...evidence, entry: { ...evidence.entry, topic: "mri-copay" } } } },
-    { name: "case of the topic changed", check: { ...base, evidence: { ...evidence, entry: { ...evidence.entry, topic: "Outpatient-MRI" } } } },
-    ...[0, 17, 63].map((at) => ({ name: `salt flipped at ${at}`, check: { ...base, evidence: { ...evidence, salt: flip(evidence.salt, at) } } })),
-    { name: "a non-empty sibling dropped", check: { ...base, evidence: { ...evidence, path: path.map((sibling, level) => (level === firstSibling ? null : sibling)) } } },
-    { name: "an empty sibling filled", check: { ...base, evidence: { ...evidence, path: path.map((sibling, level) => (level === 0 ? evidence.salt : sibling)) } } },
-    { name: "a short path", check: { ...base, evidence: { ...evidence, path: path.slice(1) } } },
-    { name: "verdict the entry does not support", check: { ...base, claim: { ...base.claim, claimed: "excluded" } } },
-    { name: "claim stated as mismatch", check: { ...base, verdict: "mismatch" } },
-    { name: "no evidence", check: { ...base, evidence: null } },
-    { name: "a vacancy offered for a match", check: { ...base, evidence: absent.evidence } },
-    { name: "honest absence", check: vacant },
-    { name: "absence for a key the shop holds", check: { ...vacant, claim: present.claim } },
-    { name: "an entry offered for an absence", check: { ...vacant, evidence } },
-    { name: "absence with no proof", check: { ...vacant, evidence: null } },
+    { name: "honest", checks: sent(base) },
+    { name: "value changed to excluded", checks: sent({ ...base, evidence: { ...evidence, entry: { ...evidence.entry, value: "excluded" } } }) },
+    { name: "source changed", checks: sent({ ...base, evidence: { ...evidence, entry: { ...evidence.entry, source: "made up" } } }) },
+    { name: "topic changed", checks: sent({ ...base, evidence: { ...evidence, entry: { ...evidence.entry, topic: "mri-copay" } } }) },
+    { name: "case of the topic changed", checks: sent({ ...base, evidence: { ...evidence, entry: { ...evidence.entry, topic: "Outpatient-MRI" } } }) },
+    ...[0, 17, 63].map((at) => ({ name: `salt flipped at ${at}`, checks: sent({ ...base, evidence: { ...evidence, salt: flip(evidence.salt, at) } }) })),
+    { name: "a non-empty sibling dropped", checks: sent({ ...base, evidence: { ...evidence, path: path.map((sibling, level) => (level === firstSibling ? null : sibling)) } }) },
+    { name: "an empty sibling filled", checks: sent({ ...base, evidence: { ...evidence, path: path.map((sibling, level) => (level === 0 ? evidence.salt : sibling)) } }) },
+    { name: "a short path", checks: sent({ ...base, evidence: { ...evidence, path: path.slice(1) } }) },
+    { name: "verdict the entry does not support", checks: sent({ ...base, claim: { ...base.claim, claimed: "excluded" } }) },
+    { name: "claim stated as mismatch", checks: sent({ ...base, verdict: "mismatch" }) },
+    { name: "no evidence", checks: sent({ ...base, evidence: null }) },
+    { name: "a vacancy offered for a match", checks: sent({ ...base, evidence: absent.evidence }) },
+    { name: "absence for a key the shop holds", checks: sentAbsent({ ...vacant, claim: present.claim }) },
+    { name: "an entry offered for an absence", checks: sentAbsent({ ...vacant, evidence }) },
+    { name: "absence with no proof", checks: sentAbsent({ ...vacant, evidence: null }) },
+    { name: "the MRI key withheld", checks: [second, vacant] },
+    { name: "both needed keys withheld", checks: [vacant] },
+    { name: "only the needed keys", checks: [base, second] },
   ];
 }
 
-function summary(result: ReturnType<typeof verifyChecks>[number]): SiteResult {
-  if (result.status === "verified") return { status: "verified", verdict: result.verdict };
-  if (result.status === "forged") return { status: "forged", forgery: result.forgery.kind };
-  return { status: "unproven" };
+function summary(result: BuyerCheck): SiteResult {
+  switch (result.status) {
+    case "verified":
+      return { status: "verified", verdict: result.verdict };
+    case "unrequested":
+      return { status: "unrequested", verdict: result.verified.verdict };
+    case "withheld":
+      return { status: "withheld", need: { topic: result.need.kind === "fact" ? result.need.topic : "" } };
+    case "forged":
+      return { status: "forged", forgery: result.forgery.kind };
+    case "unproven":
+      return { status: "unproven" };
+    default: {
+      const unreachable: never = result;
+      return unreachable;
+    }
+  }
 }
 
-test("the browser verifier reaches the buyer's verdict on honest and tampered evidence", async () => {
+test("the browser verifier and grade reach the buyer's statuses and rating on honest and tampered evidence", async () => {
+  const { question, needs } = siteEvidence();
   const root = hash(ON_CHAIN.insurance);
   const pinned = { status: "published", commitment: { scheme: "inferpay-keyed-merkle-sha256-v1", root, leaves: 3 }, source: { kind: "listing" } } as const;
   const statuses = new Set<string>();
-  for (const { name, check } of cases()) {
-    const expected = summary(verifyChecks([check], pinned, "")[0] as ReturnType<typeof verifyChecks>[number]);
-    const actual = await site.verifyFact(check, root);
-    assert.deepEqual({ status: actual.status, verdict: actual.verdict, forgery: actual.forgery }, { verdict: undefined, forgery: undefined, ...expected }, name);
-    statuses.add(`${expected.status}:${expected.verdict ?? expected.forgery ?? ""}`);
+  const ratings = new Set<string>();
+  for (const { name, checks } of cases()) {
+    const results = verifyChecks(checks, pinned, question, needs);
+    const expected = results.map(summary);
+    const actual = (await site.verifyChecks(checks, root, needs)).map(({ status, verdict, forgery, need }) => ({ status, verdict, forgery, need: need && { topic: need.topic } }));
+    assert.deepEqual(actual, expected.map((item) => ({ verdict: undefined, forgery: undefined, need: undefined, ...item })), name);
+    const rate = progressLine({ step: "rate", grade: grade(results), jobId: newJobId(1_700_000_000_000), onChain: null }, "mock").split("\n").slice(0, 5);
+    assert.deepEqual(siteGrade.rateLines(siteGrade.grade(actual)), rate, name);
+    for (const item of expected) statuses.add(`${item.status}:${item.verdict ?? item.forgery ?? item.need?.topic ?? ""}`);
+    ratings.add(rate[0] ?? "");
   }
   assert.deepEqual([...statuses].sort(), [
     "forged:no-evidence",
@@ -135,12 +171,20 @@ test("the browser verifier reaches the buyer's verdict on honest and tampered ev
     "forged:wrong-root",
     "forged:wrong-verdict",
     "unproven:",
-    "verified:absent",
+    "unrequested:absent",
     "verified:match",
+    "withheld:mri-copay",
+    "withheld:outpatient-mri",
   ]);
-  const honest = cases()[0];
+  assert.deepEqual([...ratings].sort(), [
+    "rate      1/5  = 5 - 2 x 2 withheld = 1",
+    "rate      1/5  forged evidence sets the rating to 1",
+    "rate      3/5  = 5 - 2 x 1 withheld = 3",
+    "rate      5/5  = 5",
+  ]);
+  const honest = cases()[0]?.checks[0];
   assert.ok(honest);
-  assert.equal((await site.verifyFact(honest.check, flip(root, 0))).forgery, "wrong-root", "a different committed root");
+  assert.equal((await site.verifyFact(honest, flip(root, 0))).forgery, "wrong-root", "a different committed root");
 });
 
 test("the evidence the site embeds is what the generator makes from the sample data today", () => {

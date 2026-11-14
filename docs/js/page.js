@@ -1,7 +1,8 @@
 import { DEFAULT_ROOT, formatNear, readState, rosterOf } from "./chain.js";
 import { decide, decideLines, isDecimal, needText, reputationQuality, replyOf, settleCounter } from "./decide.js";
 import evidence from "./evidence.js";
-import { canonical, entryKey, factKey, keyHash, leafHash, slotOf, verifyFact, walk } from "./scheme.js";
+import { grade, rateLines } from "./grade.js";
+import { canonical, entryKey, factKey, keyHash, leafHash, slotOf, verifyChecks, verifyFact, walk } from "./scheme.js";
 
 // Set this to the demo post's URL to show a link to it at the top of the page. Empty hides the link.
 const DEMO_URL = "";
@@ -174,6 +175,7 @@ const proof = {
   salt: honest.salt,
   absentTopic: evidence.absent.claim.topic,
   saltFlips: 0,
+  withheld: false,
 };
 let honestWalk = null;
 let computeRun = 0;
@@ -193,13 +195,17 @@ function hashText(hash) {
 
 function verdictView(result, claimText, opened, committed) {
   const box = $("verdict");
-  const ok = result.status === "verified";
+  const withheld = proof.mode === "present" && proof.withheld;
+  const ok = result.status === "verified" && !withheld;
   box.className = `verdict ${ok ? "ok" : "bad"}`;
   let head;
   let body;
-  if (ok && result.verdict === "absent") {
+  if (withheld) {
+    head = "WITHHELD";
+    body = `The shop sent no check on ${evidence.present.claim.topic}. The buyer needed this key, so it counts as withheld. The steps on the right show the evidence the shop held back.`;
+  } else if (ok && result.verdict === "absent") {
     head = "VERIFIED: ABSENT";
-    body = `The slot for this key is empty in the committed tree, so the shop provably holds nothing on ${claimText}. The buyer counts the claim as one the shop could not back.`;
+    body = `The slot for this key is empty in the committed tree, so the shop provably holds nothing on ${claimText}. The buyer did not ask about this key, so the check is unrequested and counts neither for nor against the shop.`;
   } else if (ok) {
     head = `VERIFIED: ${result.verdict.toUpperCase()}`;
     body = `The evidence opens to the root on chain, and the buyer recomputes the verdict from the entry: value "${proof.entry.value}" against the claim "${evidence.present.claim.claimed}".`;
@@ -234,6 +240,8 @@ async function computeProof() {
     ? { claim: evidence.present.claim, verdict: evidence.present.verdict, evidence: { entry: proof.entry, salt: proof.salt, path } }
     : { claim: { ...evidence.absent.claim, topic: proof.absentTopic }, verdict: evidence.absent.verdict, evidence: evidence.absent.evidence };
   const result = await verifyFact(check, committed);
+  const sent = sentChecks();
+  const results = await verifyChecks(sent, committed, evidence.needs);
   const shownLeaf = present ? leaf : await emptyLeaf();
   if (run !== computeRun) return;
 
@@ -267,6 +275,33 @@ async function computeProof() {
   $("w-chain-root").replaceChildren(hashButton(committed, 16, 8));
   $("w-chain-source").textContent = source;
   verdictView(result, present ? evidence.present.claim.label : proof.absentTopic, walked?.root ?? null, committed);
+  renderNeededKeys(sent, results);
+}
+
+// The checks the shop sends for the question, with the visitor's edits: the MRI check unless it is withheld, the
+// copay check, and the check on a key the buyer did not ask for.
+function sentChecks() {
+  const mri = { kind: "fact", claim: evidence.present.claim, verdict: evidence.present.verdict, evidence: { entry: proof.entry, salt: proof.salt, path: honest.path } };
+  const dental = { kind: "fact", claim: { ...evidence.absent.claim, topic: proof.absentTopic }, verdict: evidence.absent.verdict, evidence: evidence.absent.evidence };
+  return [...(proof.withheld ? [] : [mri]), evidence.copay, dental];
+}
+
+const STATUS_TEXT = { verified: "verified", unrequested: "unrequested", withheld: "WITHHELD", forged: "FORGED", unproven: "unproven" };
+
+function renderNeededKeys(sent, results) {
+  $("n-checks").tBodies[0].replaceChildren(...results.map((result, index) => {
+    const key = result.status === "withheld" ? result.need.topic : sent[index].claim.topic;
+    const verdict = result.status === "withheld" ? "no opening sent"
+      : result.status === "forged" ? result.forgery
+        : result.verdict === "absent" ? "no entry" : result.verdict ?? "";
+    const bad = result.status === "withheld" || result.status === "forged";
+    return h("tr", {},
+      h("td", { class: "mono" }, key),
+      h("td", { class: bad ? "mono low" : "mono" }, STATUS_TEXT[result.status]),
+      h("td", { class: "mono" }, verdict));
+  }));
+  $("n-rate").textContent = rateLines(grade(results)).join("\n");
+  $("withhold").setAttribute("aria-pressed", String(proof.withheld));
 }
 
 let emptyLeafHash = null;
@@ -335,7 +370,12 @@ $("tamper-salt").addEventListener("click", () => {
   $("f-salt").setAttribute("aria-invalid", "false");
   computeProof();
 });
+$("withhold").addEventListener("click", () => {
+  proof.withheld = !proof.withheld;
+  computeProof();
+});
 $("reset-proof").addEventListener("click", () => {
+  proof.withheld = false;
   proof.entry = { ...honest.entry };
   proof.salt = honest.salt;
   proof.absentTopic = evidence.absent.claim.topic;
@@ -354,6 +394,8 @@ for (const tab of [$("tab-present"), $("tab-absent")]) {
   });
 }
 
+$("n-question").textContent = evidence.question;
+$("n-needs").textContent = evidence.needs.map((need) => need.topic).join(", ");
 fillProofInputs();
 showMode("present");
 Promise.all([slotOf(entryKey(honest.entry)), leafHash(honest.entry, honest.salt)])
@@ -387,6 +429,7 @@ function renderNeeds(shop, checked) {
       " ", h("span", { class: "mono" }, needText(need)));
   });
   $("c-needs").replaceChildren(...boxes);
+  $("c-needs").dataset.shop = shop;
 }
 
 function checkedNeeds(shop) {
@@ -437,6 +480,7 @@ function runCalc() {
     $("calc-out").textContent = "";
     return;
   }
+  if ($("c-needs").dataset.shop !== input.shop) renderNeeds(input.shop, []);
   const needs = { [input.shop]: checkedNeeds(input.shop) };
   const plan = decide({
     value: input.value,
@@ -470,8 +514,7 @@ function loadPreset(name) {
 }
 
 for (const button of document.querySelectorAll("#presets button")) button.addEventListener("click", () => loadPreset(button.dataset.preset));
-$("calc").addEventListener("input", (event) => {
-  if (event.target.id === "c-shop") renderNeeds(event.target.value, []);
+$("calc").addEventListener("input", () => {
   for (const button of document.querySelectorAll("#presets button")) button.setAttribute("aria-pressed", "false");
   delete $("c-live-note").dataset.live;
   runCalc();

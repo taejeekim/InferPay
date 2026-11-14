@@ -102,11 +102,11 @@ function withoutDeal(analysis, because) {
   return { ...analysis, kind: "decline", because };
 }
 
-function line(label, rest) {
+export function line(label, rest) {
   return `${label.padEnd(10)}${rest}`;
 }
 
-function field(name, value) {
+export function field(name, value) {
   return line("", `${name.padEnd(8)}${value}`);
 }
 
