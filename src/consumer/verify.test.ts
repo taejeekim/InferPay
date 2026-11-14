@@ -41,7 +41,7 @@ function revenue(claimed: number, verdict: "match" | "mismatch"): AssertedCheck 
 }
 
 function flag(text: string, verdict: "raised" | "clear" = "raised"): AssertedCheck {
-  return { kind: "flag", claim: { label: "indemnity", text }, verdict, evidence: verdict === "raised" ? SHOP.prove(INDEMNITY) : null };
+  return { kind: "flag", claim: { label: "indemnity", text, rule: "uncapped" }, verdict, evidence: SHOP.prove(INDEMNITY) };
 }
 
 function only(check: AssertedCheck, pinned: PinnedCommitment = PINNED): BuyerCheck {
@@ -62,8 +62,11 @@ test("the buyer recomputes match, mismatch, and raised from entries that open to
   assert.ok(fact.status === "verified" && fact.verdict === "match");
 
   const raised = only(flag("unlimited indemnification clause"));
-  assert.ok(raised.status === "verified" && raised.kind === "flag");
+  assert.ok(raised.status === "verified" && raised.kind === "flag" && raised.verdict === "raised");
   assert.equal(raised.entry.label, "uncapped indemnity");
+
+  const clear = only(flag("this NDA's", "clear"));
+  assert.ok(clear.status === "verified" && clear.kind === "flag" && clear.verdict === "clear");
 });
 
 test("a shop that calls a 0.12 percent miss a match is caught by the buyer's own arithmetic", () => {
@@ -138,20 +141,29 @@ test("the buyer verifies that the shop holds no entry for a key, and catches a s
   assert.ok(absentFact.status === "verified" && absentFact.verdict === "absent");
 });
 
-test("an unverifiable claim with no proof and a clear flag are the shop's word only", () => {
+test("an unverifiable claim with no proof is the shop's word only, and a clear flag with no rule opened is forged", () => {
   const unbacked = only({ kind: "number", claim: claimOf("capex", 1), verdict: "unverifiable", evidence: null });
   assert.deepEqual([unbacked.status, unbacked.status === "unproven" && unbacked.why], ["unproven", "no-proof"]);
   const withEntry = only({ kind: "number", claim: claimOf("revenue", 86), verdict: "unverifiable", evidence: SHOP.prove(REVENUE) });
   assert.equal(withEntry.status, "unproven");
-  assert.equal(only(flag("Twelve months.", "clear")).status, "unproven");
+  const bareClear = only({ ...flag("this NDA's", "clear"), evidence: null });
+  assert.ok(bareClear.status === "forged" && bareClear.forgery.kind === "no-evidence");
 });
 
-test("a raised flag counts only for a clause quoted from the buyer's question, and only when the rule really hits it", () => {
+test("a flag must open the rule it names, so another rule's slot cannot stand in for it", () => {
+  const borrowed = only({ kind: "flag", claim: { label: "term", text: "this NDA's", rule: "perpetual" }, verdict: "clear", evidence: SHOP.prove(INDEMNITY) });
+  assert.ok(borrowed.status === "forged" && borrowed.forgery.kind === "wrong-entry");
+});
+
+test("a flag counts only for a clause quoted from the buyer's question, and only with the verdict the rule gives", () => {
   const invented = only(flag("The receiving party shall provide unlimited indemnification."));
   assert.deepEqual([invented.status, invented.status === "unproven" && invented.why], ["unproven", "unquoted"]);
   const quiet = only(flag("fail our playbook"));
   assert.ok(quiet.status === "forged");
   assert.deepEqual(quiet.forgery, { kind: "wrong-verdict", recomputed: "clear" });
+  const hidden = only(flag("unlimited indemnification clause", "clear"));
+  assert.ok(hidden.status === "forged");
+  assert.deepEqual(hidden.forgery, { kind: "wrong-verdict", recomputed: "raised" });
 });
 
 test("with no published root every positive verdict is the shop's word only", () => {

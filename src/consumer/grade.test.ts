@@ -16,7 +16,7 @@ const match: AssertedCheck = { kind: "fact", claim: { label: "MRI", topic: "mri"
 const mismatch: AssertedCheck = { kind: "fact", claim: { label: "MRI", topic: "mri", claimed: "excluded" }, verdict: "mismatch", evidence: SHOP.prove(COVERED) };
 const absent: AssertedCheck = { kind: "fact", claim: DENTAL, verdict: "unverifiable", evidence: SHOP.proveAbsent(factKey(DENTAL)) };
 const unbacked: AssertedCheck = { kind: "fact", claim: DENTAL, verdict: "unverifiable", evidence: null };
-const clear: AssertedCheck = { kind: "flag", claim: { label: "term", text: "Twelve months." }, verdict: "clear", evidence: null };
+const unprovenFlag: AssertedCheck = { kind: "flag", claim: { label: "term", text: "Twelve months.", rule: "term" }, verdict: "unverifiable", evidence: null };
 const forged: AssertedCheck = {
   kind: "fact",
   claim: { label: "MRI", topic: "mri", claimed: "excluded" },
@@ -38,25 +38,24 @@ test("an answer with nothing verified in its favour rates at most 3", () => {
   assert.equal(stars(), 3);
   assert.equal(stars(absent), 3);
   assert.equal(stars(unbacked), 3);
-  assert.equal(stars(clear), 3);
-  assert.equal(stars(clear, clear, clear), 3);
+  assert.equal(stars(unprovenFlag), 3);
   assert.equal(stars(absent, unbacked, unbacked), 2);
 });
 
 test("a claim the shop does not back costs the same star as a mismatch, proven absent or not, so withholding never pays", () => {
   assert.equal(stars(match, unbacked), stars(match, mismatch));
   assert.equal(stars(match, absent), stars(match, mismatch));
-  assert.equal(stars(match, clear), 5);
+  assert.equal(stars(match, unprovenFlag), 4);
 });
 
 test("one forged check sets the rating to 1 whatever else was verified", () => {
   assert.equal(stars(match, match, forged), 1);
-  assert.deepEqual(tally(verifyChecks([match, mismatch, absent, unbacked, clear, forged], PINNED, "Is an MRI covered?")), {
+  assert.deepEqual(tally(verifyChecks([match, mismatch, absent, unbacked, unprovenFlag, forged], PINNED, "Is an MRI covered?")), {
     verified: 3,
     mismatches: 1,
     unproven: 2,
     forged: 1,
     supporting: 2,
-    unbacked: 2,
+    unbacked: 3,
   });
 });

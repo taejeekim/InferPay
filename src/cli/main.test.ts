@@ -325,7 +325,7 @@ test("the buyer verifies that a shop holds no entry, and that a raised flag is a
     assert.match(capex.out, /^ {10}verified {2}no entry {6}capex Q3 2025 {2}1\.0T KRW$/m);
     assert.match(capex.out, /^ {20}the slot for this key in the shop's committed tree is empty: the shop holds nothing on it$/m);
     const legal = await ask(root, "Does this NDA's unlimited indemnification clause fail our playbook?", "0.10");
-    assert.match(legal.out, /^ {10}verified {2}raised {8}uncapped indemnity$/m);
+    assert.match(legal.out, /^ {10}verified {2}raised {8}indemnity$/m);
     assert.match(legal.out, /^rate {6}5\/5$/m);
     for (const row of `${capex.out}${legal.out}`.split("\n")) assert.ok(row.length <= 110, row);
   });

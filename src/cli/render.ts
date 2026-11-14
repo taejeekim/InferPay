@@ -6,14 +6,10 @@ import type { FailReason, JobView, Listing } from "../market/index.ts";
 import {
   canonical,
   entryKey,
-  factKey,
-  figureKey,
   leafHash,
   slotOf,
   type AssertedCheck,
   type Evidence,
-  type FactClaim,
-  type FigureClaim,
   type Hash,
   type Key,
   type PinnedCommitment,
@@ -23,7 +19,7 @@ import type { CallAttestation } from "../inference/attest.ts";
 import { tally } from "../consumer/grade.ts";
 import type { NoDeal } from "../consumer/decide.ts";
 import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer/task.ts";
-import { verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
+import { claimKey, verifyChecks, type BuyerCheck, type Forgery } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
 import type { RatingPost } from "../registry/index.ts";
@@ -458,7 +454,7 @@ export function checksBlock(checks: readonly BuyerCheck[], pinned: PinnedCommitm
 }
 
 function checkLabel(check: BuyerCheck): string {
-  if (check.status === "verified") return check.kind === "flag" ? check.entry.label : check.claim.label;
+  if (check.status === "verified") return check.claim.label;
   return check.check.claim.label;
 }
 
@@ -473,10 +469,13 @@ function checkRows(check: BuyerCheck, width: number): string[] {
   if (check.status === "forged") {
     return [head("FORGED", check.check.verdict, claimedText(check.check)), under(forgeryText(check.forgery, check.check))];
   }
-  if (check.kind === "flag") return [head("verified", check.verdict, ""), under(check.entry.detail)];
   if (check.verdict === "absent") {
-    const claimed = check.kind === "number" ? formatFigure(check.claim.claimed, check.claim.unit) : check.claim.claimed;
+    const claimed = check.kind === "number" ? formatFigure(check.claim.claimed, check.claim.unit) : check.kind === "fact" ? check.claim.claimed : "";
     return [head("verified", "no entry", claimed), under("the slot for this key in the shop's committed tree is empty: the shop holds nothing on it")];
+  }
+  if (check.kind === "flag") {
+    if (check.verdict === "raised") return [head("verified", "raised", ""), under(check.entry.detail)];
+    return [head("verified", "clear", ""), under(`the playbook rule ${check.entry.id} does not apply to "${check.claim.text}"`)];
   }
   if (check.kind === "fact") {
     const ref = check.verdict === "mismatch" ? `   ref ${check.entry.value}` : "";
@@ -568,11 +567,6 @@ function proofRows(check: BuyerCheck): string[] {
   return rows;
 }
 
-function claimKey(check: { readonly kind: "number"; readonly claim: FigureClaim } | { readonly kind: "fact"; readonly claim: FactClaim } | { readonly kind: "flag" }): Key {
-  if (check.kind === "number") return figureKey(check.claim);
-  if (check.kind === "fact") return factKey(check.claim);
-  return [];
-}
 
 function evidenceRows(key: Key, evidence: Evidence): string[] {
   const siblings = evidence.path.flatMap((hash, level) => (hash === null ? [] : [`  ${`level ${level}`.padEnd(10)}${hash}`]));

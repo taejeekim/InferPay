@@ -37,7 +37,7 @@ function lie(check: AssertedCheck): AssertedCheck {
       return { ...check, verdict: "match", evidence: { ...borrowed, entry } };
     }
     case "flag": {
-      const entry = { kind: "rule" as const, id: "invented", all: ["."], label: check.claim.label, detail: "Invented by the lying shop." };
+      const entry = { kind: "rule" as const, id: check.claim.rule, all: ["."], label: check.claim.label, detail: "Invented by the lying shop." };
       return { ...check, verdict: "raised", evidence: { ...borrowed, entry } };
     }
     default: {

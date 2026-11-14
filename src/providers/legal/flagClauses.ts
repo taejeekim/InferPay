@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   clauseClaimSchema,
   ruleHits,
+  ruleKey,
   type AssertedCheck,
   type ClauseClaim,
   type Dataset,
@@ -14,10 +15,11 @@ export function parseClauses(raw: unknown): readonly ClauseClaim[] | null {
   return parsed.data.clauses;
 }
 
+// Each clause is tested against the one rule it names, and that rule's slot is opened whatever the verdict.
 export function flagClauses(clauses: readonly ClauseClaim[], playbook: Dataset<Rule>): readonly AssertedCheck[] {
   return clauses.map((claim) => {
-    const hit = playbook.entries.find((rule) => ruleHits(rule, claim.text));
-    if (!hit) return { kind: "flag", claim, verdict: "clear", evidence: null };
-    return { kind: "flag", claim, verdict: "raised", evidence: playbook.prove(hit) };
+    const rule = playbook.entries.find((entry) => entry.id === claim.rule);
+    if (!rule) return { kind: "flag", claim, verdict: "unverifiable", evidence: playbook.proveAbsent(ruleKey({ id: claim.rule })) };
+    return { kind: "flag", claim, verdict: ruleHits(rule, claim.text) ? "raised" : "clear", evidence: playbook.prove(rule) };
   });
 }

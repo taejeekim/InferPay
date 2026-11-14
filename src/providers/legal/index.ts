@@ -12,25 +12,28 @@ if (!quoteNear) throw new Error("legal price failed its check");
 const floorNear = parseDecimalAmount("0.02");
 if (!floorNear) throw new Error("legal floor failed its check");
 
-const CLAUSE_PARAMETERS = {
-  type: "object",
-  additionalProperties: false,
-  required: ["clauses"],
-  properties: {
-    clauses: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "text"],
-        properties: {
-          label: { type: "string" },
-          text: { type: "string", description: "The clause quoted word for word from the question." },
+function clauseParameters(rules: readonly string[]) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["clauses"],
+    properties: {
+      clauses: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "text", "rule"],
+          properties: {
+            label: { type: "string" },
+            text: { type: "string", description: "The clause quoted word for word from the question." },
+            rule: { type: "string", enum: rules, description: "The playbook rule to test the clause against." },
+          },
         },
       },
     },
-  },
-};
+  };
+}
 
 export const legal: Provider = {
   quoteNear,
@@ -52,8 +55,8 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
   const playbook = loadPlaybook();
   const flag = tool({
     name: "flag_clauses",
-    description: "Check draft clauses against the private playbook. Pass every clause you cite.",
-    parameters: CLAUSE_PARAMETERS,
+    description: "Test each clause you cite against the playbook rule you name for it.",
+    parameters: clauseParameters(playbook.entries.map((rule) => rule.id)),
     parseArgs: parseClauses,
     run: (args) => flagClauses(args, playbook),
   });
@@ -62,7 +65,7 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
     role: "provider",
     system: [
       "You are a contracts reviewer.",
-      "Call flag_clauses with every clause you cite.",
+      "Call flag_clauses with every clause you cite, and name the playbook rule to test each one against.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
     ].join(" "),

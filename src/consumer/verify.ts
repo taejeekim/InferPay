@@ -8,6 +8,7 @@ import {
   opensTo,
   quotedFrom,
   ruleHits,
+  ruleKey,
   sameKey,
   type AssertedCheck,
   type ClauseClaim,
@@ -16,6 +17,7 @@ import {
   type Figure,
   type FigureClaim,
   type Hash,
+  type Key,
   type Membership,
   type Path,
   type PinnedCommitment,
@@ -26,19 +28,20 @@ import {
 type Proven<E> = { readonly entry: E; readonly salt: Hash; readonly path: Path };
 
 // A verdict the buyer computed itself, from the slot of the claim's key in the tree the shop committed to. The
-// slot either holds an entry, which gives match, mismatch, or raised, or is empty, which gives absent.
+// slot either holds an entry, which gives match, mismatch, raised, or clear, or is empty, which gives absent.
 export type VerifiedCheck = Brand<
   | ({ readonly status: "verified"; readonly kind: "number"; readonly claim: FigureClaim; readonly verdict: "match" } & Proven<Figure>)
   | ({ readonly status: "verified"; readonly kind: "number"; readonly claim: FigureClaim; readonly verdict: "mismatch"; readonly deltaPct: number } & Proven<Figure>)
   | { readonly status: "verified"; readonly kind: "number"; readonly claim: FigureClaim; readonly verdict: "absent"; readonly path: Path }
   | ({ readonly status: "verified"; readonly kind: "fact"; readonly claim: FactClaim; readonly verdict: "match" | "mismatch" } & Proven<Fact>)
   | { readonly status: "verified"; readonly kind: "fact"; readonly claim: FactClaim; readonly verdict: "absent"; readonly path: Path }
-  | ({ readonly status: "verified"; readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" } & Proven<Rule>),
+  | ({ readonly status: "verified"; readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" | "clear" } & Proven<Rule>)
+  | { readonly status: "verified"; readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "absent"; readonly path: Path },
   "VerifiedCheck"
 >;
 
-// The shop's word with nothing behind it. It sent no proof, it never published a root, or it raised a flag on
-// a clause the buyer did not ask about.
+// The shop's word with nothing behind it. It sent no proof, it never published a root, or it flagged a clause
+// the buyer did not ask about.
 export type UnprovenCheck = {
   readonly status: "unproven";
   readonly check: AssertedCheck;
@@ -49,7 +52,7 @@ export type Forgery =
   | { readonly kind: "no-evidence" }
   | { readonly kind: "wrong-root"; readonly opensTo: Hash | null; readonly committed: Hash }
   | { readonly kind: "wrong-entry" }
-  | { readonly kind: "wrong-verdict"; readonly recomputed: "match" | "mismatch" | "unverifiable" | "clear" };
+  | { readonly kind: "wrong-verdict"; readonly recomputed: "match" | "mismatch" | "unverifiable" | "raised" | "clear" };
 
 export type ForgedCheck = {
   readonly status: "forged";
@@ -64,18 +67,18 @@ export function verifyChecks(checks: readonly AssertedCheck[], pinned: PinnedCom
 }
 
 function verifyCheck(check: AssertedCheck, pinned: PinnedCommitment, question: string): BuyerCheck {
-  // No rule matching a clause cannot be shown without revealing every rule, so a clear flag is never more than a claim.
-  if (check.kind === "flag" && check.verdict === "clear") return { status: "unproven", check, why: "no-proof" };
   if (pinned.status === "missing") return { status: "unproven", check, why: "no-commitment" };
   const committed = pinned.commitment.root;
   const { evidence } = check;
 
   if (check.verdict === "unverifiable") {
     if (evidence === null || !("vacant" in evidence)) return { status: "unproven", check, why: "no-proof" };
-    const opened = opensTo(check.kind === "number" ? figureKey(check.claim) : factKey(check.claim), evidence);
+    const opened = opensTo(claimKey(check), evidence);
     if (opened !== committed) return forged(check, { kind: "wrong-root", opensTo: opened, committed });
-    if (check.kind === "number") return verified({ status: "verified", kind: "number", claim: check.claim, verdict: "absent", path: evidence.path });
-    return verified({ status: "verified", kind: "fact", claim: check.claim, verdict: "absent", path: evidence.path });
+    const { path } = evidence;
+    if (check.kind === "number") return verified({ status: "verified", kind: "number", claim: check.claim, verdict: "absent", path });
+    if (check.kind === "fact") return verified({ status: "verified", kind: "fact", claim: check.claim, verdict: "absent", path });
+    return verified({ status: "verified", kind: "flag", claim: check.claim, verdict: "absent", path });
   }
 
   if (evidence === null || "vacant" in evidence) return forged(check, { kind: "no-evidence" });
@@ -100,18 +103,30 @@ function verifyCheck(check: AssertedCheck, pinned: PinnedCommitment, question: s
       return verified({ status: "verified", kind: "fact", claim: check.claim, verdict, entry, salt, path });
     }
     case "flag": {
-      if (entry.kind !== "rule") return forged(check, { kind: "wrong-entry" });
+      if (entry.kind !== "rule" || entry.id !== check.claim.rule) return forged(check, { kind: "wrong-entry" });
       const miss = missesRoot(check, evidence, committed);
       if (miss) return miss;
       if (!quotedFrom(question, check.claim.text)) return { status: "unproven", check, why: "unquoted" };
-      if (!ruleHits(entry, check.claim.text)) return forged(check, { kind: "wrong-verdict", recomputed: "clear" });
-      return verified({ status: "verified", kind: "flag", claim: check.claim, verdict: "raised", entry, salt, path });
+      const verdict = ruleHits(entry, check.claim.text) ? "raised" : "clear";
+      if (verdict !== check.verdict) return forged(check, { kind: "wrong-verdict", recomputed: verdict });
+      return verified({ status: "verified", kind: "flag", claim: check.claim, verdict, entry, salt, path });
     }
     default: {
       const unreachable: never = check;
       return unreachable;
     }
   }
+}
+
+export function claimKey(
+  check:
+    | { readonly kind: "number"; readonly claim: FigureClaim }
+    | { readonly kind: "fact"; readonly claim: FactClaim }
+    | { readonly kind: "flag"; readonly claim: ClauseClaim },
+): Key {
+  if (check.kind === "number") return figureKey(check.claim);
+  if (check.kind === "fact") return factKey(check.claim);
+  return ruleKey({ id: check.claim.rule });
 }
 
 // The slot comes from the entry's own key, which the caller has already matched to the claim.

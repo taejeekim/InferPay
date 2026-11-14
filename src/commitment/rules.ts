@@ -44,9 +44,12 @@ export type FactClaim = {
   readonly claimed: string;
 };
 
+// A clause quoted from the question and the playbook rule to test it against. Naming the rule lets the shop open
+// that rule's slot, so a clear verdict is as provable as a raised one.
 export type ClauseClaim = {
   readonly label: string;
   readonly text: string;
+  readonly rule: string;
 };
 
 /**
@@ -69,10 +72,14 @@ export function factKey(of: Pick<Fact, "topic">): Key {
   return ["fact", of.topic.toLowerCase()];
 }
 
+export function ruleKey(of: Pick<Rule, "id">): Key {
+  return ["rule", of.id];
+}
+
 export function entryKey(entry: Entry): Key {
   if (entry.kind === "figure") return figureKey(entry);
   if (entry.kind === "fact") return factKey(entry);
-  return ["rule", entry.id];
+  return ruleKey(entry);
 }
 
 export function sameKey(a: Key, b: Key): boolean {

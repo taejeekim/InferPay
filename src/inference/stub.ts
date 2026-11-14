@@ -150,6 +150,7 @@ const RECORDINGS: readonly Recording[] = [
             clauses: [{
               label: "indemnity",
               text: "unlimited indemnification clause",
+              rule: "uncapped-indemnity",
             }],
           },
         }],

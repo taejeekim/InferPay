@@ -36,7 +36,7 @@ export type Evidence = Membership | Vacancy;
 export type AssertedCheck =
   | { readonly kind: "number"; readonly claim: FigureClaim; readonly verdict: "match" | "mismatch" | "unverifiable"; readonly evidence: Evidence | null }
   | { readonly kind: "fact"; readonly claim: FactClaim; readonly verdict: "match" | "mismatch" | "unverifiable"; readonly evidence: Evidence | null }
-  | { readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" | "clear"; readonly evidence: Evidence | null };
+  | { readonly kind: "flag"; readonly claim: ClauseClaim; readonly verdict: "raised" | "clear" | "unverifiable"; readonly evidence: Evidence | null };
 
 export type CommitmentSource =
   | { readonly kind: "listing" }
@@ -128,7 +128,7 @@ export const figureClaimSchema = z.object({
 
 export const factClaimSchema = z.object({ label: z.string(), topic: z.string(), claimed: z.string() });
 
-export const clauseClaimSchema = z.object({ label: z.string(), text: z.string() });
+export const clauseClaimSchema = z.object({ label: z.string(), text: z.string(), rule: z.string() });
 
 export const assertedCheckSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -146,7 +146,7 @@ export const assertedCheckSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("flag"),
     claim: clauseClaimSchema,
-    verdict: z.enum(["raised", "clear"]),
+    verdict: z.enum(["raised", "clear", "unverifiable"]),
     evidence: evidenceSchema.nullable(),
   }),
 ]);
