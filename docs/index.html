@@ -30,7 +30,7 @@
 <section id="what" class="wrap prose">
   <h1>A buyer agent that pays only for answers it needs and can check</h1>
   <p>An agent with a budget can waste it two ways: it can pay for an answer it already knows, and it can pay for an answer it cannot check. InferPay is a command-line buyer agent that prices each purchase against its own confidence before any NEAR moves, and shows the arithmetic.</p>
-  <p>When it buys, the specialist must send checks with evidence. The buyer recomputes each check against a hash of the specialist's dataset that the specialist published on NEAR testnet, grades the answer from what it verified, and writes the rating on chain, where it becomes the specialist's reputation for the next decision.</p>
+  <p>Before it buys, the buyer names the keys from the specialist's catalog that a right answer needs. The specialist must open each of those keys with evidence. The buyer recomputes each check against a hash of the specialist's dataset that the specialist published on NEAR testnet, grades the answer from what it verified and what the specialist withheld, and writes the rating on chain, where it becomes the specialist's reputation for the next decision.</p>
   <p class="links">
     <a href="https://github.com/taejeekim/InferPay">Source code on GitHub</a>
     <a id="demo-link" href="" hidden>Demo post</a>
@@ -201,11 +201,11 @@
 
 <section id="run" class="wrap" aria-labelledby="run-title">
   <h2 id="run-title">A recorded run</h2>
-  <p class="lede">One live run from 2026-11-13: live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
+  <p class="lede">One live run from 2026-11-13, recorded before the buyer named the keys it needs. Today's CLI prints more: <code>needs</code> rows in the decide block, which needed keys the shop opened or withheld in the checks block, and network fees in the pay and rate blocks. This run used live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
   <ol class="captions">
     <li><strong>decide.</strong> The buyer rated its own confidence at 0.10, so answering alone was worth 0.005 NEAR. The insurance shop nets +0.025, so the buyer paid the list price.</li>
     <li><strong>pay and attest.</strong> A native NEAR transfer from <code>editor.kyle.inferpay.testnet</code>, with its explorer link. Each model call was signed inside NEAR AI Cloud's TEE, and the buyer checked the signature against the attestation report.</li>
-    <li><strong>checks and rate.</strong> Both checks were verified against the root the buyer read from chain before it paid. The 5/5 rating went to SocialDB, and it appears in the live ratings above.</li>
+    <li><strong>checks and rate.</strong> Both checks were verified against the root the buyer read from chain before it paid. The 5/5 rating went to SocialDB. It was written under the earlier grading rule, so it appears with the earlier ratings above and does not count toward reputation.</li>
   </ol>
   <pre id="run-log" class="terminal" tabindex="0" aria-label="Terminal output of the run">rails: payment=near-testnet inference=near-ai
 decide    buy from insurance at 0.02 NEAR (list price)
@@ -249,6 +249,8 @@ attest    buyer 1/1 calls verified
   <h3>Real</h3>
   <ul>
     <li>The buy-or-answer decision, the one counter-offer, the check verification, and the grade run in every mode.</li>
+    <li>The grade counts only the keys the buyer named before it paid. It starts at 5 and loses 1 per mismatch, 1 per empty slot, 1 per needed key opened with no claim, and 2 per needed key withheld. It is at most 2 when no needed key backs the answer, and 1 if any check is forged.</li>
+    <li><code>--budget</code> bounds the price paid to shops. On testnet the bot also pays network fees for the payment and the rating, and the CLI prints them separately.</li>
     <li>On the testnet rail, payment is a native NEAR transfer from the buyer bot's own sub-account, and the buyer reads each shop's dataset hash from NEAR testnet before it pays.</li>
     <li>Reputation on the testnet rail comes from ratings that the buyer bots write on NEAR testnet. The 18 accounts are real named accounts on testnet, created through the faucet.</li>
     <li>With a NEAR AI Cloud key, answers come from NEAR AI Cloud, and each model response is checked against NEAR AI's TEE attestation report.</li>
@@ -258,6 +260,7 @@ attest    buyer 1/1 calls verified
     <li>Without a NEAR AI key, answers are replayed from 8 recorded questions. Any other question stops before payment.</li>
     <li>The NEAR Intents rail for mainnet has never run. Every on-chain action shown here is on testnet.</li>
     <li>The buyer verifies claims, not prose. It does not check that the answer sentence says what the checks say.</li>
+    <li>The buyer's model picks the needed keys. Code drops any key that is not in the shop's catalog, but a key the model does not name is never required.</li>
     <li>A commitment proves consistency, not truth. It shows that a check agrees with the dataset the shop published, not that the dataset is right.</li>
     <li>The sample datasets and their salts are in the repository, so they are not secret. That is why this page can show a proof.</li>
     <li>Ratings can be gamed. Anyone can create an account and write a rating. The CLI and this page read only the ratings of the buyer bots under one root.</li>
