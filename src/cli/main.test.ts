@@ -278,12 +278,12 @@ test("a budget below every ask declines with no payment and no job file", async 
   });
 });
 
-test("a budget that is not a decimal amount above zero is refused before any decision", async () => {
+test("a budget that is not a decimal amount above zero, or finer than the smallest unit, is refused and names the smallest", async () => {
   await withDataDir(async (root) => {
-    for (const budget of ["0", "0.000", "-1", "Infinity", "NaN", "1e3", "ten"]) {
+    for (const budget of ["0", "0.000", "-1", "Infinity", "NaN", "1e3", "ten", "0.000000000000000000000001"]) {
       const { code, out, err } = await ask(root, "Does this policy cover an outpatient MRI?", budget);
       assert.equal(code, 2, budget);
-      assert.match(err, /--budget needs a decimal amount above zero/, budget);
+      assert.match(err, /^--budget needs a decimal amount above zero with at most 18 decimal places, such as 0\.10\. The smallest is 0\.000000000000000001 NEAR\.$/m, budget);
       assert.doesNotMatch(out, /^decide /m, budget);
     }
     assert.deepEqual(await jobFiles(root), []);

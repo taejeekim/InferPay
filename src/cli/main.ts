@@ -98,7 +98,7 @@ async function takeOrder(
   if (!booted) return 1;
   const budget = budgetPrice(booted.config, parsed.budget);
   if (!budget) {
-    process.stderr.write(`--budget needs a decimal amount above zero, such as 0.10\n`);
+    process.stderr.write(`--budget needs a decimal amount above zero with at most 18 decimal places, such as 0.10. The smallest is 0.000000000000000001 NEAR.\n`);
     return 2;
   }
   const buyer = parsed.from === null ? booted.config.roster.defaultBuyer : booted.config.roster.buyer(parsed.from);
