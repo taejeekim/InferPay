@@ -28,9 +28,9 @@
 
 <main id="main">
 <section id="what" class="wrap prose">
-  <h1>A buyer agent that pays only for answers it needs and can check</h1>
-  <p>An agent with a budget can waste it two ways: it can pay for an answer it already knows, and it can pay for an answer it cannot check. InferPay is a command-line buyer agent that prices each purchase against its own confidence before any NEAR moves, and shows the arithmetic.</p>
-  <p>Before it buys, the buyer names the keys from the specialist's catalog that a right answer needs. The specialist must open each of those keys with evidence. The buyer recomputes each check against a hash of the specialist's dataset that the specialist published on NEAR testnet, grades the answer from what it verified and what the specialist withheld, and writes the rating on chain, where it becomes the specialist's reputation for the next decision.</p>
+  <h1>Buy the answer when the data cannot be shared</h1>
+  <p>Some answers depend on data that cannot be shared. The owner cannot hand it over, and a buyer cannot work out the answer without it. So the owner sells the answer, not the data. InferPay is the buyer's side of that trade: a command-line agent with a budget that decides, with arithmetic it shows, whether it can answer alone or needs a specialist that holds data it lacks.</p>
+  <p>A buyer that cannot see the data needs another reason to believe the answer. The specialist publishes only a hash of its dataset on NEAR testnet. The buyer names the keys it needs from the specialist's catalog, the specialist must open each one with evidence, and the buyer recomputes every check against that hash before it pays. It grades the answer from what it verified and what was withheld, and writes the rating on chain, where it becomes the specialist's reputation for the next decision. The dataset stays with its owner. The buyer learns only the facts it paid for.</p>
   <p class="links">
     <a href="https://github.com/taejeekim/InferPay">Source code on GitHub</a>
     <a id="demo-link" href="" hidden>Demo post</a>

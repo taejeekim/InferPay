@@ -1,8 +1,12 @@
 # InferPay
 
-InferPay is a buyer agent with a budget. You give it a task. It splits the task into parts and decides for each part, with arithmetic you can read, whether to answer on its own or to hire a specialist agent and pay it in NEAR. When it hires, it names the facts it needs. The specialist must prove each one against a hash of its dataset that it published on NEAR. The buyer checks every proof itself, pays only for what was proven, and rates the specialist on chain.
+Some answers depend on data that cannot be shared. The owner of a policy schedule, a contract playbook, or a set of filed figures cannot hand the data over, and a buyer cannot work out the answer without it. So the owner sells the answer, not the data.
 
-The problem: an agent with a budget can waste it in two ways. It can pay for answers it already knows, and it can pay for answers it cannot check. Agent marketplaces settle the payment and collect a star rating, but the rating is an opinion. InferPay prices each purchase against the buyer's own confidence before any money moves, and it replaces the opinion with proofs. A specialist that forges a proof is paid nothing. One that leaves out a fact the buyer asked for is paid less. Both are rated down.
+InferPay is the buyer's side of that trade. It is an agent with a budget. You give it a task. It splits the task into parts and decides for each part, with arithmetic you can read, whether it can answer alone or needs a specialist that holds data it lacks. When it hires one, it pays in NEAR.
+
+A buyer that cannot see the data needs another reason to believe the answer. The specialist publishes only a hash of its dataset on NEAR. The buyer names the facts it needs, the specialist must prove each one against that hash, and the buyer checks every proof itself before it pays. A specialist that forges a proof is paid nothing. One that leaves out a fact the buyer asked for is paid less. Both are rated down on chain.
+
+The dataset stays with its owner. The buyer learns only the facts it paid for.
 
 ## Judges, start here
 
@@ -311,7 +315,8 @@ What InferPay adds on the buyer's side of a hire: the buy-or-answer decision bef
 - **The buyer's model picks the needed keys.** A key it fails to name is never required. In stub mode the confidence, coverage, and needed keys of each recorded question are written by hand.
 - **A proof shows consistency, not truth.** It shows that a fact is in the dataset the shop published. It does not show that the dataset is right.
 - **A catalog is the shop's word.** The buyer cannot check that a shop holds an entry for every key it lists until it asks for one. An empty slot earns the shop no payment.
-- **The sample data and its salts are in this repository,** so the three sample datasets are not secret. A purchase reveals the entries it opens.
+- **A purchase reveals the entries it opens.** The buyer sees the value of each fact it paid for, with its proof. Data too sensitive to show even one entry would need a proof that reveals nothing, and that is not built.
+- **The sample data and its salts are in this repository,** so the three sample datasets are not secret.
 - **Ratings can be gamed.** Anyone can create an account and write a rating. `providers` reads the ratings of the buyer bots under its own root.
 - **One process.** The buyer and the specialists run in one process on one machine.
 - **Attestation depth.** The TDX and GPU quotes are not re-verified locally.
@@ -345,7 +350,7 @@ Running `npx inferpay` with no command lists the commands and the test hooks.
 
 ## Hackathon notes
 
-- Event: NEAR HACKATHON. Track: `agents` (Agent Economy).
+- Event: NEAR HACKATHON. Tracks: `agents` (Agent Economy) and `privacy` (Privacy & Private AI). For `privacy`, read [Limits](#limits) first: a purchase reveals the entries it opens, and the TEE quotes are not re-verified locally.
 - Timeline: the first commit is dated 2026-10-24, after the announcement on 2026-10-19 (Q-001).
 - Libraries: `near-api-js`, `@near-intents-agent-api/sdk`, `openai` (as the client for NEAR AI Cloud), `@noble/curves`, `@noble/hashes`, `zod`, TypeScript, and ESLint (Q-005).
 - AI assistance: the code and docs were written with Claude Code.
