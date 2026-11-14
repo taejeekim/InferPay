@@ -48,9 +48,9 @@ const STEPS: readonly Step[] = [
   },
   {
     title: "Grade an honest shop that got a figure wrong",
-    before: "In this recording the shop's model claims a 10 percent copay. The shop's own dataset says 20. The shop opens the entry anyway, the buyer sees the mismatch, and the rating drops by one star.",
+    before: "In this recording the shop's model claims a 10 percent copay. The shop's own dataset says 20. The shop opens the entry anyway, the buyer sees the mismatch, and the rating drops by one star. The shop's summary still says 10 percent, but the buyer's `facts` come only from the entries it verified, so the buyer relies on 20. The shop opened both needed keys, so it is paid in full.",
     argv: () => ["ask", COPAY, "--budget", "0.10"],
-    shows: /mismatch[\s\S]*rate {6}4\/5/,
+    shows: /^summary {3}[^\n]*10 percent[\s\S]*mismatch[\s\S]*^facts[\s\S]*^ {10}mri-copay {2}= 20$[\s\S]*rate {6}4\/5/m,
   },
   {
     title: "Catch a shop that forges its evidence",

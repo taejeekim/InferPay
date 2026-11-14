@@ -608,7 +608,7 @@ test("a crash after the delivery is written prints the job id, and resume verifi
       assert.equal(await main(["resume", jobId], env), 0);
       const text = stdout.text();
       assert.match(text, new RegExp(`^job {7}${jobId} resumed from this machine's ledger`, "m"));
-      assert.match(text, /^answer[\s\S]*^checks[\s\S]*^payout {4}0\.02 NEAR[\s\S]*^pay {7}settled {2}0\.02 NEAR[\s\S]*^rate {6}5\/5/m);
+      assert.match(text, /^summary[\s\S]*^checks[\s\S]*^facts[\s\S]*^payout {4}0\.02 NEAR[\s\S]*^pay {7}settled {2}0\.02 NEAR[\s\S]*^rate {6}5\/5/m);
     } finally {
       stdout.restore();
     }

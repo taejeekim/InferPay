@@ -260,7 +260,7 @@ attest    buyer 1/1 calls verified
   <ul>
     <li>Without a NEAR AI key, answers are replayed from 8 recorded questions. Any other question stops before payment.</li>
     <li>The NEAR Intents rail for mainnet has never run. Every on-chain action shown here is on testnet.</li>
-    <li>The buyer verifies claims, not prose. It does not check that the answer sentence says what the checks say.</li>
+    <li>The buyer does not read the shop's prose. It prints the shop's sentence as an unverified summary and builds its own answer, one line per needed key, only from the entries it verified, so a summary that misstates an entry changes nothing the buyer relies on.</li>
     <li>The buyer's model picks the needed keys. Code drops any key that is not in the shop's catalog, but a key the model does not name is never required.</li>
     <li>A commitment proves consistency, not truth. It shows that a check agrees with the dataset the shop published, not that the dataset is right.</li>
     <li>The sample datasets and their salts are in the repository, so they are not secret. That is why this page can show a proof.</li>

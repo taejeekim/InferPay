@@ -9,17 +9,25 @@ import { assess, type Needs } from "./assess.ts";
 import { decide, settleCounter, type Decision } from "./decide.ts";
 import { grade, type Grade } from "./grade.ts";
 import { verifyChecks, type BuyerCheck } from "./verify.ts";
+import { provenFacts, type ProvenFact } from "./facts.ts";
 import { runTask, type TaskOutcome, type TaskProgress } from "./task.ts";
 
 export { LOCAL_FLOOR } from "./decide.ts";
 export type { Decision, Option, PricedOption } from "./decide.ts";
 export type { Dropped, Needs } from "./assess.ts";
+export type { ProvenFact } from "./facts.ts";
 
 export type Progress =
   | { readonly step: "reserve"; readonly budget: Price; readonly reserve: FeeReserve; readonly left: Price }
   // reserved is true when a fee reserve came out of the budget before the decision.
   | { readonly step: "decide"; readonly decision: Decision; readonly needs: Needs; readonly reserved: boolean }
-  | { readonly step: "verify"; readonly checks: readonly BuyerCheck[]; readonly needs: readonly Need[]; readonly commitment: PinnedCommitment }
+  | {
+      readonly step: "verify";
+      readonly checks: readonly BuyerCheck[];
+      readonly needs: readonly Need[];
+      readonly commitment: PinnedCommitment;
+      readonly facts: readonly ProvenFact[];
+    }
   | {
       readonly step: "rate";
       readonly grade: Grade;
@@ -185,7 +193,7 @@ function withVerification(order: Order, onProgress?: (progress: Progress) => voi
     onProgress?.(progress);
     if (progress.step !== "answer") return;
     const checks = verifyChecks(progress.answer.checks, order.commitment, order.question, order.needs);
-    onProgress?.({ step: "verify", checks, needs: order.needs, commitment: order.commitment });
+    onProgress?.({ step: "verify", checks, needs: order.needs, commitment: order.commitment, facts: provenFacts(checks, order.needs) });
   };
 }
 

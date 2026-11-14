@@ -25,6 +25,7 @@ import { RULE, tally, type Grade } from "../consumer/grade.ts";
 import type { NoDeal } from "../consumer/decide.ts";
 import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer/task.ts";
 import { verifyChecks, type BuyerCheck, type Forgery, type UnprovenCheck, type VerifiedCheck } from "../consumer/verify.ts";
+import { provenFacts, type ProvenFact } from "../consumer/facts.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
 import { KEYS_NOTE } from "./testnet.ts";
@@ -69,9 +70,13 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
     case "pay":
       return payBlock(progress, rail);
     case "answer":
-      return [line("answer", progress.answer.text), ...attestLines("specialist", progress.answer.attestation)].join("\n");
+      return [
+        line("summary", progress.answer.text),
+        line("", "the shop's own words, not verified; the buyer relies only on the facts it verifies below"),
+        ...attestLines("specialist", progress.answer.attestation),
+      ].join("\n");
     case "verify":
-      return checksBlock(progress.checks, progress.needs, progress.commitment, rail).join("\n");
+      return [...checksBlock(progress.checks, progress.needs, progress.commitment, rail), ...factsBlock(progress.facts)].join("\n");
     case "rate":
       return [
         line("rate", rateText(progress.grade)),
@@ -168,9 +173,10 @@ export function jobText(view: JobView): string {
         const withheld = tally(checks).withheld;
         return [
           `${label}${time}  ${plural(event.answer.checks.length, "check", "checks")}; ${needs.length - withheld} of ${plural(needs.length, "needed key", "needed keys")} opened, ${withheld} withheld`,
-          under(`answer     ${event.answer.text}`),
+          under(`summary    ${event.answer.text}  (the shop's words, not verified)`),
           ...attestLines("specialist", event.answer.attestation).map(under),
           ...checks.flatMap(proofRows).map(under),
+          ...factsBlock(provenFacts(checks, needs)).map(under),
         ].join("\n");
       }
       case "payout-decided":
@@ -644,6 +650,41 @@ const VERDICT = 14;
 // The name column of the root and on-chain rows under a block.
 const DETAIL = 10;
 
+// The buyer's own answer: one line per needed key, built only from entries it verified, and where each came from.
+export function factsBlock(facts: readonly ProvenFact[]): string[] {
+  if (facts.length === 0) return [];
+  return [
+    line("facts", "what the buyer relies on, built only from entries it verified:"),
+    ...facts.flatMap((fact) => {
+      const basis = factBasis(fact);
+      return [line("", `${needText(fact.need)}  ${factText(fact)}`), ...(basis === null ? [] : [line("", `  ${basis}`)])];
+    }),
+  ];
+}
+
+export function factText(fact: ProvenFact): string {
+  switch (fact.kind) {
+    case "entry":
+      return `= ${entryValue(fact.entry)}`;
+    case "rule":
+      return fact.applies ? "applies to the quoted clause" : "does not apply to the quoted clause";
+    case "empty":
+      return "the shop proved it holds nothing for this key";
+    case "unproven":
+      return "not proven: no verified opening, so the buyer has no value for it";
+    default: {
+      const unreachable: never = fact;
+      return unreachable;
+    }
+  }
+}
+
+function factBasis(fact: ProvenFact): string | null {
+  if (fact.kind === "entry") return `from ${fact.entry.source}`;
+  if (fact.kind === "rule") return fact.applies ? fact.entry.detail : fact.entry.label;
+  return null;
+}
+
 export function checksBlock(
   checks: readonly BuyerCheck[],
   needs: readonly Need[],
@@ -978,7 +1019,11 @@ function receiptDetails(row: ReceiptRow): (readonly [string, string])[] {
   const { outcome } = row;
   switch (outcome.kind) {
     case "bought":
-      return outcome.tx === null ? [["job", outcome.jobId]] : [["job", outcome.jobId], ["tx", txUrl(outcome.tx)]];
+      return [
+        ...outcome.facts.map((fact): readonly [string, string] => ["fact", `${needText(fact.need)} ${factText(fact)}`]),
+        ["job", outcome.jobId],
+        ...(outcome.tx === null ? [] : [["tx", txUrl(outcome.tx)] as const]),
+      ];
     case "pending":
       return [["job", outcome.jobId], ["resume", `npx inferpay resume ${outcome.jobId}`]];
     case "failed":

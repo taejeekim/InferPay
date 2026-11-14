@@ -18,6 +18,7 @@ import { percentOf, type Decision, type NoDeal, type Percent } from "./decide.ts
 import { tally } from "./grade.ts";
 import type { AskOutcome, ConsumerAgent, Progress } from "./index.ts";
 import { verifyChecks } from "./verify.ts";
+import { provenFacts, type ProvenFact } from "./facts.ts";
 
 export const MAX_PARTS = 5;
 
@@ -35,7 +36,10 @@ export type PartOutcome =
       readonly agreed: Price;
       readonly paid: Price;
       readonly payout: Payout["basis"];
+      // The shop's own summary, not verified.
       readonly answer: string;
+      // What the buyer relies on: one line per needed key, from entries it verified.
+      readonly facts: readonly ProvenFact[];
       readonly verified: number;
       readonly mismatches: number;
       readonly unproven: number;
@@ -242,7 +246,8 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcom
     case "outsourced": {
       if (decision === null || decision.kind !== "buy") throw new Error("a purchase came without its decision");
       const { job } = outcome;
-      const counts = tally(verifyChecks(job.answer.checks, job.commitment, job.question, job.needs));
+      const checks = verifyChecks(job.answer.checks, job.commitment, job.question, job.needs);
+      const counts = tally(checks);
       return {
         kind: "bought",
         shop: job.providerId,
@@ -253,6 +258,7 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcom
         paid: job.payout.amount,
         payout: job.payout.basis,
         answer: job.answer.text,
+        facts: provenFacts(checks, job.needs),
         verified: counts.verified,
         mismatches: counts.mismatches,
         unproven: counts.unproven,

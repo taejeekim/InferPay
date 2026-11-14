@@ -149,7 +149,7 @@ const NEEDS: readonly Need[] = [PROFIT, REVENUE].map(({ company, period, metric 
 
 function verifyBlock(checks: readonly AssertedCheck[], pinned: PinnedCommitment, rail: "mock" | "near-testnet", needs = NEEDS): string[] {
   const verified = verifyChecks(checks, pinned, "What was Samsung's Q3 2025 revenue?", needs);
-  return progressLine({ step: "verify", checks: verified, needs, commitment: pinned }, rail).split("\n");
+  return progressLine({ step: "verify", checks: verified, needs, commitment: pinned, facts: [] }, rail).split("\n");
 }
 
 test("the checks block marks each verified check, shows the entry it rests on, and says the root came from the listing", () => {

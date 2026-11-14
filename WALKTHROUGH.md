@@ -22,14 +22,18 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.050 >= 0.020
-job       job_01M7BZANHNG8FNQQ1RGQ1KZ4Z5 opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZETZGDED0N07FX3MZCK08 opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    Outpatient MRI is covered at a 20 percent copay.
+summary   Outpatient MRI is covered at a 20 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
 payout    0.02 NEAR of the agreed 0.02 NEAR: 1 of 1 needed key opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -98,14 +102,18 @@ decide    buy from insurance at 0.018 NEAR (counter-offer accepted)
           reserve (0.80 - 0.20) x 0.03 = 0.018 NEAR, where buying equals the local worth
           counter 0.018 NEAR against the ask of 0.02 NEAR
           reply   insurance accepted
-job       job_01M7BZANJW6D7YKTFJVNKTCR2V opened with insurance at the agreed 0.018 NEAR
+job       job_01M7BZEV0SC6H2D1RG12XHTFKR opened with insurance at the agreed 0.018 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    Outpatient MRI is covered at a 20 percent copay.
+summary   Outpatient MRI is covered at a 20 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
 payout    0.018 NEAR of the agreed 0.018 NEAR: 1 of 1 needed key opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -154,7 +162,7 @@ spent     0 NEAR price + 0 NEAR fees = 0 NEAR of the 0.10 NEAR budget
 
 ## 5. Grade an honest shop that got a figure wrong
 
-In this recording the shop's model claims a 10 percent copay. The shop's own dataset says 20. The shop opens the entry anyway, the buyer sees the mismatch, and the rating drops by one star.
+In this recording the shop's model claims a 10 percent copay. The shop's own dataset says 20. The shop opens the entry anyway, the buyer sees the mismatch, and the rating drops by one star. The shop's summary still says 10 percent, but the buyer's `facts` come only from the entries it verified, so the buyer relies on 20. The shop opened both needed keys, so it is paid in full.
 
 ```sh
 npx inferpay ask "What copay does this policy charge for an outpatient MRI?" --budget 0.10
@@ -172,9 +180,10 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.065 >= 0.020
-job       job_01M7BZANKTCJK81RD902X8D9NE opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZEV1Y31SXQ35R1SAWNRXG opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    Outpatient MRI is covered with a 10 percent copay.
+summary   Outpatient MRI is covered with a 10 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    2 of 2 needed keys opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
@@ -182,6 +191,11 @@ checks    2 of 2 needed keys opened and verified against the shop's committed ro
                       Policy schedule §4.2. Outpatient MRI copay is 20 percent.
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          mri-copay  = 20
+            from Policy schedule §4.2. Outpatient MRI copay is 20 percent.
 payout    0.02 NEAR of the agreed 0.02 NEAR: 2 of 2 needed keys opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -220,10 +234,11 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.063 >= 0.020
-job       job_01M7BZANMRT4835HK5HRGZNAQ2 opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZEV2XJP9S6VX82DW3E5B2 opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 hook      insurance forged 1 check; the buyer should mark it FORGED and rate insurance 1/5
-answer    Outpatient MRI is covered with a 10 percent copay.
+summary   Outpatient MRI is covered with a 10 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 2 needed keys opened and verified against the shop's committed root, 1 WITHHELD, 1 FORGED
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
@@ -233,6 +248,10 @@ checks    1 of 2 needed keys opened and verified against the shop's committed ro
                       the buyer needed this key and the shop sent no verified opening of it
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          mri-copay  not proven: no verified opening, so the buyer has no value for it
 payout    nothing of the agreed 0.02 NEAR: 1 check FORGED
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -268,10 +287,11 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.049 >= 0.020
-job       job_01M7BZANNC2EPRV0CT9VW8N5A9 opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZEV3KGW6KYF2C2DXJJT2P opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 hook      insurance dropped 1 check; the buyer should mark each needed key it dropped WITHHELD
-answer    Outpatient MRI is covered with a 10 percent copay.
+summary   Outpatient MRI is covered with a 10 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 2 needed keys opened and verified against the shop's committed root, 1 WITHHELD
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
@@ -279,6 +299,10 @@ checks    1 of 2 needed keys opened and verified against the shop's committed ro
                       the buyer needed this key and the shop sent no verified opening of it
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          mri-copay  not proven: no verified opening, so the buyer has no value for it
 payout    0.01 NEAR of the agreed 0.02 NEAR: 1 of 2 needed keys opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -346,14 +370,18 @@ decide    buy from legal at 0.024 NEAR (counter-offer accepted)
           reserve (0.70 - 0.10) x 0.04 = 0.024 NEAR, where buying equals the local worth
           counter 0.024 NEAR against the ask of 0.03 NEAR
           reply   legal accepted
-job       job_01M7BZANP9W0MZ48BETRRTW3AC opened with legal at the agreed 0.024 NEAR
+job       job_01M7BZEV4JKSQVXRYNZJB8FT4Z opened with legal at the agreed 0.024 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    The unlimited indemnification clause fails the playbook.
+summary   The unlimited indemnification clause fails the playbook.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    raised        indemnity
                       The playbook rejects unlimited indemnification. Cap it or delete it.
           root      4a19e743ea74…d9b5  2 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          uncapped-indemnity on "unlimited indemnification clause"  applies to the quoted clause
+            The playbook rejects unlimited indemnification. Cap it or delete it.
 payout    0.024 NEAR of the agreed 0.024 NEAR: 1 of 1 needed key opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -382,14 +410,18 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.01036 >= 0.0092
-job       job_01M7BZANQ8BVD7HKNHXN4SW91F opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZEV5K8QVXQ6RPAH63G3GS opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    Outpatient MRI is covered at a 20 percent copay.
+summary   Outpatient MRI is covered at a 20 percent copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 1 needed key opened and verified against the shop's committed root
           verified    match         outpatient MRI  covered
                       Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
 payout    0.02 NEAR of the agreed 0.02 NEAR: 1 of 1 needed key opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -418,9 +450,10 @@ decide    buy from disclosure at 0.02 NEAR (list price)
           option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
           option  insurance   ask 0.02  cover 0.00 x rep 0.71 = quality 0.00  net -0.020
           rule    net = quality x value - ask; buy when net >= local worth: 0.0192 >= 0.0168
-job       job_01M7BZANR6T3GB757A4RP2SAZR opened with disclosure at the agreed 0.02 NEAR
+job       job_01M7BZEV6RNWKVJG6YDTK30JGX opened with disclosure at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
-answer    Operating profit matches across both documents: KRW 12.2T.
+summary   Operating profit matches across both documents: KRW 12.2T.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 checks    1 of 1 needed key opened and verified against the shop's committed root, 1 unrequested
           verified    match         operating profit Q3 2025  12.2T KRW
                       Samsung Electronics Q3 2025 earnings release
@@ -429,6 +462,9 @@ checks    1 of 1 needed key opened and verified against the shop's committed roo
                       the buyer did not ask for this key, so it counts neither for nor against the shop
           root      4bc59b533ac3…a40a  2 leaves  inferpay-keyed-merkle-sha256-v1
           from      the shop's listing, because the mock rail has no chain
+facts     what the buyer relies on, built only from entries it verified:
+          Samsung Electronics / Q3 2025 / operating profit  = 12.2T KRW
+            from Samsung Electronics Q3 2025 earnings release
 payout    0.02 NEAR of the agreed 0.02 NEAR: 1 of 1 needed key opened to an entry and verified
           rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
                   proven counts needed keys opened to a verified entry, mismatches included, empty slots not
@@ -445,23 +481,26 @@ rate      5/5  = 5
           kept      in this machine's ledger, because the mock rail has no chain
 unspent   0.056 NEAR - 0.02 NEAR price - 0 NEAR fees = 0.036 NEAR, kept: this was the last part
 
-receipt   task_01M7BZANS6G3NGQCP36ANHW3PW
+receipt   task_01M7BZEV7SHG2Q0CRJ71RNAR3K
           task    Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit
           #  DONE BY                            LIST  AGREED            PAID        FEES  CHECK
           1  the buyer itself                   -     -                 nothing     -     own answer, confidence 0.99
              asked  What is the capital of France?
           2  legal.stella.inferpay.testnet      0.03  0.024 on counter  0.024 NEAR  -     1 verified; rated 5/5
              asked  Does this NDA's unlimited indemnification clause fail our playbook?
-             job    job_01M7BZANP9W0MZ48BETRRTW3AC
+             fact   uncapped-indemnity on "unlimited indemnification clause" applies to the quoted clause
+             job    job_01M7BZEV4JKSQVXRYNZJB8FT4Z
           3  insurance.ban.inferpay.testnet     0.02  0.02 at list      0.02 NEAR   -     1 verified; rated 5/5
              asked  Does this policy cover an outpatient MRI?
-             job    job_01M7BZANQ8BVD7HKNHXN4SW91F
+             fact   outpatient-mri = covered
+             job    job_01M7BZEV5K8QVXQ6RPAH63G3GS
           4  disclosure.david.inferpay.testnet  0.02  0.02 at list      0.02 NEAR   -     1 verified; rated 5/5
              asked  What was Samsung's Q3 2025 operating profit?
-             job    job_01M7BZANR6T3GB757A4RP2SAZR
+             fact   Samsung Electronics / Q3 2025 / operating profit = 12.2T KRW
+             job    job_01M7BZEV6RNWKVJG6YDTK30JGX
 total     prices 0.064 NEAR + fees 0 NEAR = 0.064 NEAR of the 0.10 NEAR budget, 0.036 NEAR left
 fees      none on this run: no part paid a network fee
-saved     .inferpay/tasks/task_01M7BZANS6G3NGQCP36ANHW3PW.json
+saved     .inferpay/tasks/task_01M7BZEV7SHG2Q0CRJ71RNAR3K.json
 ```
 
 ## 9. Ask something with no recording
@@ -522,17 +561,17 @@ catalog     the keys each shop holds an entry for, without their values; a buyer
 This is the job from the counter-offer step, in the order it happened. The `quote` is the agreed price. The lines under `delivered` are the shop's answer and the evidence for each check. `payout-decided` is what the buyer owed after verifying, and only then does the payment appear.
 
 ```sh
-npx inferpay job job_01M7BZANJW6D7YKTFJVNKTCR2V
+npx inferpay job job_01M7BZEV0SC6H2D1RG12XHTFKR
 ```
 
 ```text
 rails: payment=mock inference=stub
-opened            02:49:02 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
+opened            02:51:18 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
                   commitment d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f
                              3 leaves, inferpay-keyed-merkle-sha256-v1, from the shop's listing
                   needs      outpatient-mri
-delivered         02:49:02 UTC  1 check; 1 of 1 needed key opened, 0 withheld
-                  answer     Outpatient MRI is covered at a 20 percent copay.
+delivered         02:51:18 UTC  1 check; 1 of 1 needed key opened, 0 withheld
+                  summary    Outpatient MRI is covered at a 20 percent copay.  (the shop's words, not verified)
                   verified  match  outpatient MRI
                     key       ["fact","outpatient-mri"]
                     slot      2246468
@@ -542,9 +581,12 @@ delivered         02:49:02 UTC  1 check; 1 of 1 needed key opened, 0 withheld
                     level 30  8e40665dd381bd01781149ce8b210ddc7ea07112aee780e879a58e2bc7369b64
                     path      32 levels, 31 of them empty subtrees
                     root      equals the commitment above
-payout-decided    02:49:02 UTC  0.018 NEAR of the agreed 0.018 NEAR: 1 of 1 needed key opened to an entry and verified
+                  facts     what the buyer relies on, built only from entries it verified:
+                            outpatient-mri  = covered
+                              from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+payout-decided    02:51:18 UTC  0.018 NEAR of the agreed 0.018 NEAR: 1 of 1 needed key opened to an entry and verified
                   0.018 x 1 / 1 = 0.018 NEAR
-payment-intended  02:49:02 UTC  key mock_a44c6666-556d-4c14-ab73-d2d2fb1627ac
-payment-settled   02:49:02 UTC  0.018 NEAR to insurance.ban.inferpay.testnet  correlation mock-ecec
-rated             02:49:02 UTC  5/5
+payment-intended  02:51:18 UTC  key mock_7fd7ace2-2f9c-4677-9c79-b2e9d5257104
+payment-settled   02:51:18 UTC  0.018 NEAR to insurance.ban.inferpay.testnet  correlation mock-8c01
+rated             02:51:18 UTC  5/5
 ```
