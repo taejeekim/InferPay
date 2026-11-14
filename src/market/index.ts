@@ -47,6 +47,7 @@ export type FailReason =
   | { readonly kind: "over-budget"; readonly offer: Price; readonly budget: Price }
   | { readonly kind: "offer-refused"; readonly providerId: ProviderId; readonly offer: Price }
   | { readonly kind: "stale-commitment"; readonly providerId: ProviderId }
+  | { readonly kind: "no-commitment"; readonly providerId: ProviderId }
   | { readonly kind: "order-conflict"; readonly jobId: JobId }
   | { readonly kind: "job-busy"; readonly jobId: JobId }
   | { readonly kind: "corrupt-ledger"; readonly jobId: JobId; readonly detail: string }
@@ -203,6 +204,7 @@ export function createMarketplace(deps: {
       if (quote === null) {
         return fail(order.jobId, { kind: "offer-refused", providerId: order.providerId, offer: order.offer });
       }
+      if (order.commitment.status === "missing") return fail(order.jobId, { kind: "no-commitment", providerId: order.providerId });
       // A shop whose data no longer seals to the root the buyer pinned could not prove anything against it, so it
       // turns the order down before any money moves. Its own root is used only to refuse, never to verify.
       if (order.commitment.status === "published" && order.commitment.commitment.root !== bound.listing.declared.root) {

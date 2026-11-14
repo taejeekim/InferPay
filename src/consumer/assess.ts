@@ -5,7 +5,7 @@ import type { Listing } from "../market/index.ts";
 import { catalogName, quotedFrom, type CatalogItem, type Need } from "../commitment/index.ts";
 import { percentOf, type Percent, type SelfAssessment } from "./decide.ts";
 
-type Shop = Pick<Listing, "id" | "routingHint" | "catalog">;
+type Shop = Pick<Listing, "id" | "routingHint" | "catalog"> & { readonly commitment: Pick<Listing["commitment"], "status"> };
 
 // What the buyer will require each shop to open, after code has checked the model's picks against each catalog.
 export type Needs = {
@@ -17,7 +17,8 @@ export type Needs = {
 export type Dropped = {
   readonly shop: ProviderId;
   readonly key: string;
-  readonly why: "not-in-catalog" | "clause-not-quoted";
+  // no-commitment: the shop has no root the buyer could read, so no opening of any key could be verified.
+  readonly why: "not-in-catalog" | "clause-not-quoted" | "no-commitment";
 };
 
 export type Assessed = { readonly assessment: SelfAssessment; readonly needs: Needs };
@@ -67,7 +68,10 @@ function parseAssessment(raw: string, question: string, shops: readonly Shop[]):
   const dropped: Dropped[] = [];
   const coverage = new Map<ProviderId, Percent>();
   for (const shop of shops) {
-    const picked = pickNeeds(shop, parsed.data.needs[shop.id] ?? [], question);
+    const named = parsed.data.needs[shop.id] ?? [];
+    const picked = shop.commitment.status === "published"
+      ? pickNeeds(shop, named, question)
+      : { needs: [], dropped: named.map(({ key }): Dropped => ({ shop: shop.id, key: oneLine(key), why: "no-commitment" })) };
     dropped.push(...picked.dropped);
     if (picked.needs.length > 0) byShop.set(shop.id, picked.needs);
     const share = parsed.data.coverage[shop.id];

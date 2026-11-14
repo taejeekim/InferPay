@@ -97,7 +97,7 @@ async function typescript(value: string, confidence: number, shops: readonly Sho
     coverage: Object.fromEntries(shops.map((shop) => [shop.id, shop.coverage / 100])),
     needs: Object.fromEntries(shops.map((shop) => [shop.id, shop.needs.map((need) => ({ key: catalogName(need), ...(need.kind === "rule" ? { clause: need.clause } : {}) }))])),
   });
-  const catalogued = shops.map((shop) => ({ id: provider(shop.id), routingHint: "", catalog: CATALOGS[shop.id] ?? [] }));
+  const catalogued = shops.map((shop) => ({ id: provider(shop.id), routingHint: "", catalog: CATALOGS[shop.id] ?? [], commitment: { status: "published" as const } }));
   const assessed = await assess(replying(raw), QUESTION, catalogued);
   if (!assessed.ok) throw new Error(assessed.detail);
   assert.equal(assessed.needs.dropped.length, 0, "every fixture need is in its shop's catalog");

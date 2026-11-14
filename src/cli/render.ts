@@ -193,6 +193,8 @@ export function failureText(reason: FailReason): string {
       return `Offer ${reason.offer.amount} ${reason.offer.symbol} is above budget ${reason.budget.amount} ${reason.budget.symbol}.`;
     case "stale-commitment":
       return `${reason.providerId} turned the order down before payment: its dataset no longer seals to the root it published. The shop publishes again with: npx inferpay testnet setup`;
+    case "no-commitment":
+      return `${reason.providerId} has published no root, so nothing it sent could be verified. No job was opened and no NEAR moved.`;
     case "offer-refused":
       return `${reason.providerId} refused ${reason.offer.amount} ${reason.offer.symbol}.`;
     case "order-conflict":
@@ -303,11 +305,26 @@ function needsRows(needs: Needs, idWidth: number): string[] {
   const rows = [...needs.byShop].map(([shop, list]) => field("needs", `${shop.padEnd(idWidth)}${list.map(needText).join("; ")}`));
   if (rows.length === 0) rows.push(field("needs", "no key from any shop's catalog"));
   for (const drop of needs.dropped) {
-    const why = drop.why === "not-in-catalog" ? "not in its catalog" : "no clause quoted from the question";
+    const why = droppedText(drop.why);
     rows.push(field("dropped", `${drop.shop.padEnd(idWidth)}${drop.key}: ${why}`));
   }
   if (needs.dropped.length > 0) rows.push(field("", "a dropped key is never ordered, and a shop left with no needed key counts as cover 0"));
   return rows;
+}
+
+function droppedText(why: Needs["dropped"][number]["why"]): string {
+  switch (why) {
+    case "not-in-catalog":
+      return "not in its catalog";
+    case "clause-not-quoted":
+      return "no clause quoted from the question";
+    case "no-commitment":
+      return "the shop has published no root, so no opening could be verified and it is never bought from";
+    default: {
+      const unreachable: never = why;
+      return unreachable;
+    }
+  }
 }
 
 export function needText(need: Need): string {

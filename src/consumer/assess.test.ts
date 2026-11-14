@@ -9,9 +9,25 @@ const SHOPS = [
     id: must(parseProviderId("insurance")),
     routingHint: "Private policy schedule.",
     catalog: [{ kind: "fact" as const, topic: "outpatient-mri" }, { kind: "fact" as const, topic: "mri-copay" }],
+    commitment: { status: "published" as const },
   },
-  { id: must(parseProviderId("legal")), routingHint: "Private clause playbook.", catalog: [{ kind: "rule" as const, id: "uncapped-indemnity" }] },
+  {
+    id: must(parseProviderId("legal")),
+    routingHint: "Private clause playbook.",
+    catalog: [{ kind: "rule" as const, id: "uncapped-indemnity" }],
+    commitment: { status: "published" as const },
+  },
 ];
+
+test("a shop with no commitment the buyer can read gets no needed key and so no coverage, whatever the model said", async () => {
+  const raw = '{"answer":"Probably covered.","confidence":0.2,"coverage":{"insurance":0.9},"needs":{"insurance":[{"key":"outpatient-mri"}]}}';
+  const shops = SHOPS.map((shop) => (shop.id === "insurance" ? { ...shop, commitment: { status: "missing" as const } } : shop));
+  const result = await assess(replying(raw), "Does this policy cover an outpatient MRI?", shops);
+  assert.ok(result.ok);
+  assert.deepEqual([...result.assessment.coverage], []);
+  assert.deepEqual([...result.needs.byShop], []);
+  assert.deepEqual(result.needs.dropped, [{ shop: "insurance", key: "outpatient-mri", why: "no-commitment" }]);
+});
 
 test("an assessment survives a code fence and surrounding prose", async () => {
   const raw = [

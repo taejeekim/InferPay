@@ -371,14 +371,15 @@ test("a forged check is rated 1 on chain, with the forgery counted and the root 
   });
 });
 
-test("a shop with nothing on chain has only its word, so the key it was paid to open counts as withheld", async () => {
+test("a shop with nothing on chain gets cover 0 before the decision, so the buyer never opens a job with it", async () => {
   await withRoot(async (root) => {
     const chain = fakeChain({});
     const text = await askOn(chain, root, MRI);
-    assert.match(text, /^ {10}unproven {4}match {9}outpatient MRI {2}covered$/m);
-    assert.match(text, /^ {10}WITHHELD {18}outpatient-mri$/m);
-    assert.match(text, /^ {10}root {6}none: insurance\.ban\.inferpay\.testnet has published no commitment in SocialDB v1\.social08\.testnet$/m);
-    assert.match(text, /^rate {6}3\/5 /m);
+    assert.match(text, /^ {10}dropped insurance {3}outpatient-mri: the shop has published no root, so no opening could be verified and it is never bought from$/m);
+    assert.match(text, /^ {10}option {2}insurance {3}ask 0\.02 {2}cover 0\.00 x /m);
+    assert.match(text, /^decide {4}decline, pay nothing$/m);
+    assert.deepEqual(ratingCalls(chain), []);
+    assert.deepEqual(await readdir(root).then((names) => names.filter((name) => name !== "jobs")), []);
   });
 });
 

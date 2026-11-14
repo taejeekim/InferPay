@@ -88,6 +88,18 @@ test("an offer above the budget writes no job file", async () => {
   }
 });
 
+test("an order pinned to no commitment is refused and writes no job file", async () => {
+  const { market, order, root } = await harness("none");
+  try {
+    const account = must(parseAccountId("disclosure.david.inferpay.near"));
+    const outcome = await market.hire({ ...order, commitment: { status: "missing", contract: account, account } });
+    assert.deepEqual(outcome, { kind: "failed", jobId: order.jobId, reason: { kind: "no-commitment", providerId: order.providerId } });
+    assert.deepEqual(await readdir(join(root, "jobs")).catch(() => []), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a counter-offer at the shop's floor is accepted, and the job pays the agreed price", async () => {
   const { market, order, root } = await harness("none");
   try {
