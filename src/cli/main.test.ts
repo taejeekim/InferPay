@@ -98,7 +98,8 @@ test("an uncertain payment prints its job id and the retry-key note once, and re
     const text = first.text();
     assert.match(text, /uncertain {2}0\.02 NEAR/);
     assert.equal(text.match(/^ {10}job {5}job_/gm)?.length, 1);
-    assert.match(text, /same key, so this transfer cannot be paid twice/);
+    assert.match(text, /^ {10}note {4}resume rebroadcasts the same signed transaction, so this transfer cannot be paid twice;$/m);
+    assert.match(text, /^ {18}it settles once that transaction is found on chain, or is signed again once it has expired$/m);
     jobId = text.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
   } finally {
     first.restore();
@@ -113,6 +114,20 @@ test("an uncertain payment prints its job id and the retry-key note once, and re
     second.restore();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("job and resume name an id they cannot read as unknown", async () => {
+  await withDataDir(async (root) => {
+    for (const command of ["job", "resume"]) {
+      const stderr = capture(process.stderr);
+      try {
+        assert.equal(await main([command, "job_nope"], { INFERPAY_DATA_DIR: root }), 2);
+        assert.match(stderr.text(), /^Unknown job job_nope\. A job id is job_ and 26 letters and digits, as ask prints on its job line\.$/m);
+      } finally {
+        stderr.restore();
+      }
+    }
+  });
 });
 
 test("off-script questions fail before any payment or job file", async () => {
@@ -488,6 +503,9 @@ test("the briefing answers one part itself, carries its money forward, and buys 
   assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet {5}0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
   assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet  0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
   assert.match(out, /^total {5}spent 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
+  assert.match(out, /^fees {6}none: this rail reports no network fees$/m);
+  assert.match(out, /^ {10}value {3}0\.04 NEAR, the part's allotment: the most a right answer is worth$/m);
+  assert.doesNotMatch(out, /the budget: the most a right answer is worth/);
   assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
     ["answered-locally", "0.02", "0"],
     ["bought", "0.04", "0.024"],

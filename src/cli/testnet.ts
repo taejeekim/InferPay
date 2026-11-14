@@ -16,6 +16,8 @@ export const FUNDING = {
   personKeeps: nearOf("0.1"),
 } as const;
 
+export const KEYS_NOTE = "each account has its own key and its own balance, and the code signs a bot's payment only with that bot's key. All the keys sit in one directory on this machine; a real deployment would hold each key on a different machine.";
+
 // A create-account transaction burned about 0.0072 NEAR of gas on testnet in November 2026.
 const GAS_PER_CREATE = nearOf("0.01");
 
@@ -99,7 +101,7 @@ export function chooseRoot(argv: readonly string[], env: NodeJS.ProcessEnv): { r
     return { root, source: "--root" };
   }
   const recorded = env.INFERPAY_PAYMENT === "near-testnet" ? parseParentAccount(env.INFERPAY_ROOT_ACCOUNT ?? "") : null;
-  if (recorded && recorded.endsWith(".testnet")) return { root: recorded, source: ".env (finishing the tree it records)" };
+  if (recorded && recorded.endsWith(".testnet")) return { root: recorded, source: ".env, finishing the tree it records" };
   return { root: freshRoot(), source: "new through the testnet faucet" };
 }
 
@@ -208,14 +210,15 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
     const seat = resolved.roster.shop(provider.describe.id);
     return seat === null ? [] : [{ account: seat.account, parent: seat.parent, declared: provider.commitment() }];
   });
+  const accountWidth = shops.reduce((max, shop) => Math.max(max, shop.account.length), 0) + 2;
   await publishCommitments({ chain: client, credential: (account) => near.loadCredential(keysDir, account) }, shops, (step) => {
     const root = `root ${shortRoot(step.commitment.root)}`;
     if (step.kind === "current") {
-      say("commit", `${step.account.padEnd(36)}${root}  already on chain since block ${step.block}`);
+      say("commit", `${step.account.padEnd(accountWidth)}${root}  already on chain since block ${step.block}`);
       return;
     }
     if (step.toppedUp > 0n) say("fund", `${step.account}  ${formatNear(step.toppedUp)} NEAR from its owner for the SocialDB deposit`);
-    say("commit", `${step.account.padEnd(36)}${root}  published, ${step.why === "missing" ? "none in this scheme was on chain" : "the root changed"}`);
+    say("commit", `${step.account.padEnd(accountWidth)}${root}  published, ${step.why === "missing" ? "none in this scheme was on chain" : "the root changed"}`);
     // Printed as each one lands, so a run that stops at a later shop still shows what it sent.
     say("", txUrl(step.hash));
     transactions.push({ what: "commit", account: step.account, hash: step.hash });
@@ -232,6 +235,7 @@ export async function testnetCommand(argv: readonly string[], env: NodeJS.Proces
     for (const tx of transactions) process.stdout.write(`  ${tx.what} ${tx.account.padEnd(44)}${txUrl(tx.hash)}\n`);
   }
   process.stdout.write(`\nspend cap: a native NEAR transfer needs a full-access key, so each bot's on-chain spend cap is its own sub-account balance (${formatNear(FUNDING.bot)} NEAR at setup). It cannot spend more than that; the owner tops it up to raise the cap.\n`);
+  process.stdout.write(`keys: ${KEYS_NOTE}\n`);
   return 0;
 }
 

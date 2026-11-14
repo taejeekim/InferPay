@@ -2,7 +2,7 @@
   "name": "inferpay",
   "version": "0.1.0",
   "private": true,
-  "description": "Agent-to-agent inference marketplace. Consumers pay providers through NEAR Intents and receive only the answer.",
+  "description": "A CLI buyer agent that decides with visible arithmetic whether to pay a specialist agent in NEAR for an answer, verifies the specialist's checks against a hash of its dataset published on NEAR testnet, and rates it on chain.",
   "type": "module",
   "bin": {
     "inferpay": "bin/inferpay.js"

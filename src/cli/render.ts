@@ -27,6 +27,7 @@ import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer
 import { verifyChecks, type BuyerCheck, type Forgery, type UnprovenCheck, type VerifiedCheck } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
+import { KEYS_NOTE } from "./testnet.ts";
 import type { RatingCost, RatingPost } from "../registry/index.ts";
 import { commitmentKey } from "../registry/keys.ts";
 import { formatNear } from "../payment/units.ts";
@@ -58,7 +59,7 @@ export function hookReportLine(report: HookReport): string {
 export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
   switch (progress.step) {
     case "decide":
-      return decideBlock(progress.decision, progress.needs);
+      return decideBlock(progress.decision, progress.needs, "budget");
     case "pay":
       return payBlock(progress, rail);
     case "answer":
@@ -233,6 +234,10 @@ export function usageText(): string {
   ].join("\n");
 }
 
+export function unknownJobText(raw: string): string {
+  return `Unknown job ${raw}. A job id is job_ and 26 letters and digits, as ask prints on its job line.`;
+}
+
 export function unknownBotText(roster: Roster, raw: string): string {
   const names = roster.forest().filter((row) => row.role !== "specialist").map((row) => row.bot);
   return `Unknown bot ${raw}. Kyle's bots: ${names.join(", ")}.`;
@@ -253,7 +258,7 @@ export function walletsTable(roster: Roster, balances: ReadonlyMap<AccountId, bi
     }),
   ];
   const cap = "spend cap: a native NEAR transfer needs a full-access key, so each bot's on-chain spend cap is its own sub-account balance.";
-  return `${table(rows)}\n\n${cap}`;
+  return [table(rows), "", cap, `keys: ${KEYS_NOTE}`].join("\n");
 }
 
 function roleLabel(role: ForestRow["role"]): string {
@@ -271,17 +276,20 @@ function roleLabel(role: ForestRow["role"]): string {
   }
 }
 
-function decideBlock(decision: Decision, needs: Needs): string {
+// Inside a task the value is the part's allotment of the task budget, so the block names it that way.
+type Bound = "budget" | "allotment";
+
+function decideBlock(decision: Decision, needs: Needs, bound: Bound): string {
   const { value, local } = decision;
   const idWidth = decision.options.reduce((max, option) => Math.max(max, option.providerId.length), 0) + 2;
   return [
     line("decide", headline(decision)),
-    field("value", `${money(value)}, the budget: the most a right answer is worth`),
+    field("value", `${money(value)}, the ${bound === "budget" ? "budget" : "part's allotment"}: the most a right answer is worth`),
     field("local", `confidence ${share(local.confidence)} x value = worth ${near(local.worth)} ${value.symbol}`),
     field("missing", local.missing.length === 0 ? "nothing" : local.missing.join("; ")),
     ...needsRows(needs, idWidth),
-    ...decision.options.map((option) => field("option", optionText(option, idWidth, value))),
-    ...ruleRows(decision),
+    ...decision.options.map((option) => field("option", optionText(option, idWidth, value, bound))),
+    ...ruleRows(decision, bound),
   ].join("\n");
 }
 
@@ -322,14 +330,14 @@ function refusedNote(decision: Exclude<Decision, { kind: "buy" }>): string {
   return decision.because.kind === "counter-refused" ? " (counter-offer refused)" : "";
 }
 
-function optionText(option: Option, idWidth: number, value: Price): string {
+function optionText(option: Option, idWidth: number, value: Price, bound: Bound): string {
   const head = `${option.providerId.padEnd(idWidth)}ask ${option.ask.amount}  `;
-  if (option.kind === "unaffordable") return `${head}outside the ${money(value)} budget`;
+  if (option.kind === "unaffordable") return `${head}outside the ${money(value)} ${bound}`;
   const quality = `cover ${share(option.coverage)} x rep ${share(option.reputation)} = quality ${share(option.quality)}`;
   return `${head}${quality}  net ${option.net < 0n ? "" : "+"}${near(option.net)}`;
 }
 
-function ruleRows(decision: Decision): string[] {
+function ruleRows(decision: Decision, bound: Bound): string[] {
   const { value, local } = decision;
   const buyRule = (option: PricedOption): string => {
     const verdict = option.net >= local.worth ? ">=" : "<";
@@ -356,7 +364,7 @@ function ruleRows(decision: Decision): string[] {
   const because = decision.because;
   switch (because.kind) {
     case "nothing-affordable":
-      return [field("rule", `never pay above the budget: every ask is outside ${money(value)}`), localRule];
+      return [field("rule", `never pay above the ${bound}: every ask is outside ${money(value)}`), localRule];
     case "no-coverage":
       return [field("rule", "buy only from a shop that covers a missing fact: no shop within the budget does"), localRule];
     case "no-price-worth-paying":
@@ -407,7 +415,10 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
   }
-  if (progress.status === "uncertain") rows.push(field("note", "resume retries with the same key, so this transfer cannot be paid twice"));
+  if (progress.status === "uncertain") {
+    rows.push(field("note", "resume rebroadcasts the same signed transaction, so this transfer cannot be paid twice;"));
+    rows.push(field("", "it settles once that transaction is found on chain, or is signed again once it has expired"));
+  }
   if (progress.transfer === "skipped" && progress.status === "settled") {
     rows.push(field("note", "already paid, transfer skipped"));
   }
@@ -754,6 +765,8 @@ export function taskProgressLine(progress: TaskProgress, rail: PaymentRail["kind
       ].join("\n");
     case "part-done":
       return partDoneRows(progress).join("\n");
+    case "decide":
+      return decideBlock(progress.decision, progress.needs, "allotment");
     default:
       return progressLine(progress, rail);
   }

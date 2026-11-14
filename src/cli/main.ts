@@ -7,7 +7,7 @@ import type { AccountId } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
-import { attestLines, configErrorText, failureText, hookLine, hookReportLine, jobText, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { attestLines, configErrorText, unknownJobText, failureText, hookLine, hookReportLine, jobText, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -121,7 +121,7 @@ async function resumeCommand(argv: readonly string[], env: NodeJS.ProcessEnv): P
   }
   const jobId = parseJobId(argv[0] ?? "");
   if (!jobId) {
-    process.stderr.write(`resume needs a job id\n${usageText()}\n`);
+    process.stderr.write(`${argv[0] === undefined ? "resume needs a job id" : unknownJobText(argv[0])}\n${usageText()}\n`);
     return 2;
   }
   const booted = await boot(env);
@@ -137,7 +137,7 @@ async function jobCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
   }
   const jobId = parseJobId(argv[0] ?? "");
   if (!jobId) {
-    process.stderr.write(`job needs a job id\n${usageText()}\n`);
+    process.stderr.write(`${argv[0] === undefined ? "job needs a job id" : unknownJobText(argv[0])}\n${usageText()}\n`);
     return 2;
   }
   const booted = await boot(env);

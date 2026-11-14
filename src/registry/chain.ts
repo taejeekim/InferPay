@@ -59,7 +59,13 @@ function toPost(result: TxResult, tx: string, key: string, cost: RatingCost | nu
       return { kind: "failed", reason: `transaction ${tx} failed on chain: ${result.reason}` };
     case "refused":
       if (result.never === null) return { kind: "failed", reason: `testnet refused the rating: ${result.reason}` };
-      return { kind: "pending", tx, detail: result.reason };
+      return {
+        kind: "pending",
+        tx,
+        detail: result.never === "nonce-used"
+          ? "another transaction from this bot used the same nonce first, so this one did not land"
+          : "the transaction expired before it landed",
+      };
     case "pending":
     case "unknown":
       return { kind: "pending", tx, detail: "the transaction is not final yet" };

@@ -508,6 +508,17 @@ test("a rating that cannot reach the chain stays pending with a resume hint, and
   });
 });
 
+test("a rating that loses its nonce to another transaction says so in a plain sentence, with the command that finishes it", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    chain.failNext = { kind: "refused", reason: "Invalid nonce (ak: 4, tx: 4)", never: "nonce-used" };
+    const text = await askOn(chain, root, MRI);
+    assert.match(text, /^ {10}on chain {2}not yet: another transaction from this bot used the same nonce first, so this one did not land$/m);
+    assert.match(text, /^ {20}the rating is in the local ledger\. Run: npx inferpay resume job_\w+$/m);
+    assert.doesNotMatch(text, /Invalid nonce/);
+  });
+});
+
 test("only a well-formed rating under a known bot's account counts", () => {
   const good = JSON.stringify({ shop: INSURANCE, stars: 4, payment: "hash", root: null, verified: 1, unproven: 1, forged: 0, withheld: 0 });
   const leaf = (value: string) => ({ ":block": 9, "": value });
