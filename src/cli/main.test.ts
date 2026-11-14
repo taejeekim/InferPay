@@ -438,7 +438,7 @@ test("a shop that withholds the key it got wrong rates below the same shop ownin
 test("on the mock rail the rating stays in the ledger and providers says where reputation and each root came from", async () => {
   await withDataDir(async (root) => {
     const asked = await ask(root, "Does this policy cover an outpatient MRI?", "0.10");
-    assert.match(asked.out, /^rate {6}5\/5 {2}= 5\n(?: {10}.*\n){3} {10}kept {6}in this machine's ledger, because the mock rail has no chain$/m);
+    assert.match(asked.out, /^rate {6}5\/5 {2}= 5\n(?: {10}.*\n){4} {10}kept {6}in this machine's ledger, because the mock rail has no chain$/m);
     const stdout = capture(process.stdout);
     try {
       assert.equal(await main(["providers"], { INFERPAY_DATA_DIR: root }), 0);

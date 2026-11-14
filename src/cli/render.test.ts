@@ -185,7 +185,8 @@ test("an unproven check and a forged one are labelled, and neither prints as a m
     [
       "rate      1/5  forged evidence sets the rating to 1",
       "          rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,",
-      "                  -2 per key withheld; at most 2 when no needed key backs the answer;",
+      "                  -1 per key opened with no claim, -2 per key withheld;",
+      "                  at most 2 when no needed key backs the answer;",
       "                  1 if any check is forged; checks the buyer did not ask for never count",
       "          kept      in this machine's ledger, because the mock rail has no chain",
     ].join("\n"),

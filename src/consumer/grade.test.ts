@@ -63,10 +63,12 @@ test("a true check the buyer did not ask for never raises the rating, and a fals
   assert.equal(stars([NEED_MRI], mriCovered, claim(COSMETIC, "covered")), 5);
 });
 
-test("a needed key opened with no claim, or proved empty, backs nothing", () => {
+test("a needed key opened with no claim, or proved empty, backs nothing and costs what a mismatch costs", () => {
   const opened: AssertedCheck = { kind: "opening", key: factKey(MRI), verdict: "opened", evidence: SHOP.prove(MRI) };
   assert.equal(stars([NEED_MRI], opened), 2);
-  assert.equal(stars([NEED_MRI, NEED_COPAY], mriCovered, { kind: "opening", key: factKey(COPAY), verdict: "opened", evidence: SHOP.prove(COPAY) }), 5);
+  const bareCopay: AssertedCheck = { kind: "opening", key: factKey(COPAY), verdict: "opened", evidence: SHOP.prove(COPAY) };
+  assert.equal(stars([NEED_MRI, NEED_COPAY], mriCovered, bareCopay), 4);
+  assert.equal(stars([NEED_MRI, NEED_COPAY], mriCovered, bareCopay), stars([NEED_MRI, NEED_COPAY], mriCovered, copayWrong));
   const empty: AssertedCheck = { kind: "opening", key: factKey(NEED_DENTAL), verdict: "unverifiable", evidence: SHOP.proveAbsent(factKey(NEED_DENTAL)) };
   assert.equal(stars([NEED_MRI, NEED_DENTAL], mriCovered, empty), 4);
 });
@@ -80,5 +82,5 @@ test("one forged check sets the rating to 1 whatever else was verified, and the 
   };
   const graded = grade(verifyChecks([mriCovered, forged, cosmeticTrue], PINNED, QUESTION, [NEED_MRI, NEED_COPAY]));
   assert.equal(graded.stars, 1);
-  assert.deepEqual(graded.tally, { verified: 1, backing: 1, mismatches: 0, empty: 0, withheld: 1, unrequested: 1, unproven: 0, forged: 1 });
+  assert.deepEqual(graded.tally, { verified: 1, backing: 1, mismatches: 0, empty: 0, unclaimed: 0, withheld: 1, unrequested: 1, unproven: 0, forged: 1 });
 });

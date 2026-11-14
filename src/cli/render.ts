@@ -70,7 +70,8 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
       return [
         line("rate", rateText(progress.grade)),
         field("rule", `start at ${RULE.start}; for each key the buyer needed, -${RULE.perMismatch} per mismatch, -${RULE.perEmpty} per empty slot,`),
-        field("", `-${RULE.perWithheld} per key withheld; at most ${RULE.withoutBacking} when no needed key backs the answer;`),
+        field("", `-${RULE.perUnclaimed} per key opened with no claim, -${RULE.perWithheld} per key withheld;`),
+        field("", `at most ${RULE.withoutBacking} when no needed key backs the answer;`),
         field("", `${RULE.forged} if any check is forged; checks the buyer did not ask for never count`),
         ...ratingRows(progress.onChain, progress.jobId, rail).map((row) => line("", row)),
       ].join("\n");
@@ -471,6 +472,7 @@ function rateText(graded: Grade): string {
   const costs = [
     counts.mismatches > 0 ? `${RULE.perMismatch} x ${plural(counts.mismatches, "mismatch", "mismatches")}` : null,
     counts.empty > 0 ? `${RULE.perEmpty} x ${counts.empty} empty` : null,
+    counts.unclaimed > 0 ? `${RULE.perUnclaimed} x ${counts.unclaimed} no claim` : null,
     counts.withheld > 0 ? `${RULE.perWithheld} x ${counts.withheld} withheld` : null,
   ].filter((cost) => cost !== null);
   const sum = costs.length === 0 ? `= ${RULE.start}` : `= ${RULE.start} - ${costs.join(" - ")} = ${score}`;
@@ -604,7 +606,7 @@ function verifiedRows(check: VerifiedCheck, head: (verdict: string, rest: string
     return [head("no entry", claimed), under("the slot for this key in the shop's committed tree is empty: the shop holds nothing on it")];
   }
   if (check.kind === "opening") {
-    return [head("no claim", entryValue(check.entry)), under("the shop opened this key and its model made no claim about it, so nothing backs the answer")];
+    return [head("no claim", entryValue(check.entry)), under("the shop opened this key and its answer made no claim about it, so it backs nothing")];
   }
   if (check.kind === "flag") {
     if (check.verdict === "raised") return [head("raised", ""), under(check.entry.detail)];

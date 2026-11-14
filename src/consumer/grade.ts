@@ -2,12 +2,14 @@ import { isStars, type Stars } from "../domain.ts";
 import type { BuyerCheck } from "./verify.ts";
 
 // The grading rule, in the one place that applies it. Only the keys the buyer named before paying count.
-// A withheld key costs more than a proven mismatch, so hiding an entry always rates below showing it. A rule
-// that raises or clears the clause is the legal shop doing its job, so both back the answer.
+// A withheld key costs more than a proven mismatch, so hiding an entry always rates below showing it. A needed
+// key opened with no claim costs the same as a mismatch, so swapping a wrong claim for a bare opening gains
+// nothing. A rule that raises or clears the clause is the legal shop doing its job, so both back the answer.
 export const RULE = {
   start: 5,
   perMismatch: 1,
   perEmpty: 1,
+  perUnclaimed: 1,
   perWithheld: 2,
   // An answer that no needed key backs is worth little whatever else the shop sent.
   withoutBacking: 2,
@@ -22,6 +24,8 @@ export type Tally = {
   readonly mismatches: number;
   // Needed keys the shop listed in its catalog and then proved it holds nothing for.
   readonly empty: number;
+  // Needed keys the shop opened while its answer made no claim about them.
+  readonly unclaimed: number;
   readonly withheld: number;
   readonly unrequested: number;
   readonly unproven: number;
@@ -44,6 +48,7 @@ export function tally(checks: readonly BuyerCheck[]): Tally {
     backing: verified.filter((check) => check.verdict === "match" || check.verdict === "raised" || check.verdict === "clear").length,
     mismatches: verified.filter((check) => check.verdict === "mismatch").length,
     empty: verified.filter((check) => check.verdict === "absent").length,
+    unclaimed: verified.filter((check) => check.verdict === "opened").length,
     withheld: count("withheld"),
     unrequested: count("unrequested"),
     unproven: count("unproven"),
@@ -56,6 +61,7 @@ export function grade(checks: readonly BuyerCheck[]): Grade {
   const score = RULE.start
     - RULE.perMismatch * counts.mismatches
     - RULE.perEmpty * counts.empty
+    - RULE.perUnclaimed * counts.unclaimed
     - RULE.perWithheld * counts.withheld;
   const capped = counts.backing === 0 && score > RULE.withoutBacking;
   const stars = counts.forged > 0 ? RULE.forged : Math.max(1, capped ? RULE.withoutBacking : score);
