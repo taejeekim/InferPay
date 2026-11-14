@@ -41,10 +41,15 @@ test("a rating matches only when its transaction called set on SocialDB and the 
   assert.equal(matchRatingTx(rating, "social.testnet", call("social.testnet", "set")).ok, true);
   assert.equal(matchRatingTx(rating, "social.testnet", call("elsewhere.testnet", "set")).ok, false);
   assert.equal(matchRatingTx(rating, "social.testnet", call("social.testnet", "get")).ok, false);
-  const stored = (payment: string) => ({
+  const stored = (payment: string | null) => ({
     "bot.testnet": { inferpay: { ratings: { job_1: JSON.stringify({ shop: "shop.testnet", stars: 5, payment, verified: 1, forged: 0 }) } } },
   });
   assert.equal(matchRating(rating, stored("PAY")).ok, true);
   assert.equal(matchRating(rating, stored("OTHER")).ok, false);
   assert.match(matchRating(rating, {}).detail, /no rating on chain/);
+  const unpaid = { ...rating, stars: 1, payment: null };
+  const storedUnpaid = { "bot.testnet": { inferpay: { ratings: { job_1: JSON.stringify({ shop: "shop.testnet", stars: 1, payment: null, verified: 1, withheld: 1, forged: 1 }) } } } };
+  assert.equal(matchRating(unpaid, storedUnpaid).ok, true);
+  assert.match(matchRating(unpaid, storedUnpaid).what, /nothing paid/);
+  assert.equal(matchRating(unpaid, stored("PAY")).ok, false);
 });

@@ -201,44 +201,70 @@
 
 <section id="run" class="wrap" aria-labelledby="run-title">
   <h2 id="run-title">A recorded run</h2>
-  <p class="lede">One live run from 2026-11-13, recorded before the buyer named the keys it needs. Today's CLI prints more: <code>needs</code> rows in the decide block, which needed keys the shop opened or withheld in the checks block, a fee reserve before the decide block, and fees inside the budget. It also takes delivery and verifies before it pays: the job, answer, and checks print before a payout block and the pay block. This run used live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
+  <p class="lede">One live run from 2026-11-14 with NEAR AI Cloud inference and NEAR testnet payment, copied from the terminal.</p>
   <ol class="captions">
-    <li><strong>decide.</strong> The buyer rated its own confidence at 0.10, so answering alone was worth 0.005 NEAR. The insurance shop nets +0.025, so the buyer paid the list price.</li>
-    <li><strong>pay and attest.</strong> A native NEAR transfer from <code>editor.kyle.inferpay.testnet</code>, with its explorer link. Each model call was signed inside NEAR AI Cloud's TEE, and the buyer checked the signature against the attestation report.</li>
-    <li><strong>checks and rate.</strong> Both checks were verified against the root the buyer read from chain before it paid. The 5/5 rating went to SocialDB. It was written under the earlier grading rule, so it appears with the earlier ratings above and does not count toward reputation.</li>
+    <li><strong>fees and decide.</strong> The buyer set aside a bound for network fees first, so the whole outflow stays inside the 0.08 NEAR budget. It rated its own confidence at 0.10, named the two keys it needs, and found the insurance shop worth its list price.</li>
+    <li><strong>summary, checks, and facts.</strong> The shop delivered before it was paid. The buyer verified both proofs against the root it read from chain when the job opened, and built its own answer from the proven entries. Each model call was signed inside NEAR AI Cloud's TEE.</li>
+    <li><strong>payout, pay, and rate.</strong> Two of two needed keys were proven, so the buyer paid the agreed price with a native NEAR transfer and wrote a 5/5 rating to SocialDB. Price plus measured fees came to 0.0358 NEAR.</li>
   </ol>
   <pre id="run-log" class="terminal" tabindex="0" aria-label="Terminal output of the run">rails: payment=near-testnet inference=near-ai
+fees      0.02286 NEAR of the 0.08 NEAR budget reserved for fees, so 0.05714 NEAR is left for the price
+          bound   0.00011 payment gas + 0.00275 rating gas + 0.02 rating storage
+          why     gas for the transfer and the rating at the gas price now plus a tenth; for storage,
+                  the deposit for this bot's first rating, which registers its SocialDB storage.
+                  Fees are measured after the job, and what the reserve does not use goes back to the budget
 decide    buy from insurance at 0.02 NEAR (list price)
-          value   0.05 NEAR, the budget: the most a right answer is worth
-          local   confidence 0.10 x value = worth 0.005 NEAR
-          missing whether outpatient MRI (with/without contrast) is a covered benefit under this specific policy; the exact copay or coinsurance amount for outpatient imaging;
-          option  insurance   ask 0.02  cover 1.00 x rep 0.90 = quality 0.90  net +0.025
-          option  disclosure  ask 0.02  cover 0.00 x rep 0.58 = quality 0.00  net -0.020
-          option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
-          rule    net = quality x value - ask; buy when net &gt;= local worth: 0.025 &gt;= 0.005
-pay       settled  0.02 NEAR
-          from    editor.kyle.inferpay.testnet
-          to      insurance.ban.inferpay.testnet
-          via     NEAR testnet transfer
-          job     job_01M7BMM6BHX9P6B7M5BDQ3JBF0
-          tx      <a href="https://testnet.nearblocks.io/txns/2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH">https://testnet.nearblocks.io/txns/2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH</a>
-answer    Yes, outpatient MRI is covered under your policy (per schedule §4.2), and your copay is 20%.
+          value   0.05714 NEAR, the budget less the fee reserve: the most a right answer is worth
+          local   confidence 0.10 x value = worth 0.005714 NEAR
+          missing whether outpatient MRI is a covered service under this policy; the copay amount for an outpatient MRI
+          needs   insurance   outpatient-mri; mri-copay
+          option  insurance   ask 0.02  cover 1.00 x rep 0.82 = quality 0.82  net +0.026854
+          option  disclosure  ask 0.02  cover 0.00 x rep 0.60 = quality 0.00  net -0.020
+          option  legal       ask 0.03  cover 0.00 x rep 0.88 = quality 0.00  net -0.030
+          rule    net = quality x value - ask; buy when net &gt;= local worth: 0.026854 &gt;= 0.005714
+job       job_01M7BZW30EYW0TD852CJB1R6Y6 opened with insurance at the agreed 0.02 NEAR
+          order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
+summary   Yes, outpatient MRI is covered, and you pay a 20% copay.
+          the shop's own words, not verified; the buyer relies only on the facts it verifies below
 attest    specialist 2/2 calls verified
           signed by 0x3b753b4406613c5e70ae640508632b600424fa0c, a key in NEAR AI's attestation report for z-ai/glm-5.3-flash
           request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally
-checks    2 of 2 verified by the buyer against the shop's committed root
-          verified  match         outpatient MRI coverage  covered
-                    Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
-          verified  match         MRI copay                20
-                    Policy schedule §4.2. Outpatient MRI copay is 20 percent.
+checks    2 of 2 needed keys opened and verified against the shop's committed root
+          verified    match         outpatient MRI coverage  covered
+                      Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          verified    match         MRI copay                20
+                      Policy schedule §4.2. Outpatient MRI copay is 20 percent.
           root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
-          from      NEAR testnet, written at block 277578399 and read before paying
+          from      NEAR testnet, written at block 277578399 and read before the job opened
           key       insurance.ban.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet
           link      <a href="https://testnet.nearblocks.io/address/insurance.ban.inferpay.testnet">https://testnet.nearblocks.io/address/insurance.ban.inferpay.testnet</a>
-rate      5/5
+facts     what the buyer relies on, built only from entries it verified:
+          outpatient-mri  = covered
+            from Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          mri-copay  = 20
+            from Policy schedule §4.2. Outpatient MRI copay is 20 percent.
+payout    0.02 NEAR of the agreed 0.02 NEAR: 2 of 2 needed keys opened to an entry and verified
+          rule    nothing if any check is forged; else agreed x proven / needed, rounded down;
+                  proven counts needed keys opened to a verified entry, mismatches included, empty slots not
+          sum     0.02 x 2 / 2 = 0.02 NEAR
+pay       settled  0.02 NEAR
+          from    researcher.kyle.inferpay.testnet
+          to      insurance.ban.inferpay.testnet
+          via     NEAR testnet transfer
+          tx      <a href="https://testnet.nearblocks.io/txns/9gKuEkT3cjFoPvGwQH4kz6ZR4CzRtdsgn2yg1kiNtMgV">https://testnet.nearblocks.io/txns/9gKuEkT3cjFoPvGwQH4kz6ZR4CzRtdsgn2yg1kiNtMgV</a>
+          fee     0.00004463 NEAR gas beside the price and inside the budget, from the transaction outcome
+rate      5/5  = 5
+          rule    start at 5; for each key the buyer needed, -1 per mismatch, -1 per empty slot,
+                  -1 per key opened with no claim, -2 per key withheld;
+                  at least 2 unless a check is forged, and 1 if any check is forged;
+                  checks the buyer did not ask for never count
           on chain  SocialDB v1.social08.testnet, written by the buyer bot under its own account
-          key       editor.kyle.inferpay.testnet/inferpay/ratings/job_01M7BMM6BHX9P6B7M5BDQ3JBF0
-          tx        <a href="https://testnet.nearblocks.io/txns/2sq3LcmcMbHAZxukfggumA66SCasqDetk7iZ893qxkh4">https://testnet.nearblocks.io/txns/2sq3LcmcMbHAZxukfggumA66SCasqDetk7iZ893qxkh4</a>
+          key       researcher.kyle.inferpay.testnet/inferpay/ratings/job_01M7BZW30EYW0TD852CJB1R6Y6
+          tx        <a href="https://testnet.nearblocks.io/txns/oqJPWyyBMG2rGZPyhyoNHeTM5BrreABgpLreCv25cuW">https://testnet.nearblocks.io/txns/oqJPWyyBMG2rGZPyhyoNHeTM5BrreABgpLreCv25cuW</a>
+          cost      0.01574006 NEAR of fees inside the budget: 0.00063006 gas, from the transaction outcome,
+                    + 0.01511 SocialDB storage, from the bot's storage_balance_of before and after
+spent     0.02 NEAR price + 0.0157846998144764 NEAR fees = 0.0357846998144764 NEAR of the 0.08 NEAR budget
+          reserve 0.02286 NEAR for fees; 0.0070753001855236 NEAR of it unused, back in the budget
 attest    buyer 1/1 calls verified
           signed by 0x3b753b4406613c5e70ae640508632b600424fa0c, a key in NEAR AI's attestation report for z-ai/glm-5.3-flash
           request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally</pre>

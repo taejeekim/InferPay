@@ -11,7 +11,7 @@ type Records = {
   readonly rpcs: readonly string[];
   readonly socialDb: string;
   readonly transfers: readonly { what: string; hash: string; signer: string; receiver: string; near: string }[];
-  readonly ratings: readonly { hash: string; rater: string; jobId: string; shop: string; stars: number; payment: string }[];
+  readonly ratings: readonly { hash: string; rater: string; jobId: string; shop: string; stars: number; payment: string | null }[];
 };
 
 const records = JSON.parse(readFileSync(fileURLToPath(new URL("./records.json", import.meta.url)), "utf8")) as Records;

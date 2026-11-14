@@ -86,10 +86,11 @@ export function matchRatingTx(
 }
 
 export function matchRating(
-  expected: { readonly rater: string; readonly jobId: string; readonly shop: string; readonly stars: number; readonly payment: string },
+  expected: { readonly rater: string; readonly jobId: string; readonly shop: string; readonly stars: number; readonly payment: string | null },
   onChain: unknown,
 ): Row {
-  const what = `${expected.stars}/5 for ${expected.shop}, bound to payment ${expected.payment.slice(0, 8)}…`;
+  const paid = expected.payment === null ? "with nothing paid" : `bound to payment ${expected.payment.slice(0, 8)}…`;
+  const what = `${expected.stars}/5 for ${expected.shop}, ${paid}`;
   const text = dig(onChain, [expected.rater, "inferpay", "ratings", expected.jobId]);
   if (typeof text !== "string") return { kind: "rating", what, ok: false, detail: "no rating on chain under that key" };
   let stored: { shop?: unknown; stars?: unknown; payment?: unknown; forged?: unknown; verified?: unknown; withheld?: unknown };

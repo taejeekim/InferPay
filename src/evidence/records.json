@@ -19,7 +19,11 @@
     { "what": "live inference, filed figure opened and verified", "hash": "HRbtHoHa4UidQ3cWcnVmRv3fzn3VeUvYeeHac8G2PmuF", "signer": "clerk.kyle.inferpay.testnet", "receiver": "disclosure.david.inferpay.testnet", "near": "0.02" },
     { "what": "payment to a shop that then forged a check", "hash": "F9ksXDHD3WGG9izdGTpZhbeq5vY3K8JsUcxU6CPPyHWG", "signer": "reviewer.kyle.inferpay.testnet", "receiver": "disclosure.david.inferpay.testnet", "near": "0.02" },
     { "what": "payment to a shop that then withheld a needed key", "hash": "EnmWA3XbvEGaU4n7idEYZUBuWb9BSGyzCa61ERmFey2M", "signer": "assistant.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
-    { "what": "payment to a shop that owned up to a mismatch", "hash": "CfYDodFbmft1nas4yHnzYmKT9f7dd4bkS4rzdkZ181MY", "signer": "editor.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" }
+    { "what": "payment to a shop that owned up to a mismatch", "hash": "CfYDodFbmft1nas4yHnzYmKT9f7dd4bkS4rzdkZ181MY", "signer": "editor.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "paid after the buyer verified two proofs, live inference", "hash": "9gKuEkT3cjFoPvGwQH4kz6ZR4CzRtdsgn2yg1kiNtMgV", "signer": "researcher.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "task part 1, paid after verification", "hash": "CXhCXVqX1GY6CjrbwZGxBX75yX97n8fDqa4hWZ2yoivw", "signer": "writer.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.02" },
+    { "what": "task part 2, paid after verification", "hash": "8Lm3Yz2158o8Niu9J1kUe33PRwQJsr1weF6MmKcAfzq6", "signer": "writer.kyle.inferpay.testnet", "receiver": "legal.stella.inferpay.testnet", "near": "0.03" },
+    { "what": "half the agreed 0.02 NEAR, because the shop withheld one of two needed keys", "hash": "ETMp2Xe48x6WX8ToSiYLiodHFKmRzzezUyHMDJhsxGBy", "signer": "scout.kyle.inferpay.testnet", "receiver": "insurance.ban.inferpay.testnet", "near": "0.01" }
   ],
   "ratings": [
     { "hash": "9pxdrmRDt1HDFoH2grk29v1MoYj5AN45aKodyxeKUWFx", "rater": "analyst.kyle.inferpay.testnet", "jobId": "job_01M7BQPFYRXBVGR4TX5N4KGZ9Z", "shop": "insurance.ban.inferpay.testnet", "stars": 5, "payment": "Hr26P5JqV674spww2Cta2W6KYn5QuKgbq4vJGRxpDD7Y" },
@@ -27,6 +31,11 @@
     { "hash": "FozEFsz8toPCB3osN8bMv7Pz2YmDaDshkRqPDH2HRUJL", "rater": "clerk.kyle.inferpay.testnet", "jobId": "job_01M7BQTBSSJ5FJF2167N9G9BJB", "shop": "disclosure.david.inferpay.testnet", "stars": 5, "payment": "HRbtHoHa4UidQ3cWcnVmRv3fzn3VeUvYeeHac8G2PmuF" },
     { "hash": "65XtKK6RsKyLvMAoz4ZAdMnmoYJoss96nKR7cV6NQy9X", "rater": "reviewer.kyle.inferpay.testnet", "jobId": "job_01M7BQV5X4P66XRKCETH6TM19E", "shop": "disclosure.david.inferpay.testnet", "stars": 1, "payment": "F9ksXDHD3WGG9izdGTpZhbeq5vY3K8JsUcxU6CPPyHWG" },
     { "hash": "2rF39VovTyzDSJD3XVQVcZXWi9qS9gCRcVuqQDk4zCUQ", "rater": "assistant.kyle.inferpay.testnet", "jobId": "job_01M7BQVGD9501CT7K0RAJ2ZADB", "shop": "insurance.ban.inferpay.testnet", "stars": 3, "payment": "EnmWA3XbvEGaU4n7idEYZUBuWb9BSGyzCa61ERmFey2M" },
-    { "hash": "6s75E5KLoaMnLqBLNmSp3EvGm9fNHzBToMkWu8MBy5Eb", "rater": "editor.kyle.inferpay.testnet", "jobId": "job_01M7BQVTMVBKNGN04R7PD7N2V0", "shop": "insurance.ban.inferpay.testnet", "stars": 4, "payment": "CfYDodFbmft1nas4yHnzYmKT9f7dd4bkS4rzdkZ181MY" }
+    { "hash": "6s75E5KLoaMnLqBLNmSp3EvGm9fNHzBToMkWu8MBy5Eb", "rater": "editor.kyle.inferpay.testnet", "jobId": "job_01M7BQVTMVBKNGN04R7PD7N2V0", "shop": "insurance.ban.inferpay.testnet", "stars": 4, "payment": "CfYDodFbmft1nas4yHnzYmKT9f7dd4bkS4rzdkZ181MY" },
+    { "hash": "oqJPWyyBMG2rGZPyhyoNHeTM5BrreABgpLreCv25cuW", "rater": "researcher.kyle.inferpay.testnet", "jobId": "job_01M7BZW30EYW0TD852CJB1R6Y6", "shop": "insurance.ban.inferpay.testnet", "stars": 5, "payment": "9gKuEkT3cjFoPvGwQH4kz6ZR4CzRtdsgn2yg1kiNtMgV" },
+    { "hash": "88R2zG7RtxWrHrcGu8tHqBwHjJDGAHMcHTxbiqAUE4Yr", "rater": "writer.kyle.inferpay.testnet", "jobId": "job_01M7BZYQ8JA973RCT0JH798SMW", "shop": "insurance.ban.inferpay.testnet", "stars": 4, "payment": "CXhCXVqX1GY6CjrbwZGxBX75yX97n8fDqa4hWZ2yoivw" },
+    { "hash": "EzXTiden6siViztKXqMX83w2oHgZLxzcKHNKgKs5FGcD", "rater": "writer.kyle.inferpay.testnet", "jobId": "job_01M7C09ZAAEPK28HSXPT09YY56", "shop": "legal.stella.inferpay.testnet", "stars": 5, "payment": "8Lm3Yz2158o8Niu9J1kUe33PRwQJsr1weF6MmKcAfzq6" },
+    { "hash": "7gXPpQMdfbTgWbo1euK6MtxRdznk7HRmqzvmBATJJpDn", "rater": "clerk.kyle.inferpay.testnet", "jobId": "job_01M7C0B0NDG83RX67CNNKD4JJ6", "shop": "insurance.ban.inferpay.testnet", "stars": 1, "payment": null },
+    { "hash": "Adfu6mtgSRtaH4TZqi4CspWVdXS5dP3JJ4EPd3EWoou3", "rater": "scout.kyle.inferpay.testnet", "jobId": "job_01M7C0B732WQQJE75ZRKF71G9Q", "shop": "insurance.ban.inferpay.testnet", "stars": 3, "payment": "ETMp2Xe48x6WX8ToSiYLiodHFKmRzzezUyHMDJhsxGBy" }
   ]
 }
