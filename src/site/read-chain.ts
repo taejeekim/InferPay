@@ -10,7 +10,8 @@ type Chain = {
     readonly readAt: string;
     readonly shops: readonly { readonly providerId: string; readonly account: string; readonly commitment: { readonly root: string; readonly leaves: number; readonly scheme: string; readonly block: number } | null; readonly reputation: { readonly ratings: number; readonly average: number | null; readonly quality: number } }[];
     readonly bots: readonly { readonly account: string; readonly balance: bigint | null }[];
-    readonly ratings: readonly { readonly block: number; readonly rater: string; readonly shop: string; readonly stars: number; readonly verified: number; readonly unproven: number; readonly forged: number; readonly payment: string; readonly jobId: string }[];
+    readonly ratings: readonly { readonly block: number; readonly rater: string; readonly shop: string; readonly stars: number; readonly verified: number; readonly unproven: number; readonly forged: number; readonly withheld: number; readonly payment: string; readonly jobId: string }[];
+    readonly earlier: readonly unknown[];
   }>;
   formatNear(yocto: bigint): string;
 };
@@ -32,5 +33,6 @@ for (const shop of state.shops) {
 }
 for (const bot of state.bots) console.log(`bot  ${bot.account.padEnd(36)} ${bot.balance === null ? "not created" : `${chain.formatNear(bot.balance)} NEAR`}`);
 for (const r of state.ratings) {
-  console.log(`rate block ${r.block}  ${r.stars}/5  ${r.shop.split(".")[0]}  by ${r.rater.split(".")[0]}  verified ${r.verified} unproven ${r.unproven} forged ${r.forged}  tx ${r.payment}`);
+  console.log(`rate block ${r.block}  ${r.stars}/5  ${r.shop.split(".")[0]}  by ${r.rater.split(".")[0]}  verified ${r.verified} unproven ${r.unproven} forged ${r.forged} withheld ${r.withheld}  tx ${r.payment}`);
 }
+console.log(`${state.earlier.length} ratings written under the earlier rule, not counted`);

@@ -72,8 +72,9 @@ export function readCommitment(raw, account) {
   return { scheme: parsed.scheme, root: parsed.root, leaves: parsed.leaves, block: leaf.block };
 }
 
-// Anyone can write anything under an account they hold, so a value that is not a rating is skipped.
-export function readRatings(raw, raters) {
+// Each rating value under the raters' accounts that parses as a rating, current or earlier. Anyone can write
+// anything under an account they hold, so a value that is not a rating is skipped.
+function parsedRatings(raw, raters) {
   const ratings = [];
   for (const rater of raters) {
     const jobs = nodeAt(raw, [rater, "inferpay", "ratings"]);
@@ -82,13 +83,25 @@ export function readRatings(raw, raters) {
       const leaf = leafAt(jobs, [jobId]);
       const value = leaf === null ? null : parseJson(leaf.value);
       if (!JOB_ID.test(jobId) || !isNode(value)) continue;
-      const { shop, stars, payment, root, verified, unproven, forged } = value;
+      const { shop, stars, payment, root, verified, unproven, forged, withheld } = value;
       if (!isAccountId(shop) || ![1, 2, 3, 4, 5].includes(stars) || typeof payment !== "string") continue;
       if (!(root === null || isHash(root)) || !isCount(verified) || !isCount(unproven) || !isCount(forged)) continue;
-      ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged, block: leaf.block });
+      if (withheld !== undefined && !isCount(withheld)) continue;
+      ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged, withheld, block: leaf.block });
     }
   }
   return ratings;
+}
+
+// The ratings src/registry reads: those written under the current grading rule, which records withheld keys.
+export function readRatings(raw, raters) {
+  return parsedRatings(raw, raters).filter((rating) => rating.withheld !== undefined);
+}
+
+// Ratings written before the buyer named the keys it needs. The CLI skips them, so they never count for reputation;
+// their verified count includes checks the buyer had not asked for.
+export function readEarlierRatings(raw, raters) {
+  return parsedRatings(raw, raters).filter((rating) => rating.withheld === undefined);
 }
 
 // The reputation src/market computes from on-chain ratings, and the smoothed quality the buyer's decision uses.
@@ -136,7 +149,8 @@ export async function readState(roster, fetcher = fetch) {
   const keys = [...roster.shops.map((shop) => `${shop.account}/inferpay/commitment`), ...raters.map((rater) => `${rater}/inferpay/ratings/*`)];
   const [social, balances] = await Promise.all([socialGet(fetcher, keys), Promise.all(raters.map((account) => balanceOf(fetcher, account)))]);
   // A rating's block is when the bot wrote it; the job id is a ULID, so it breaks a tie by when the job opened.
-  const ratings = readRatings(social.value, raters).sort((a, b) => b.block - a.block || (a.jobId < b.jobId ? 1 : -1));
+  const newestFirst = (a, b) => b.block - a.block || (a.jobId < b.jobId ? 1 : -1);
+  const ratings = readRatings(social.value, raters).sort(newestFirst);
   return {
     root: roster.root,
     block: social.block,
@@ -144,5 +158,6 @@ export async function readState(roster, fetcher = fetch) {
     shops: roster.shops.map((shop) => ({ ...shop, commitment: readCommitment(social.value, shop.account), reputation: reputationOf(ratings, shop.account) })),
     bots: roster.bots.map((bot, index) => ({ ...bot, balance: balances[index] ?? null })),
     ratings,
+    earlier: readEarlierRatings(social.value, raters).sort(newestFirst),
   };
 }

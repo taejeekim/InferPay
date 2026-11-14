@@ -111,21 +111,34 @@ function renderBots(state) {
   )));
 }
 
+function ratingRow(rating, current, earlierRule) {
+  const earlierRoot = rating.root !== null && current.get(rating.shop) !== undefined && current.get(rating.shop) !== rating.root;
+  const checks = earlierRule
+    ? [`${rating.verified} verified`, h("br"), h("span", { class: rating.forged > 0 ? "low" : "hint" }, `${rating.unproven} unproven, ${rating.forged} forged`)]
+    : [`${rating.verified} verified, `, h("span", { class: rating.withheld > 0 ? "low" : "" }, `${rating.withheld} withheld`), h("br"), h("span", { class: rating.forged > 0 ? "low" : "hint" }, `${rating.unproven} unproven, ${rating.forged} forged`)];
+  return h("tr", {},
+    h("td", { class: "num" }, rating.block.toLocaleString("en-US")),
+    h("td", { class: `stars${rating.stars <= 2 ? " low" : ""}` }, `${rating.stars}/5`),
+    h("td", {}, accountLink(rating.shop, firstLabel(rating.shop)), earlierRoot ? h("div", { class: "hint" }, "rated against an earlier root") : null),
+    h("td", { class: "counts" }, ...checks),
+    h("td", {}, accountLink(rating.rater, firstLabel(rating.rater))),
+    h("td", {}, txLink(rating.payment)),
+  );
+}
+
 function renderRatings(state) {
   const current = new Map(state.shops.map((shop) => [shop.account, shop.commitment?.root ?? null]));
-  const rows = state.ratings.map((rating) => {
-    const earlier = rating.root !== null && current.get(rating.shop) !== undefined && current.get(rating.shop) !== rating.root;
-    return h("tr", {},
-      h("td", { class: "num" }, rating.block.toLocaleString("en-US")),
-      h("td", { class: `stars${rating.stars <= 2 ? " low" : ""}` }, `${rating.stars}/5`),
-      h("td", {}, accountLink(rating.shop, firstLabel(rating.shop)), earlier ? h("div", { class: "hint" }, "rated against an earlier root") : null),
-      h("td", { class: "counts" }, `${rating.verified} verified`, h("br"), h("span", { class: rating.forged > 0 ? "low" : "hint" }, `${rating.unproven} unproven, ${rating.forged} forged`)),
-      h("td", {}, accountLink(rating.rater, firstLabel(rating.rater))),
-      h("td", {}, txLink(rating.payment)),
-    );
-  });
-  if (rows.length === 0) rows.push(h("tr", { class: "empty-row" }, h("td", { colspan: "6" }, "No ratings under this root yet.")));
+  const rows = state.ratings.map((rating) => ratingRow(rating, current, false));
+  if (rows.length === 0) {
+    const why = state.earlier.length === 0
+      ? "No ratings under this root yet."
+      : "No rating under this root was written under the current grading rule yet, so the earlier ones below do not count toward reputation.";
+    rows.push(h("tr", { class: "empty-row" }, h("td", { colspan: "6" }, why)));
+  }
   $("ratings").tBodies[0].replaceChildren(...rows);
+  $("earlier").hidden = state.earlier.length === 0;
+  $("earlier-count").textContent = String(state.earlier.length);
+  $("earlier-ratings").tBodies[0].replaceChildren(...state.earlier.map((rating) => ratingRow(rating, current, true)));
 }
 
 const chainRead = readState(roster)
@@ -135,7 +148,8 @@ const chainRead = readState(roster)
       rootNote,
       "Read at block ", h("strong", {}, state.block.toLocaleString("en-US")), ` on ${utc(state.readAt)} for the root `,
       accountLink(state.root), ". ",
-      `${state.ratings.length} rating${state.ratings.length === 1 ? "" : "s"} from ${state.bots.length} buyer bots.`,
+      `${state.ratings.length} rating${state.ratings.length === 1 ? "" : "s"} from ${state.bots.length} buyer bots`,
+      state.earlier.length === 0 ? "." : `, and ${state.earlier.length} written under the earlier rule that do not count.`,
     );
     renderShops(state);
     renderBots(state);

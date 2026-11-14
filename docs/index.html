@@ -61,13 +61,23 @@
   </table></div>
 
   <h3>Latest ratings</h3>
-  <p class="lede" id="ratings-lede">Each rating is written by a buyer bot under its own account in the SocialDB contract <code>v1.social08.testnet</code>. Newest first, ordered by the block that wrote the rating.</p>
+  <p class="lede" id="ratings-lede">Each rating is written by a buyer bot under its own account in the SocialDB contract <code>v1.social08.testnet</code>. Newest first, ordered by the block that wrote the rating. <em>Verified</em> counts the checks that opened a key the buyer needed, and <em>withheld</em> counts the needed keys the shop did not open.</p>
   <div class="table-wrap"><table id="ratings">
     <thead><tr>
       <th scope="col">Block</th><th scope="col">Stars</th><th scope="col">Shop</th><th scope="col">Checks</th><th scope="col">Rated by</th><th scope="col">Payment</th>
     </tr></thead>
     <tbody></tbody>
   </table></div>
+  <details id="earlier" class="earlier" hidden>
+    <summary><span id="earlier-count"></span> ratings written under the earlier rule</summary>
+    <p class="hint">These ratings were written before the buyer named the keys it needs, so they record no withheld keys, and their verified count includes checks the buyer did not ask for. The CLI skips them, and they do not count toward any shop's reputation above.</p>
+    <div class="table-wrap"><table id="earlier-ratings">
+      <thead><tr>
+        <th scope="col">Block</th><th scope="col">Stars</th><th scope="col">Shop</th><th scope="col">Checks</th><th scope="col">Rated by</th><th scope="col">Payment</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </details>
 </section>
 
 <section id="verify" class="wrap" aria-labelledby="verify-title">
