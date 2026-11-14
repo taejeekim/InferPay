@@ -92,7 +92,7 @@ export function matchRating(
   const what = `${expected.stars}/5 for ${expected.shop}, bound to payment ${expected.payment.slice(0, 8)}…`;
   const text = dig(onChain, [expected.rater, "inferpay", "ratings", expected.jobId]);
   if (typeof text !== "string") return { kind: "rating", what, ok: false, detail: "no rating on chain under that key" };
-  let stored: { shop?: unknown; stars?: unknown; payment?: unknown; forged?: unknown; verified?: unknown };
+  let stored: { shop?: unknown; stars?: unknown; payment?: unknown; forged?: unknown; verified?: unknown; withheld?: unknown };
   try {
     stored = JSON.parse(text) as typeof stored;
   } catch {
@@ -104,7 +104,7 @@ export function matchRating(
     what,
     ok,
     detail: ok
-      ? `${expected.rater}/inferpay/ratings/${expected.jobId}: ${String(stored.verified)} verified, ${String(stored.forged)} forged`
+      ? `${expected.rater}/inferpay/ratings/${expected.jobId}: ${String(stored.verified)} verified, ${String(stored.withheld)} withheld, ${String(stored.forged)} forged`
       : `on chain: ${text}`,
   };
 }
