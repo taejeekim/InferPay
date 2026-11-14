@@ -361,12 +361,14 @@ test("a shop that forges its evidence is caught on the mock rail and rated 1/5",
   });
 });
 
-test("the liar hook names a shop, and a liar with nothing to hide changes nothing", async () => {
+test("the liar hook names a shop, and a liar with nothing to forge says so and changes nothing", async () => {
   await withDataDir(async (root) => {
     const stderr = capture(process.stderr);
     try {
       assert.equal(await main(["providers"], { INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "researcher" }), 1);
       assert.match(stderr.text(), /INFERPAY_TEST_LIAR is invalid\. expected a shop id: legal, insurance, disclosure/);
+      assert.equal(await main(["providers"], { INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "legal", INFERPAY_TEST_WITHHOLD: "legal" }), 1);
+      assert.match(stderr.text(), /set INFERPAY_TEST_LIAR or INFERPAY_TEST_WITHHOLD, not both/);
     } finally {
       stderr.restore();
     }
@@ -374,11 +376,44 @@ test("the liar hook names a shop, and a liar with nothing to hide changes nothin
     try {
       const env = { INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "insurance" };
       assert.equal(await main(["ask", "Does this policy cover an outpatient MRI?", "--budget", "0.10"], env), 0);
+      assert.match(stdout.text(), /^hook {6}insurance had nothing to forge here: every check it sent was already a match or a raised flag/m);
       assert.match(stdout.text(), /^checks {4}1 of 1 needed key opened and verified against the shop's committed root$/m);
       assert.match(stdout.text(), /^rate {6}5\/5 {2}= 5$/m);
     } finally {
       stdout.restore();
     }
+  });
+});
+
+test("every shop has a recorded purchase where its lie is caught and rated 1/5", async () => {
+  const cases = [
+    ["disclosure", "What was Samsung's Q3 2025 operating profit?"],
+    ["insurance", "What copay does this policy charge for an outpatient MRI?"],
+    ["legal", "Does our NDA's three-year confidentiality term fail our playbook?"],
+  ] as const;
+  for (const [shop, question] of cases) {
+    await withDataDir(async (root) => {
+      const honest = await ask(root, question, "0.10");
+      assert.doesNotMatch(honest.out, /FORGED/, shop);
+      const lying = await ask(root, question, "0.10", { INFERPAY_TEST_LIAR: shop });
+      assert.match(lying.out, new RegExp(`^hook {6}${shop} forged 1 check; the buyer should mark it FORGED and rate ${shop} 1/5$`, "m"), shop);
+      assert.match(lying.out, /^checks .*, 1 FORGED$/m, shop);
+      assert.match(lying.out, /^rate {6}1\/5 {2}forged evidence sets the rating to 1$/m, shop);
+    });
+  }
+});
+
+test("a shop that withholds the key it got wrong rates below the same shop owning up to it", async () => {
+  await withDataDir(async (root) => {
+    const question = "What copay does this policy charge for an outpatient MRI?";
+    const honest = await ask(root, question, "0.10");
+    assert.match(honest.out, /^ {10}verified {4}mismatch {6}MRI copay {7}10 {3}ref 20$/m);
+    assert.match(honest.out, /^rate {6}4\/5 {2}= 5 - 1 x 1 mismatch = 4$/m);
+    const hiding = await ask(root, question, "0.10", { INFERPAY_TEST_WITHHOLD: "insurance" });
+    assert.match(hiding.out, /^hook {6}insurance dropped 1 check; /m);
+    assert.match(hiding.out, /^checks {4}1 of 2 needed keys opened and verified against the shop's committed root, 1 WITHHELD$/m);
+    assert.match(hiding.out, /^ {10}WITHHELD {18}mri-copay$/m);
+    assert.match(hiding.out, /^rate {6}3\/5 {2}= 5 - 2 x 1 withheld = 3$/m);
   });
 });
 

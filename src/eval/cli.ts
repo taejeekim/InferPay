@@ -28,6 +28,8 @@ export type Run = {
   // What the buyer printed for each check, and how many it marked FORGED.
   readonly buyerChecks: readonly { readonly status: string; readonly verdict: string }[];
   readonly forged: number;
+  // Needed keys the buyer printed as WITHHELD.
+  readonly withheld: number;
   // What the shop asserted and the rating the buyer gave, read back from the job ledger.
   readonly assertedVerdicts: readonly string[];
   readonly rating: number | null;
@@ -45,9 +47,15 @@ let cliRuns = 0;
 export const cliRunCount = (): number => cliRuns;
 
 // The env object is built here and never from process.env, so a developer's .env cannot change the rails.
-export async function runCli(argv: readonly string[], opts: { readonly dataDir: string; readonly liar?: string }): Promise<{ code: number; out: string; err: string }> {
+export type RunOpts = { readonly dataDir: string; readonly liar?: string; readonly withhold?: string };
+
+export async function runCli(argv: readonly string[], opts: RunOpts): Promise<{ code: number; out: string; err: string }> {
   cliRuns += 1;
-  const env: NodeJS.ProcessEnv = { INFERPAY_DATA_DIR: opts.dataDir, ...(opts.liar === undefined ? {} : { INFERPAY_TEST_LIAR: opts.liar }) };
+  const env: NodeJS.ProcessEnv = {
+    INFERPAY_DATA_DIR: opts.dataDir,
+    ...(opts.liar === undefined ? {} : { INFERPAY_TEST_LIAR: opts.liar }),
+    ...(opts.withhold === undefined ? {} : { INFERPAY_TEST_WITHHOLD: opts.withhold }),
+  };
   const chunks = { out: [] as string[], err: [] as string[] };
   const original = { out: process.stdout.write, err: process.stderr.write };
   const grab = (into: string[]) => ((chunk: string | Uint8Array) => {
@@ -82,7 +90,7 @@ export async function recordedQuestions(): Promise<string[]> {
   return found;
 }
 
-export async function ask(question: string, budget: string, opts: { readonly dataDir: string; readonly liar?: string }): Promise<Run> {
+export async function ask(question: string, budget: string, opts: RunOpts): Promise<Run> {
   const { out } = await runCli(["ask", question, "--budget", budget], opts);
   if (!/^decide /m.test(out)) throw new Error(`ask produced no decision for "${question}" at ${budget}:\n${out}`);
   const budgetUnits = units(budget);
@@ -99,10 +107,11 @@ export async function ask(question: string, budget: string, opts: { readonly dat
   const jobId = out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
   const buyerChecks = [...out.matchAll(/^ {10}(verified|unrequested|WITHHELD|unproven|FORGED) +(.{14})/gm)].map((match) => ({ status: match[1] ?? "", verdict: (match[2] ?? "").trim() }));
   const forged = Number(out.match(/^checks .* (\d+) FORGED$/m)?.[1] ?? 0);
+  const withheld = Number(out.match(/^checks .*, (\d+) WITHHELD/m)?.[1] ?? 0);
   const countered = /^decide {4}buy from \S+ at [\d.]+ NEAR \(counter-offer accepted\)$/m.test(out);
   if (jobId === undefined) {
     const local = /^decide {4}answer locally/m.test(out);
-    return { outcome: local ? "local" : "declined", budget: budgetUnits, options, localConfident: Math.round(confidence * 100) >= LOCAL_FLOOR, countered, shop: null, spent: 0n, buyerChecks, forged, assertedVerdicts: [], rating: null };
+    return { outcome: local ? "local" : "declined", budget: budgetUnits, options, localConfident: Math.round(confidence * 100) >= LOCAL_FLOOR, countered, shop: null, spent: 0n, buyerChecks, forged, withheld, assertedVerdicts: [], rating: null };
   }
   const events = (await readFile(join(opts.dataDir, "jobs", `${jobId}.jsonl`), "utf8")).trim().split("\n").map((row) => JSON.parse(row) as LedgerEvent);
   const find = (type: string) => events.find((event) => event.type === type);
@@ -116,6 +125,7 @@ export async function ask(question: string, budget: string, opts: { readonly dat
     spent: units(String(find("payment-settled")?.receipt?.amount.amount)),
     buyerChecks,
     forged,
+    withheld,
     assertedVerdicts: (find("fulfilled")?.answer?.checks ?? []).map((check) => check.verdict),
     rating: find("rated")?.rating ?? null,
   };

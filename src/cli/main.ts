@@ -7,7 +7,7 @@ import type { AccountId } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
-import { attestLines, configErrorText, failureText, jobText, liarLine, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { attestLines, configErrorText, failureText, hookLine, hookReportLine, jobText, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -173,9 +173,9 @@ async function boot(env: NodeJS.ProcessEnv): Promise<{ runtime: Runtime; config:
     process.stderr.write(`${configErrorText(config.error)}\n`);
     return null;
   }
-  const runtime = await createRuntime(config.value);
+  const runtime = await createRuntime(config.value, undefined, (report) => process.stdout.write(`${hookReportLine(report)}\n`));
   process.stdout.write(`${railsLine(runtime.rails)}\n`);
-  if (config.value.liar !== null) process.stdout.write(`${liarLine(config.value.liar)}\n`);
+  if (config.value.hook !== null) process.stdout.write(`${hookLine(config.value.hook)}\n`);
   return { runtime, config: config.value };
 }
 

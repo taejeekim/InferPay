@@ -1,4 +1,5 @@
-import type { ConfigError } from "../config.ts";
+import type { Config, ConfigError } from "../config.ts";
+import type { HookReport } from "../runtime.ts";
 import { formatUnits, toUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
 import { LOCAL_FLOOR, type Decision, type Needs, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
@@ -34,8 +35,24 @@ export function railsLine(rails: { readonly payment: string; readonly inference:
   return `rails: payment=${rails.payment} inference=${rails.inference}`;
 }
 
-export function liarLine(shop: string): string {
-  return line("hook", `INFERPAY_TEST_LIAR=${shop}: this shop reports every check in its own favour and forges the evidence`);
+export function hookLine(hook: NonNullable<Config["hook"]>): string {
+  if (hook.mode === "forge") {
+    return line("hook", `INFERPAY_TEST_LIAR=${hook.shop}: this shop rewrites each check that is not a match or a raised flag into one, with forged evidence`);
+  }
+  return line("hook", `INFERPAY_TEST_WITHHOLD=${hook.shop}: this shop drops each check that does not back its answer, needed keys included`);
+}
+
+// Printed after each answer a rigged shop sends, so a clean result under the hook is never ambiguous.
+export function hookReportLine(report: HookReport): string {
+  const { shop, mode, changed } = report;
+  if (mode === "forge") {
+    return line("hook", changed === 0
+      ? `${shop} had nothing to forge here: every check it sent was already a match or a raised flag, so it sent them unchanged`
+      : `${shop} forged ${plural(changed, "check", "checks")}; the buyer should mark ${changed === 1 ? "it" : "them"} FORGED and rate ${shop} 1/5`);
+  }
+  return line("hook", changed === 0
+    ? `${shop} had nothing to withhold here: every check it sent already backed its answer, so it sent them all`
+    : `${shop} dropped ${plural(changed, "check", "checks")}; the buyer should mark each needed key it dropped WITHHELD`);
 }
 
 export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
@@ -201,12 +218,16 @@ export function usageText(): string {
     "inferpay job <jobId>",
     "inferpay testnet setup [--root <name>.testnet]",
     "",
-    "test hooks, set in the environment:",
-    "  INFERPAY_TEST_LIAR=<shop id>   that shop reports every check in its own favour and forges the evidence;",
-    "                                 the buyer should mark the check FORGED and rate the shop 1/5",
-    "  INFERPAY_TEST_CRASH=<point>    near-testnet only: exit at that point, then run inferpay resume <jobId>;",
-    "                                 after-sign or after-broadcast stops the payment,",
-    "                                 after-rating-sign or after-rating-broadcast stops the on-chain rating",
+    "test hooks, set in the environment, one at a time:",
+    "  INFERPAY_TEST_LIAR=<shop id>     that shop rewrites each check that is not a match or a raised flag into one,",
+    "                                   with forged evidence; the buyer should mark each rewritten check FORGED and",
+    "                                   rate the shop 1/5. When every check it sent was already a match or a raised",
+    "                                   flag it has nothing to forge, and the run prints a hook line saying so",
+    "  INFERPAY_TEST_WITHHOLD=<shop id> that shop drops each check that does not back its answer; the buyer should",
+    "                                   mark each needed key it dropped WITHHELD, at 2 stars each",
+    "  INFERPAY_TEST_CRASH=<point>      near-testnet only: exit at that point, then run inferpay resume <jobId>;",
+    "                                   after-sign or after-broadcast stops the payment,",
+    "                                   after-rating-sign or after-rating-broadcast stops the on-chain rating",
   ].join("\n");
 }
 

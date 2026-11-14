@@ -1,11 +1,11 @@
 import { join } from "node:path";
-import { isIsoTime, type AccountId } from "./domain.ts";
+import { isIsoTime, type AccountId, type ProviderId } from "./domain.ts";
 import { createConsumerAgent, type ConsumerAgent } from "./consumer/index.ts";
 import { createInference, type Inference, type RoleAttestation } from "./inference/index.ts";
 import { createFileLedger, createMarketplace, type Marketplace } from "./market/index.ts";
 import { createPaymentRail, type PaymentRail } from "./payment/index.ts";
 import { bindProviders, PROVIDERS } from "./providers/index.ts";
-import { lying } from "./providers/liar.ts";
+import { rigged, type HookMode } from "./providers/liar.ts";
 import type { Registry } from "./registry/index.ts";
 import type { Config, PaymentConfig } from "./config.ts";
 
@@ -36,9 +36,17 @@ async function chainRegistry(payment: Extract<PaymentConfig, { kind: "near-testn
   });
 }
 
-// A test passes its own registry. Otherwise the rail decides: only near-testnet keeps a record on chain.
-export async function createRuntime(config: Config, onChain?: Registry): Promise<Runtime> {
-  const shops = PROVIDERS.map((provider) => (provider.describe.id === config.liar ? lying(provider) : provider));
+export type HookReport = { readonly shop: ProviderId; readonly mode: HookMode; readonly changed: number };
+
+// A test passes its own registry. Otherwise the rail decides: only near-testnet keeps a record on chain. onHook
+// hears what a rigged shop did to each answer it sent.
+export async function createRuntime(config: Config, onChain?: Registry, onHook?: (report: HookReport) => void): Promise<Runtime> {
+  const { hook } = config;
+  const shops = PROVIDERS.map((provider) => (
+    hook !== null && provider.describe.id === hook.shop
+      ? rigged(provider, hook.mode, (changed) => onHook?.({ shop: hook.shop, mode: hook.mode, changed }))
+      : provider
+  ));
   const bound = bindProviders(shops, config.roster, config.near);
   if (!bound.ok) {
     throw new Error(`providers do not match the roster. missing: ${bound.missing.join(", ")}. extra: ${bound.extra.join(", ")}`);

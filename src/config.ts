@@ -45,8 +45,9 @@ export type Config = {
   readonly near: { readonly asset: AssetId; readonly symbol: "NEAR" };
   readonly payment: PaymentConfig;
   readonly inference: InferenceConfig;
-  // A test hook: the shop that forges its evidence, so a run can show the buyer catching it.
-  readonly liar: ProviderId | null;
+  // A test hook: one shop that cheats, so a run can show the buyer catching it. forge rewrites checks into its
+  // favour with forged evidence; withhold drops every check that does not back its answer.
+  readonly hook: { readonly shop: ProviderId; readonly mode: "forge" | "withhold" } | null;
 };
 
 export type ConfigError =
@@ -140,10 +141,19 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
   const resolved = resolveRoster(root);
   if (!resolved.ok) return invalid("INFERPAY_ROOT_ACCOUNT", resolved.detail);
 
-  const liar = filled(env.INFERPAY_TEST_LIAR) ? parseProviderId(env.INFERPAY_TEST_LIAR) : null;
-  if (filled(env.INFERPAY_TEST_LIAR) && (liar === null || resolved.roster.shop(liar) === null)) {
-    const shops = resolved.roster.forest().filter((row) => row.role === "specialist").map((row) => row.bot);
-    return invalid("INFERPAY_TEST_LIAR", `expected a shop id: ${shops.join(", ")}`);
+  if (filled(env.INFERPAY_TEST_LIAR) && filled(env.INFERPAY_TEST_WITHHOLD)) {
+    return invalid("INFERPAY_TEST_WITHHOLD", "set INFERPAY_TEST_LIAR or INFERPAY_TEST_WITHHOLD, not both");
+  }
+  let hook: Config["hook"] = null;
+  for (const [variable, mode] of [["INFERPAY_TEST_LIAR", "forge"], ["INFERPAY_TEST_WITHHOLD", "withhold"]] as const) {
+    const raw = env[variable];
+    if (!filled(raw)) continue;
+    const shop = parseProviderId(raw);
+    if (shop === null || resolved.roster.shop(shop) === null) {
+      const shops = resolved.roster.forest().filter((row) => row.role === "specialist").map((row) => row.bot);
+      return invalid(variable, `expected a shop id: ${shops.join(", ")}`);
+    }
+    hook = { shop, mode };
   }
 
   return {
@@ -154,7 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       near: { asset, symbol: "NEAR" },
       payment,
       inference,
-      liar,
+      hook,
     },
   };
 }

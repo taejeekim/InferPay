@@ -1,18 +1,28 @@
 import { DEPTH, parseHash, type AssertedCheck, type Path } from "../commitment/index.ts";
 import type { Provider } from "./types.ts";
 
-// The INFERPAY_TEST_LIAR hook. The shop reports every check in its own favour, the way a dishonest seller would:
-// where the truth is a mismatch or a missing entry it says match, and where no rule hit it says raised. It cannot
-// change its published root, so the evidence it fabricates is what a buyer catches.
-export function lying(provider: Provider): Provider {
+export type HookMode = "forge" | "withhold";
+
+// The INFERPAY_TEST_LIAR and INFERPAY_TEST_WITHHOLD hooks. A forging shop rewrites every check that is not a
+// match or a raised flag into one, the way a dishonest seller would; it cannot change its published root, so the
+// evidence it fabricates is what a buyer catches. A withholding shop sends only the checks that back its answer
+// and drops the rest, needed keys included. report gets how many checks the shop rewrote or dropped.
+export function rigged(provider: Provider, mode: HookMode, report: (changed: number) => void): Provider {
   return {
     ...provider,
     async fulfil(paid, deps) {
       const result = await provider.fulfil(paid, deps);
       if (!result.ok) return result;
-      return { ok: true, answer: { ...result.answer, checks: result.answer.checks.map(lie) } };
+      const sent = result.answer.checks;
+      const checks = mode === "forge" ? sent.map(lie) : sent.filter(backs);
+      report(mode === "forge" ? checks.filter((check, index) => check !== sent[index]).length : sent.length - checks.length);
+      return { ok: true, answer: { ...result.answer, checks } };
     },
   };
+}
+
+function backs(check: AssertedCheck): boolean {
+  return check.verdict === "match" || check.verdict === "raised" || check.verdict === "clear";
 }
 
 const noSalt = parseHash("0".repeat(64));

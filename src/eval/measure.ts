@@ -13,6 +13,15 @@ export type ForgeryRow = {
   readonly honestForged: number;
 };
 
+// The same purchase from an honest shop and from one that drops every check not backing its answer.
+export type OmissionRow = {
+  readonly shop: string;
+  readonly question: string;
+  readonly honestRating: number | null;
+  readonly withheld: number;
+  readonly withholdingRating: number | null;
+};
+
 export type PolicyName = "inferpay" | "always-buy" | "never-buy";
 
 export type PolicyRow = {
@@ -33,6 +42,7 @@ export type Report = {
   readonly cliRuns: number;
   readonly questions: number;
   readonly forgery: readonly ForgeryRow[];
+  readonly omission: readonly OmissionRow[];
   readonly economics: {
     readonly rows: readonly PolicyRow[];
     readonly counterOffers: number;
@@ -47,6 +57,7 @@ export async function measure(budgets: readonly string[] = BUDGETS): Promise<Rep
   const failures: string[] = [];
   const questions = await recordedQuestions();
   const forgery = await measureForgery(questions);
+  const omission = await measureOmission(questions);
   const reference: Reference[] = [];
   for (const question of questions) reference.push({ question, run: await withFreshDir((dir) => ask(question, REFERENCE_BUDGET, { dataDir: dir })) });
   const economics = await measureEconomics(questions, budgets, reference, failures);
@@ -56,7 +67,12 @@ export async function measure(budgets: readonly string[] = BUDGETS): Promise<Rep
     if (row.caught !== row.planted) failures.push(`lie not caught exactly: ${row.shop} on "${row.question}" planted ${row.planted}, buyer marked ${row.caught} FORGED`);
     if (row.planted > 0 && row.lyingRating !== 1) failures.push(`lie rated ${row.lyingRating}/5, not 1/5: ${row.shop} on "${row.question}"`);
   }
-  return { rails: "payment=mock inference=stub", cliRuns: cliRunCount() - startRuns, questions: questions.length, forgery, economics, reputation, failures };
+  for (const row of omission) {
+    const lower = row.withholdingRating !== null && row.honestRating !== null && row.withholdingRating < row.honestRating;
+    if (row.withheld > 0 && !lower) failures.push(`withholding did not cost: ${row.shop} on "${row.question}" rated ${row.withholdingRating}/5 against ${row.honestRating}/5 honest`);
+    if (row.withheld === 0 && row.withholdingRating !== row.honestRating) failures.push(`withholding nothing changed the rating: ${row.shop} on "${row.question}"`);
+  }
+  return { rails: "payment=mock inference=stub", cliRuns: cliRunCount() - startRuns, questions: questions.length, forgery, omission, economics, reputation, failures };
 }
 
 async function measureForgery(questions: readonly string[]): Promise<ForgeryRow[]> {
@@ -68,6 +84,18 @@ async function measureForgery(questions: readonly string[]): Promise<ForgeryRow[
     const lying = await withFreshDir((dir) => ask(question, "0.10", { dataDir: dir, liar: shop }));
     const planted = lying.assertedVerdicts.filter((verdict, index) => verdict !== honest.assertedVerdicts[index]).length;
     rows.push({ shop, question, planted, caught: lying.forged, lyingRating: lying.rating, honestForged: honest.forged });
+  }
+  return rows;
+}
+
+async function measureOmission(questions: readonly string[]): Promise<OmissionRow[]> {
+  const rows: OmissionRow[] = [];
+  for (const question of questions) {
+    const honest = await withFreshDir((dir) => ask(question, "0.10", { dataDir: dir }));
+    if (honest.shop === null) continue;
+    const shop = honest.shop;
+    const withholding = await withFreshDir((dir) => ask(question, "0.10", { dataDir: dir, withhold: shop }));
+    rows.push({ shop, question, honestRating: honest.rating, withheld: withholding.withheld, withholdingRating: withholding.rating });
   }
   return rows;
 }

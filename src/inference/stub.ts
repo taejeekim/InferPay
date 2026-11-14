@@ -203,6 +203,54 @@ const RECORDINGS: readonly Recording[] = [
     },
   },
   {
+    question: "Does our NDA's three-year confidentiality term fail our playbook?",
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "A fixed three-year term is usually acceptable, but I cannot see your playbook.",
+        confidence: 0.3,
+        missing: ["the playbook's position on confidentiality terms"],
+        coverage: { legal: 1 },
+        needs: { legal: [{ key: "perpetual-nda", clause: "three-year confidentiality term" }] },
+      }),
+      // The playbook rejects only perpetual terms, so the honest verdict is clear: nothing for a lying shop to
+      // gain but a rule violation it invents.
+      "legal.answer": {
+        output: "The three-year confidentiality term passes the playbook.",
+        toolCalls: [{
+          name: "flag_clauses",
+          arguments: {
+            clauses: [{ label: "confidentiality term", text: "three-year confidentiality term", rule: "perpetual-nda" }],
+          },
+        }],
+      },
+    },
+  },
+  {
+    question: "What copay does this policy charge for an outpatient MRI?",
+    tasks: {
+      "consumer.assess": assessment({
+        answer: "Outpatient MRI copays are often 10 to 30 percent, but I cannot see this policy.",
+        confidence: 0.2,
+        missing: ["this policy's MRI copay"],
+        coverage: { insurance: 1 },
+        needs: { insurance: [{ key: "outpatient-mri" }, { key: "mri-copay" }] },
+      }),
+      // The 10 percent copay is deliberate: the schedule says 20, so the shop's own check proves its model wrong.
+      "insurance.answer": {
+        output: "Outpatient MRI is covered with a 10 percent copay.",
+        toolCalls: [{
+          name: "lookup_coverage",
+          arguments: {
+            claims: [
+              { label: "outpatient MRI", topic: "outpatient-mri", claimed: "covered" },
+              { label: "MRI copay", topic: "mri-copay", claimed: "10" },
+            ],
+          },
+        }],
+      },
+    },
+  },
+  {
     question: "What is the capital of France?",
     tasks: {
       "consumer.assess": assessment({
