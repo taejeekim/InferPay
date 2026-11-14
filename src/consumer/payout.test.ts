@@ -24,6 +24,7 @@ function paid(needs: readonly Need[], ...checks: readonly AssertedCheck[]): stri
     needs,
     offer: price("0.02"),
     budget: price("0.10"),
+    reserve: { paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false },
     payFrom: must(parseAccountId("researcher.kyle.inferpay.testnet")),
     commitment: { status: "published", commitment: SHOP.commitment, source: { kind: "listing" } },
   };

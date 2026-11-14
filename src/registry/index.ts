@@ -29,12 +29,19 @@ export type RatingPost =
   | { readonly kind: "pending"; readonly tx: string | null; readonly detail: string }
   | { readonly kind: "failed"; readonly reason: string };
 
+// The most writing one rating can cost its rater, in yoctoNEAR, stated before the purchase. storage is the deposit the
+// write attaches, which is the most SocialDB can keep. first is true before the rater's first write ever, which
+// registers its storage and so needs the larger deposit.
+export type RatingFeeBound = { readonly gas: bigint; readonly storage: bigint; readonly first: boolean };
+
 // The public record a rail keeps on chain. A rail without one passes null, and the marketplace falls back to the
 // shop's listing and this machine's ledger.
 export interface Registry {
   commitments(shops: readonly AccountId[]): Promise<ReadonlyMap<AccountId, PinnedCommitment>>;
   // Every rating the known buyer bots have written, whichever machine wrote it.
   ratings(): Promise<readonly OnChainRating[]>;
-  // Safe to call again for the same job: a retry looks up or rebroadcasts the transaction it already signed.
-  postRating(rating: OnChainRating): Promise<RatingPost>;
+  ratingFeeBound(rater: AccountId): Promise<RatingFeeBound>;
+  // Safe to call again for the same job with the same deposit: a retry looks up or rebroadcasts the transaction it
+  // already signed.
+  postRating(rating: OnChainRating, deposit: bigint): Promise<RatingPost>;
 }

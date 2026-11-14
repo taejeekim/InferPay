@@ -58,6 +58,7 @@ test("all skips a job file that read would reject", async () => {
         providerId: "insurance",
         question: "Does this policy cover an outpatient MRI?",
         needs: [],
+        reserve: { paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false },
         offer: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.02" },
         budget: { asset: "nep141:wrap.near", symbol: "NEAR", amount: "0.10" },
         payFrom: "researcher.kyle.inferpay.near",

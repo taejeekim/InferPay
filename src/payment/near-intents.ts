@@ -67,6 +67,8 @@ export async function createNearIntentsRail(
   const agent = api.forGrant(config.grantToken.reveal());
   return {
     kind: "near-intents",
+    // An Intents transfer is gasless for the agent: the solver network pays the gas.
+    paymentFeeBound: async () => 0n,
     mintKey() {
       // A new key is a new transfer. The marketplace stores this key before settle and sends it back as idempotencyKey.
       const key = sdk.createIdempotencyKey();

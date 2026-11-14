@@ -384,6 +384,7 @@ function sampleOrder() {
     needs: [{ kind: "fact" as const, topic: "operating-profit" }],
     offer: price("0.02"),
     budget: price("0.10"),
+    reserve: { paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false },
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),
     commitment: { status: "published" as const, commitment: sampleCommitment(), source: { kind: "listing" as const } },
   };

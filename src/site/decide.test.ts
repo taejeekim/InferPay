@@ -114,7 +114,7 @@ async function typescript(value: string, confidence: number, shops: readonly Sho
   } else {
     decision = plan;
   }
-  return progressLine({ step: "decide", decision, needs: assessed.needs }, "mock");
+  return progressLine({ step: "decide", decision, needs: assessed.needs, reserved: false }, "mock");
 }
 
 function browser(value: string, confidence: number, shops: readonly Shop[]): string {

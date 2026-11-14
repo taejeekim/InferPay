@@ -5,7 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { progressLine } from "../cli/render.ts";
 import { loadConfig } from "../config.ts";
-import type { Progress } from "../consumer/index.ts";
+import { createConsumerAgent, type Progress } from "../consumer/index.ts";
+import { createInference } from "../inference/index.ts";
 import { parseAccountId, parseDecimalAmount, parseJobId, type AccountId } from "../domain.ts";
 import { PROVIDERS } from "../providers/index.ts";
 import { createRuntime } from "../runtime.ts";
@@ -82,7 +83,8 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
     state.landed.add(tx.hash);
     for (const action of state.signed.get(tx.hash) ?? []) apply(tx.signerId, tx.receiverId, action);
   };
-  const port: Pick<NearClient, "view" | "balance" | "send" | "sign" | "broadcast" | "status"> = {
+  const port: Pick<NearClient, "view" | "balance" | "send" | "sign" | "broadcast" | "status" | "gasPrice"> = {
+    gasPrice: async () => 100_000_000n,
     async sign(credential, receiverId, txActions) {
       const hash = `tx${state.signed.size + 1}`;
       state.signed.set(hash, txActions);
@@ -346,7 +348,8 @@ test("a shop whose data no longer seals to its root on chain turns the order dow
     const amount = parseDecimalAmount("0.10");
     assert.ok(amount);
     const outcome = await runtime.consumer.ask(MRI, { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer });
-    assert.deepEqual(outcome, { kind: "failed", reason: { kind: "stale-commitment", providerId: "insurance" } });
+    assert.deepEqual([outcome.kind, outcome.kind === "failed" && outcome.reason], ["failed", { kind: "stale-commitment", providerId: "insurance" }]);
+    assert.equal(outcome.spend?.total.amount, "0", "a refused order costs nothing");
     assert.deepEqual(ratingCalls(chain), []);
     assert.deepEqual((await readdir(root)).filter((name) => name !== "jobs"), []);
     assert.deepEqual((await readdir(join(root, "jobs"))).filter((name) => name.endsWith(".jsonl")), []);
@@ -423,7 +426,7 @@ test("the buyer bot writes its rating under its own account, with the shop, the 
     assert.match(text, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m);
     const stored = BigInt(JSON.stringify((ratingCalls(chain)[0]?.args as { data: Record<string, unknown> }).data[RESEARCHER]).length) * BYTE_PRICE;
     const shown = (yocto: bigint): string => formatNear(yocto, 8).replace(".", "\\.");
-    assert.match(text, new RegExp(`^ {10}cost {6}${shown(RATING_GAS + stored)} NEAR on top of the price: ${shown(RATING_GAS)} gas, from the transaction outcome,$`, "m"));
+    assert.match(text, new RegExp(`^ {10}cost {6}${shown(RATING_GAS + stored)} NEAR of fees inside the budget: ${shown(RATING_GAS)} gas, from the transaction outcome,$`, "m"));
     assert.match(text, new RegExp(`^ {20}\\+ ${shown(stored)} SocialDB storage, from the bot's storage_balance_of before and after$`, "m"));
   });
 });
@@ -552,4 +555,93 @@ test("only a well-formed rating under a known bot's account counts", () => {
     forged: 0,
     withheld: 0,
   }]);
+});
+
+async function askFor(chain: ReturnType<typeof fakeChain>, root: string, question: string, budget: string) {
+  const { config, runtime } = await runtimeOn(chain, root);
+  const amount = parseDecimalAmount(budget);
+  assert.ok(amount);
+  const seen: Progress[] = [];
+  const outcome = await runtime.consumer.ask(question, { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer }, (step) => seen.push(step));
+  return { outcome, text: seen.map((step) => progressLine(step, "near-testnet")).join("\n") };
+}
+
+test("the buyer reserves the fee bound before deciding, and price plus measured fees stays inside the budget", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const first = await askFor(chain, root, MRI, "0.10");
+    assert.match(first.text, /^fees {6}0\.02275 NEAR of the 0\.10 NEAR budget reserved for fees, so 0\.07725 NEAR is left for the price$/m);
+    assert.match(first.text, /^ {10}bound {3}0 payment gas \+ 0\.00275 rating gas \+ 0\.02 rating storage$/m);
+    assert.match(first.text, /deposit for this bot's first rating, which registers its SocialDB storage/);
+    assert.match(first.text, /^ {10}value {3}0\.07725 NEAR, the budget less the fee reserve: /m);
+    assert.ok(first.outcome.kind === "outsourced");
+    const spend = first.outcome.spend;
+    const price = nearOf(spend.price.amount);
+    const fees = nearOf(spend.fees.amount);
+    const total = nearOf(spend.total.amount);
+    assert.equal(price, nearOf("0.02"));
+    assert.ok(fees > 0n && fees <= nearOf("0.02275"), "fees are measured and fit the reserve");
+    assert.equal(total, price + fees);
+    assert.ok(total <= nearOf("0.10"));
+    assert.equal(spend.bounded, false);
+
+    const second = await askFor(chain, root, MRI, "0.10");
+    assert.match(second.text, /^fees {6}0\.00975 NEAR of the 0\.10 NEAR budget reserved for fees/m, "a registered bot reserves the smaller deposit");
+    assert.deepEqual(ratingCalls(chain).map((call) => formatNear(call.deposit, 3)), ["0.02", "0.007"]);
+  });
+});
+
+test("a shop whose price does not fit what the fee reserve leaves is unaffordable, and nothing is spent", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const { outcome, text } = await askFor(chain, root, MRI, "0.04");
+    assert.match(text, /^ {10}option {2}insurance {3}ask 0\.02 {2}outside the 0\.01725 NEAR budget$/m);
+    assert.equal(outcome.kind, "declined");
+    assert.equal(outcome.spend?.total.amount, "0");
+    assert.deepEqual(ratingCalls(chain), []);
+  });
+});
+
+test("a task's prices and fees together never exceed its budget, and each part's unused reserve carries forward", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const { config, runtime } = await runtimeOn(chain, root);
+    const amount = parseDecimalAmount("0.20");
+    assert.ok(amount);
+    const done = await runtime.consumer.task(
+      "Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit",
+      { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer },
+    );
+    assert.ok(done.kind === "done");
+    const { receipt } = done;
+    const units = (price: { amount: string }) => nearOf(price.amount);
+    assert.ok(units(receipt.fees) > 0n);
+    assert.equal(units(receipt.spent), units(receipt.prices) + units(receipt.fees));
+    assert.ok(units(receipt.spent) <= nearOf("0.20"));
+    assert.equal(units(receipt.left), nearOf("0.20") - units(receipt.spent));
+    for (const row of receipt.parts) {
+      assert.equal(units(row.spent), units(row.price) + units(row.fees));
+      assert.ok(units(row.spent) <= units(row.allotted));
+    }
+    assert.ok(receipt.parts.filter((row) => row.outcome.kind === "bought").length >= 2);
+  });
+});
+
+test("an outflow above the budget is refused loudly, never reported as spent", async () => {
+  await withRoot(async (root) => {
+    const chain = await published();
+    const { config, runtime } = await runtimeOn(chain, root);
+    const amount = parseDecimalAmount("0.10");
+    assert.ok(amount);
+    const lying = {
+      ...runtime.market,
+      feeReserve: async () => ({ paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false }),
+      rate: async () => ({ kind: "recorded" as const, onChain: { kind: "posted" as const, tx: "t", contract: SOCIAL_DB, key: "k", cost: { gas: nearOf("0.09"), storage: 0n } } }),
+    };
+    const consumer = createConsumerAgent({ market: lying, inference: createInference(config.inference) });
+    await assert.rejects(
+      consumer.ask(MRI, { budget: { ...config.near, amount }, buyer: config.roster.defaultBuyer }),
+      /the question spent 0\.11 NEAR, above its 0\.10 NEAR budget/,
+    );
+  });
 });

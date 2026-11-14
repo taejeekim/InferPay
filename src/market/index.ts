@@ -15,10 +15,12 @@ import { canonical, type Need, type PinnedCommitment } from "../commitment/index
 import { priceFor, type BoundProvider } from "../providers/index.ts";
 import type { ProviderListing } from "../providers/types.ts";
 import type { RatingPost, Registry } from "../registry/index.ts";
-import { fold, plan, reputationFromStars, reputationOf, type JobEvent, type JobState, type Order, type Payout, type Reputation, type Settlement } from "./job.ts";
+import { fold, plan, reputationFromStars, reputationOf, reserveTotal, type FeeReserve, type JobEvent, type JobState, type Order, type Payout, type Reputation, type Settlement } from "./job.ts";
+import { yoctoToUnits } from "../payment/units.ts";
 import { createFileLedger, isStorableAnswer, LedgerReadError, type Ledger } from "./ledger.ts";
 
-export type { JobEvent, JobState, Order, Payout, Reputation, Settlement } from "./job.ts";
+export type { FeeReserve, JobEvent, JobState, Order, Payout, Reputation, Settlement } from "./job.ts";
+export { reserveTotal } from "./job.ts";
 export { createFileLedger };
 
 // A job the buyer verified and settled: paid its payout, or owed nothing.
@@ -30,6 +32,8 @@ export type SettledJob = {
   readonly payFrom: AccountId;
   readonly payTo: AccountId;
   readonly commitment: PinnedCommitment;
+  readonly budget: Price;
+  readonly reserve: FeeReserve;
   // The price the buyer and the shop agreed when the job opened.
   readonly quote: Price;
   readonly answer: Answer;
@@ -123,6 +127,8 @@ export type CounterReply = "accepted" | "refused";
 export interface Marketplace {
   listings(): Promise<readonly Listing[]>;
   counter(providerId: ProviderId, offer: Price): Promise<CounterReply>;
+  // What a purchase by this payer may cost beyond its price, as the rail and the registry bound it now.
+  feeReserve(payer: AccountId): Promise<FeeReserve>;
   hire(order: Order, onProgress?: (progress: MarketProgress) => void): Promise<HireOutcome>;
   // Writes the stars to the ledger once, then posts the rating on chain where the rail has a registry. Calling it
   // again with the same stars finishes a post that a crash interrupted.
@@ -153,6 +159,19 @@ export function createMarketplace(deps: {
         const { id, name, specialty, routingHint, price, owner, payTo, catalog } = listing;
         return { id, name, specialty, routingHint, price, owner, payTo, catalog, ...read(listing) };
       });
+    },
+
+    async feeReserve(payer) {
+      const [paymentGas, rating] = await Promise.all([
+        rail.paymentFeeBound(),
+        registry === null ? { gas: 0n, storage: 0n, first: false } : registry.ratingFeeBound(payer),
+      ]);
+      return {
+        paymentGas: paymentGas.toString(),
+        ratingGas: rating.gas.toString(),
+        ratingStorage: rating.storage.toString(),
+        firstRating: rating.first,
+      };
     },
 
     async counter(providerId, offer) {
@@ -215,7 +234,7 @@ export function createMarketplace(deps: {
       const bound = providers.find((item) => item.listing.id === order.providerId);
       if (!bound) return fail(order.jobId, { kind: "unknown-provider", providerId: order.providerId });
       const cmp = compareSameAsset(order.offer, order.budget);
-      if (cmp === "different-asset" || cmp > 0) {
+      if (cmp === "different-asset" || toUnits(order.offer.amount) + yoctoToUnits(reserveTotal(order.reserve)) > toUnits(order.budget.amount)) {
         return fail(order.jobId, { kind: "over-budget", offer: order.offer, budget: order.budget });
       }
       const quote = priceFor(bound, order.offer);
@@ -348,7 +367,7 @@ export function createMarketplace(deps: {
         unproven: rating.unproven,
         forged: rating.forged,
         withheld: rating.withheld,
-      });
+      }, BigInt(job.reserve.ratingStorage));
     } catch (error) {
       posted = { kind: "pending", tx: null, detail: error instanceof Error ? error.message : String(error) };
     }
@@ -401,7 +420,8 @@ function sameOrder(a: Order, b: Order): boolean {
     && a.payFrom === b.payFrom
     && canonical(a.commitment) === canonical(b.commitment)
     && samePrice(a.offer, b.offer)
-    && samePrice(a.budget, b.budget);
+    && samePrice(a.budget, b.budget)
+    && canonical(a.reserve) === canonical(b.reserve);
 }
 
 function samePrice(a: Price, b: Price): boolean {
@@ -482,6 +502,8 @@ function settledJob(state: Extract<JobState, { phase: "settled" | "rated" }>): S
     payFrom: state.order.payFrom,
     payTo: state.payTo,
     commitment: state.order.commitment,
+    budget: state.order.budget,
+    reserve: state.order.reserve,
     quote: state.quote,
     answer: state.answer,
     payout: state.payout,

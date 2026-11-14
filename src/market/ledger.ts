@@ -106,6 +106,8 @@ const priceSchema = z.object({
   amount: z.string(),
 });
 
+const yocto = z.string().regex(/^\d+$/);
+
 const orderSchema = z.object({
   jobId: z.string(),
   providerId: z.string(),
@@ -113,6 +115,7 @@ const orderSchema = z.object({
   needs: z.array(needSchema),
   offer: priceSchema,
   budget: priceSchema,
+  reserve: z.object({ paymentGas: yocto, ratingGas: yocto, ratingStorage: yocto, firstRating: z.boolean() }),
   payFrom: z.string(),
   commitment: pinnedCommitmentSchema,
 });
@@ -249,6 +252,7 @@ function brandOrder(order: z.infer<typeof orderSchema>) {
     needs: order.needs,
     offer,
     budget,
+    reserve: order.reserve,
     payFrom: order.payFrom,
     commitment: order.commitment,
   };

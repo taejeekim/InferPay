@@ -68,9 +68,9 @@ const STEPS: readonly Step[] = [
   },
   {
     title: "Give it a whole task and one budget",
-    before: "The buyer splits the task into parts, gives each part a share of the budget, and carries what a part leaves unspent to the next part. It ends with one receipt.",
+    before: "The buyer splits the task into parts, gives each part a share of the budget, and carries what a part leaves unspent to the next part. It ends with one receipt that shows, per part, the agreed price, what the buyer paid after verifying, and the fees. On the mock rail no fee is charged; on testnet the fees come out of the same budget.",
     argv: () => ["task", BRIEFING, "--budget", "0.10"],
-    shows: /plan {6}4 parts under one budget[\s\S]*receipt {3}task_[\s\S]*total {5}spent [0-9.]+ NEAR of the 0\.10 NEAR budget/,
+    shows: /plan {6}4 parts under one budget[\s\S]*receipt {3}task_[\s\S]*AGREED +PAID +FEES[\s\S]*total {5}prices [0-9.]+ NEAR \+ fees 0 NEAR = [0-9.]+ NEAR of the 0\.10 NEAR budget/,
   },
   {
     title: "Ask something with no recording",

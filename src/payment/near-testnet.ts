@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { isCorrelationId, isIdempotencyKey, type JobId } from "../domain.ts";
 import type { PaymentConfig } from "../config.ts";
-import { actions, createNearClient, loadCredential, type SignedTx, type TxResult } from "../near/client.ts";
+import { actions, createNearClient, gasBound, loadCredential, type NearClient, type SignedTx, type TxResult } from "../near/client.ts";
 import { sendOnce, type CrashPoint, type OutboxDeps, type StoredTx } from "../near/outbox.ts";
 import type { PaymentRail, PaymentStatus, Transfer } from "./index.ts";
 import { serialize } from "./jsonl.ts";
@@ -21,15 +21,23 @@ export function createNearTestnetRail(config: Extract<PaymentConfig, { kind: "ne
   });
 }
 
-export type TestnetRailDeps = Omit<OutboxDeps, "onCrash"> & {
+export type TestnetRailDeps = Omit<OutboxDeps, "onCrash" | "chain"> & {
+  readonly chain: OutboxDeps["chain"] & Pick<NearClient, "gasPrice">;
   readonly onCrash: (point: CrashPoint, tx: StoredTx, jobId: JobId) => never;
 };
+
+// A native transfer burns 0.446 TGas under the current protocol fees: two receipt creations and one transfer action.
+const TRANSFER_GAS = 500_000_000_000n;
+
 
 // The idempotency key is the outbox key, so a retried settle can never move NEAR twice.
 export function createTestnetRail(deps: TestnetRailDeps): PaymentRail {
   const enqueue = serialize();
   return {
     kind: "near-testnet",
+    async paymentFeeBound() {
+      return gasBound(TRANSFER_GAS, await deps.chain.gasPrice());
+    },
     mintKey() {
       const key = `nt_${randomUUID()}`;
       if (!isIdempotencyKey(key)) throw new Error("testnet key failed its check");

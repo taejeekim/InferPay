@@ -2,15 +2,15 @@ import { z } from "zod";
 import { isAccountId, isJobId, isStars, type AccountId } from "../domain.ts";
 import { isHash } from "../commitment/merkle.ts";
 import { parseCommitment, type Commitment, type PinnedCommitment } from "../commitment/index.ts";
-import { actions, type Credential, type NearClient, type TxResult } from "../near/client.ts";
+import { actions, gasBound, type Credential, type NearClient, type TxResult } from "../near/client.ts";
 import { sendOnce, type OutboxDeps } from "../near/outbox.ts";
-import { SOCIAL_DB, SOCIAL_DEPOSIT, socialGet, socialSet, type SocialValue } from "../near/social.ts";
+import { RATING_DEPOSIT, SOCIAL_DB, SOCIAL_DEPOSIT, SOCIAL_GAS, socialGet, socialSet, type SocialValue } from "../near/social.ts";
 import { formatNear, nearOf } from "../payment/units.ts";
 import type { OnChainRating, RatingCost, RatingPost, Registry } from "./index.ts";
 import { commitmentKey, ratingKey, ratingsPattern } from "./keys.ts";
 
 export function createChainRegistry(deps: {
-  readonly chain: Pick<NearClient, "view">;
+  readonly chain: Pick<NearClient, "view" | "gasPrice">;
   readonly raters: readonly AccountId[];
   readonly outbox: OutboxDeps;
 }): Registry {
@@ -21,15 +21,20 @@ export function createChainRegistry(deps: {
     async ratings() {
       return readRatings(await socialGet(deps.chain, deps.raters.map(ratingsPattern)), deps.raters);
     },
-    async postRating(rating) {
+    async ratingFeeBound(rater) {
+      const [stored, price] = await Promise.all([storageOf(deps.chain, rater), deps.chain.gasPrice()]);
+      const first = stored === 0n;
+      return { gas: gasBound(RATING_GAS, price), storage: first ? SOCIAL_DEPOSIT : RATING_DEPOSIT, first };
+    },
+    async postRating(rating, deposit) {
       const before = await storageOf(deps.chain, rating.rater);
       // One key for each job, so a retry reuses the transaction the first attempt signed.
       const sent = await sendOnce(deps.outbox, {
         key: `rating:${rating.jobId}`,
         signer: rating.rater,
         receiver: SOCIAL_DB,
-        yocto: SOCIAL_DEPOSIT.toString(),
-        actions: [socialSet(rating.rater, ratingValue(rating))],
+        yocto: deposit.toString(),
+        actions: [socialSet(rating.rater, ratingValue(rating), deposit)],
         // Writing the same value under the same key twice leaves SocialDB as it was.
         idempotent: true,
       });
@@ -42,6 +47,10 @@ export function createChainRegistry(deps: {
     },
   };
 }
+
+// The prepaid gas bounds what the call burns once it runs. The rest covers converting the transaction to a receipt,
+// which grows with the bytes of the arguments.
+const RATING_GAS = SOCIAL_GAS + 5_000_000_000_000n;
 
 // SocialDB refunds whatever part of the attached deposit the write did not use, so the storage balance it keeps
 // for an account grows by exactly the bytes each write adds.

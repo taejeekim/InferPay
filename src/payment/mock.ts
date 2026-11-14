@@ -11,6 +11,7 @@ export function createMockRail(config: { readonly root: string; readonly chaos: 
   const enqueue = serialize();
   return {
     kind: "mock",
+    paymentFeeBound: async () => 0n,
     mintKey() {
       const key = `mock_${randomUUID()}`;
       if (!isIdempotencyKey(key)) throw new Error("mock key failed its check");

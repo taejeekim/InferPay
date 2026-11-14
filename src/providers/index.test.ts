@@ -67,6 +67,7 @@ test("a shop's code opens every needed key its model did not mention, so the buy
         needs,
         offer: listing.price,
         budget: listing.price,
+        reserve: { paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false },
         payFrom: config.value.roster.defaultBuyer.account,
         commitment: listing.commitment,
       });

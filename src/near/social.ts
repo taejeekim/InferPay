@@ -12,18 +12,22 @@ export const SOCIAL_DB = contract;
 // returns whatever the write did not use, so a write costs its bytes and its gas.
 export const SOCIAL_DEPOSIT = nearOf("0.02");
 
+// A rating from an account SocialDB already holds storage for. One measured on testnet in November 2026 added 483
+// bytes, 0.00483 NEAR; this allows 700. The deposit is the most the write can keep, so it bounds the storage cost.
+export const RATING_DEPOSIT = nearOf("0.007");
+
 // A first write burned under 6 TGas on testnet in November 2026. The signer must hold the whole prepaid amount up
 // front, about 0.001 NEAR for each TGas at that month's price, so the allowance stays close to what a write uses.
-const SOCIAL_GAS = 20_000_000_000_000n;
+export const SOCIAL_GAS = 20_000_000_000_000n;
 
 export type SocialValue = string | { readonly [key: string]: SocialValue };
 
-export function socialSet(account: AccountId, value: SocialValue): Action {
+export function socialSet(account: AccountId, value: SocialValue, deposit: bigint = SOCIAL_DEPOSIT): Action {
   return actions.functionCall(
     "set",
     { data: { [account]: value }, options: { refund_unused_deposit: true } },
     SOCIAL_GAS,
-    SOCIAL_DEPOSIT,
+    deposit,
   );
 }
 

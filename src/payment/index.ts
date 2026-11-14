@@ -31,6 +31,8 @@ export type Transfer = {
 
 export interface PaymentRail {
   readonly kind: "mock" | "near-intents" | "near-testnet";
+  // The most a payment can cost the payer beyond its amount, in yoctoNEAR, stated before the purchase.
+  paymentFeeBound(): Promise<bigint>;
   mintKey(): IdempotencyKey;
   settle(transfer: Transfer): Promise<PaymentStatus>;
 }

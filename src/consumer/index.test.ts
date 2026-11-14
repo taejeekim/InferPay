@@ -23,7 +23,7 @@ test("a malformed assessment stops the ask before any job or payment", async () 
 test("the buyer counters at its reservation and pays the price the shop agreed to", async () => {
   const raw = '{"answer":"Probably.","confidence":0.2,"missing":["the policy"],"coverage":{"insurance":1},"needs":{"insurance":[{"key":"outpatient-mri"}]}}';
   const { outcome, steps, jobs } = await askWith(raw, "0.03");
-  assert.deepEqual(steps, ["decide", "opened", "answer", "verify", "payout", "pay", "rate"]);
+  assert.deepEqual(steps, ["reserve", "decide", "opened", "answer", "verify", "payout", "pay", "rate"]);
   assert.equal(outcome.kind, "outsourced");
   if (outcome.kind !== "outsourced") return;
   assert.equal(outcome.job.providerId, "insurance");

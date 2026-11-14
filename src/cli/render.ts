@@ -2,8 +2,8 @@ import type { Config, ConfigError } from "../config.ts";
 import type { HookReport } from "../runtime.ts";
 import { formatUnits, toUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
-import { LOCAL_FLOOR, type Decision, type Needs, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
-import type { FailReason, JobView, Listing, Payout } from "../market/index.ts";
+import { LOCAL_FLOOR, type Decision, type Needs, type Option, type PricedOption, type Progress, type Spend } from "../consumer/index.ts";
+import { reserveTotal, type FailReason, type JobView, type Listing, type Payout } from "../market/index.ts";
 import {
   canonical,
   catalogName,
@@ -58,8 +58,10 @@ export function hookReportLine(report: HookReport): string {
 
 export function progressLine(progress: Progress, rail: PaymentRail["kind"]): string {
   switch (progress.step) {
+    case "reserve":
+      return reserveBlock(progress, "budget").join("\n");
     case "decide":
-      return decideBlock(progress.decision, progress.needs, "budget");
+      return decideBlock(progress.decision, progress.needs, "budget", progress.reserved);
     case "opened":
       return openedBlock(progress);
     case "payout":
@@ -86,6 +88,18 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
       return unreachable;
     }
   }
+}
+
+// What the question took from the bot's wallet, against its budget.
+export function spendText(spend: Spend): string {
+  const rows = [line("spent", `${money(spend.price)} price + ${money(spend.fees)} fees = ${money(spend.total)} of the ${money(spend.budget)} budget`)];
+  const reserved = toUnits(spend.reserve.amount);
+  if (reserved > 0n) {
+    const unused = reserved - toUnits(spend.fees.amount);
+    rows.push(field("reserve", `${money(spend.reserve)} for fees; ${unused > 0n ? `${formatUnits(unused)} ${spend.reserve.symbol}` : "none"} of it unused, back in the budget`));
+  }
+  if (spend.bounded) rows.push(field("bound", "a fee this run could not measure on chain counts at its reserved bound"));
+  return rows.join("\n");
 }
 
 export function localAnswerText(text: string): string {
@@ -231,8 +245,10 @@ export function usageText(): string {
     "inferpay providers",
     "inferpay ask <question> --budget <amount> [--from <bot>]",
     "inferpay task <task> --budget <amount> [--from <bot>]",
-    "  --budget bounds the price paid to shops. On NEAR testnet the bot also pays network fees outside it:",
-    "  gas for each payment and rating, and SocialDB storage for each rating. Each one is printed.",
+    "  --budget bounds everything the bot spends on the question or task: prices, gas for each payment and",
+    "  rating, and SocialDB storage for each rating. Before deciding, the buyer sets aside an upper bound on",
+    "  the fees and decides with what is left; what the fees do not use returns to the budget.",
+    "  The smallest budget is 0.000000000000000001 (1e-18).",
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
     "inferpay testnet setup [--root <name>.testnet]",
@@ -303,12 +319,35 @@ function roleLabel(role: ForestRow["role"]): string {
 // Inside a task the value is the part's allotment of the task budget, so the block names it that way.
 type Bound = "budget" | "allotment";
 
-function decideBlock(decision: Decision, needs: Needs, bound: Bound): string {
+function valueSource(bound: Bound, reserved: boolean): string {
+  const whole = bound === "budget" ? "the budget" : "the part's allotment";
+  return reserved ? `${whole} less the fee reserve` : whole;
+}
+
+// Set aside before the decision, so the decision and any counter-offer work with what is left for the price.
+function reserveBlock(progress: Extract<Progress, { step: "reserve" }>, bound: Bound): string[] {
+  const { budget, reserve, left } = progress;
+  const whole = bound === "budget" ? "budget" : "part's allotment";
+  const total = reserveTotal(reserve);
+  if (total === 0n) return [line("fees", `none reserved: this rail charges no fee, so all of the ${money(budget)} ${whole} is left for the price`)];
+  const storage = reserve.firstRating
+    ? "the deposit for this bot's first rating, which registers its SocialDB storage"
+    : "the deposit the rating attaches, the most SocialDB can keep";
+  return [
+    line("fees", `${fee(total)} NEAR of the ${money(budget)} ${whole} reserved for fees, so ${money(left)} is left for the price`),
+    field("bound", `${fee(BigInt(reserve.paymentGas))} payment gas + ${fee(BigInt(reserve.ratingGas))} rating gas + ${fee(BigInt(reserve.ratingStorage))} rating storage`),
+    field("why", "gas for the transfer and the rating at the gas price now plus a tenth; for storage,"),
+    field("", `${storage}.`),
+    field("", `Fees are measured after the job, and what the reserve does not use goes back to the ${whole === "budget" ? "budget" : "task"}`),
+  ];
+}
+
+function decideBlock(decision: Decision, needs: Needs, bound: Bound, reserved: boolean): string {
   const { value, local } = decision;
   const idWidth = decision.options.reduce((max, option) => Math.max(max, option.providerId.length), 0) + 2;
   return [
     line("decide", headline(decision)),
-    field("value", `${money(value)}, the ${bound === "budget" ? "budget" : "part's allotment"}: the most a right answer is worth`),
+    field("value", `${money(value)}, ${valueSource(bound, reserved)}: the most a right answer is worth`),
     field("local", `confidence ${share(local.confidence)} x value = worth ${near(local.worth)} ${value.symbol}`),
     field("missing", local.missing.length === 0 ? "nothing" : local.missing.join("; ")),
     ...needsRows(needs, idWidth),
@@ -489,7 +528,7 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     field("via", viaText(rail)),
   ];
   if (rail === "near-testnet" && progress.correlationId) rows.push(field("tx", txUrl(progress.correlationId)));
-  if (progress.feeYocto !== null) rows.push(field("fee", `${fee(BigInt(progress.feeYocto))} NEAR gas on top of the price, from the transaction outcome`));
+  if (progress.feeYocto !== null) rows.push(field("fee", `${fee(BigInt(progress.feeYocto))} NEAR gas beside the price and inside the budget, from the transaction outcome`));
   if (progress.status === "pending" || progress.status === "uncertain") {
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
@@ -581,11 +620,12 @@ function ratingRows(onChain: RatingPost | null, jobId: string, rail: PaymentRail
   }
 }
 
-// The rating is paid on top of any price, so the CLI shows what it cost and where each figure came from.
+// The rating is paid beside any price and out of the same budget, so the CLI shows what it cost and where each figure
+// came from.
 function costRows(cost: RatingCost | null): (readonly [string, string])[] {
   if (cost === null) return [["cost", "not measured: an earlier run sent this transaction"]];
   return [
-    ["cost", `${fee(cost.gas + cost.storage)} NEAR on top of the price: ${fee(cost.gas)} gas, from the transaction outcome,`],
+    ["cost", `${fee(cost.gas + cost.storage)} NEAR of fees inside the budget: ${fee(cost.gas)} gas, from the transaction outcome,`],
     ["", `+ ${fee(cost.storage)} SocialDB storage, from the bot's storage_balance_of before and after`],
   ];
 }
@@ -846,8 +886,10 @@ export function taskProgressLine(progress: TaskProgress, rail: PaymentRail["kind
       ].join("\n");
     case "part-done":
       return partDoneRows(progress).join("\n");
+    case "reserve":
+      return reserveBlock(progress, "allotment").join("\n");
     case "decide":
-      return decideBlock(progress.decision, progress.needs, "allotment");
+      return decideBlock(progress.decision, progress.needs, "allotment", progress.reserved);
     default:
       return progressLine(progress, rail);
   }
@@ -876,12 +918,12 @@ function partDoneRows(progress: Extract<TaskProgress, { step: "part-done" }>): s
   if (row.outcome.kind === "failed") rows.push(line("failed", failureText(row.outcome.reason)));
   const unspent = toUnits(row.allotted.amount) - toUnits(row.spent.amount);
   const where = index + 1 < count ? `carried to part ${index + 2}` : "kept: this was the last part";
-  rows.push(line("unspent", `${money(row.allotted)} - ${money(row.spent)} spent = ${formatUnits(unspent)} ${row.allotted.symbol}, ${where}`));
+  rows.push(line("unspent", `${money(row.allotted)} - ${money(row.price)} price - ${money(row.fees)} fees = ${formatUnits(unspent)} ${row.allotted.symbol}, ${where}`));
   return rows;
 }
 
 export function receiptBlock(receipt: Receipt, saved: string): string {
-  const header = ["#", "DONE BY", "LIST", "AGREED", "PAID", "CHECK"];
+  const header = ["#", "DONE BY", "LIST", "AGREED", "PAID", "FEES", "CHECK"];
   const cells = receipt.parts.map((row, index) => [String(index + 1), ...receiptCells(row)]);
   const [head, ...lines] = table([header, ...cells]).split("\n");
   const pad = "".padEnd(String(receipt.parts.length).length + 2);
@@ -895,17 +937,18 @@ export function receiptBlock(receipt: Receipt, saved: string): string {
       detail("asked", row.part.question),
       ...receiptDetails(row).map(([name, value]) => detail(name, value)),
     ]),
-    line("total", `spent ${money(receipt.spent)} of the ${money(receipt.budget)} budget, ${money(receipt.left)} left`),
-    line("fees", receipt.feesYocto === null
-      ? "none: this rail reports no network fees"
-      : `${fee(BigInt(receipt.feesYocto))} NEAR outside the budget: gas for each payment and rating, and SocialDB storage for each rating`),
+    line("total", `prices ${money(receipt.prices)} + fees ${money(receipt.fees)} = ${money(receipt.spent)} of the ${money(receipt.budget)} budget, ${money(receipt.left)} left`),
+    line("fees", toUnits(receipt.fees.amount) === 0n
+      ? "none on this run: no part paid a network fee"
+      : "gas for each payment and rating and SocialDB storage for each rating, inside the budget"),
     line("saved", saved),
   ].join("\n");
 }
 
-function receiptCells(row: ReceiptRow): [string, string, string, string, string] {
-  const { outcome, spent } = row;
-  const paid = toUnits(spent.amount) === 0n ? "nothing" : money(spent);
+function receiptCells(row: ReceiptRow): [string, string, string, string, string, string] {
+  const { outcome } = row;
+  const paid = toUnits(row.price.amount) === 0n ? "nothing" : money(row.price);
+  const fees = toUnits(row.fees.amount) === 0n ? "-" : row.fees.amount;
   switch (outcome.kind) {
     case "bought":
       return [
@@ -913,16 +956,17 @@ function receiptCells(row: ReceiptRow): [string, string, string, string, string]
         outcome.listPrice.amount,
         `${outcome.agreed.amount} ${outcome.negotiation === "list-price" ? "at list" : "on counter"}`,
         paid,
+        fees,
         boughtCheck(outcome),
       ];
     case "answered-locally":
-      return ["the buyer itself", "-", "-", paid, `own answer, confidence ${share(outcome.confidence)}`];
+      return ["the buyer itself", "-", "-", paid, fees, `own answer, confidence ${share(outcome.confidence)}`];
     case "declined":
-      return ["nobody", "-", "-", paid, `declined: ${declineText(outcome.because)}`];
+      return ["nobody", "-", "-", paid, fees, `declined: ${declineText(outcome.because)}`];
     case "pending":
-      return ["-", "-", "-", `${paid} held`, "PENDING: payment not settled"];
+      return ["-", "-", "-", `${paid} held`, fees, "PENDING: payment not settled"];
     case "failed":
-      return ["-", "-", "-", paid, "FAILED"];
+      return ["-", "-", "-", paid, fees, "FAILED"];
     default: {
       const unreachable: never = outcome;
       return unreachable;

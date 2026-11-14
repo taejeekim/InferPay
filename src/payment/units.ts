@@ -23,3 +23,9 @@ export function formatNear(yocto: bigint, digits = 4): string {
   const fraction = (yocto % scale).toString().padStart(NEAR_DECIMALS, "0").slice(0, digits).replace(/0+$/, "");
   return fraction.length > 0 ? `${whole}.${fraction}` : `${whole}`;
 }
+
+// A domain unit is 1e-18 of the asset and a yoctoNEAR 1e-24, so a fee converts up: a budget check that rounds a fee
+// down could let the real outflow pass the budget.
+export function yoctoToUnits(yocto: bigint): bigint {
+  return (yocto + 999_999n) / 1_000_000n;
+}

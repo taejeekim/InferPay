@@ -26,7 +26,7 @@ test("when the shop is no better than the buyer, the decide block shows a reserv
   });
   assert.ok(plan.kind !== "counter");
   assert.equal(
-    progressLine({ step: "decide", decision: plan, needs: { byShop: new Map([[insurance, [{ kind: "fact", topic: "mri-copay" }]]]), dropped: [] } }, "mock"),
+    progressLine({ step: "decide", decision: plan, needs: { byShop: new Map([[insurance, [{ kind: "fact", topic: "mri-copay" }]]]), dropped: [] }, reserved: false }, "mock"),
     [
       "decide    answer locally, pay nothing",
       "          value   0.10 NEAR, the budget: the most a right answer is worth",
@@ -54,7 +54,7 @@ test("an amount finer than a thousandth prints up to six decimals", () => {
     listings: [{ id: insurance, price: near("0.02"), reputation: { kind: "unrated", completedJobs: 0 } }],
   });
   assert.ok(plan.kind !== "counter");
-  const block = progressLine({ step: "decide", decision: plan, needs: NO_NEEDS }, "mock");
+  const block = progressLine({ step: "decide", decision: plan, needs: NO_NEEDS, reserved: false }, "mock");
   assert.match(block, /^ {10}local {3}confidence 0\.20 x value = worth 0\.00866 NEAR$/m);
   assert.match(block, /^ {10}missing nothing$/m);
   assert.match(block, /net \+0\.01031$/m);
@@ -82,7 +82,7 @@ test("a testnet payment names the rail and links the transaction", () => {
   const block = progressLine(pay(HASH), "near-testnet");
   assert.match(block, /via +NEAR testnet transfer/);
   assert.match(block, new RegExp(`tx +https://testnet\\.nearblocks\\.io/txns/${HASH}`));
-  assert.match(block, /^ {10}fee {5}0\.0000446 NEAR gas on top of the price, from the transaction outcome$/m);
+  assert.match(block, /^ {10}fee {5}0\.0000446 NEAR gas beside the price and inside the budget, from the transaction outcome$/m);
   assert.doesNotMatch(progressLine(pay("mock-ab12"), "mock"), /tx +http/);
 });
 

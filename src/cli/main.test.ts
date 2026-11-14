@@ -503,12 +503,12 @@ test("the briefing answers one part itself, carries its money forward, and buys 
   assert.equal(code, 0);
   assert.match(out, /^part 2\/4 {2}Does this NDA's unlimited indemnification clause fail our playbook\?\n {10}allot {3}0\.02 NEAR share \+ 0\.02 NEAR carried = 0\.04 NEAR$/m);
   assert.match(out, /^ {10}allot {3}0\.03 NEAR share \+ 0\.026 NEAR carried = 0\.056 NEAR$/m);
-  assert.match(out, /^ {10}1  the buyer itself +- +- +nothing +own answer, confidence 0\.99$/m);
-  assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet +0\.03 +0\.024 on counter +0\.024 NEAR +1 verified; rated 5\/5$/m);
-  assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +1 verified; rated 5\/5$/m);
-  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +1 verified; rated 5\/5$/m);
-  assert.match(out, /^total {5}spent 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
-  assert.match(out, /^fees {6}none: this rail reports no network fees$/m);
+  assert.match(out, /^ {10}1  the buyer itself +- +- +nothing +- +own answer, confidence 0\.99$/m);
+  assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet +0\.03 +0\.024 on counter +0\.024 NEAR +- +1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +- +1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +- +1 verified; rated 5\/5$/m);
+  assert.match(out, /^total {5}prices 0\.064 NEAR \+ fees 0 NEAR = 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
+  assert.match(out, /^fees {6}none on this run: no part paid a network fee$/m);
   assert.match(out, /^ {10}value {3}0\.04 NEAR, the part's allotment: the most a right answer is worth$/m);
   assert.doesNotMatch(out, /the budget: the most a right answer is worth/);
   assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
@@ -526,8 +526,8 @@ test("the briefing answers one part itself, carries its money forward, and buys 
 test("the tight policy check declines one part and stays inside its budget", async () => {
   const { code, out, receipt, jobs } = await runTask(POLICY_CHECK, "0.04");
   assert.equal(code, 0);
-  assert.match(out, /^ {10}1  nobody +- +- +nothing +declined: counter-offer refused$/m);
-  assert.match(out, /^total {5}spent 0\.014 NEAR of the 0\.04 NEAR budget, 0\.026 NEAR left$/m);
+  assert.match(out, /^ {10}1  nobody +- +- +nothing +- +declined: counter-offer refused$/m);
+  assert.match(out, /^total {5}prices 0\.014 NEAR \+ fees 0 NEAR = 0\.014 NEAR of the 0\.04 NEAR budget, 0\.026 NEAR left$/m);
   assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
     ["declined", "0.02", "0"],
     ["bought", "0.04", "0.014"],

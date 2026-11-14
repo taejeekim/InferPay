@@ -3,6 +3,19 @@ import type { Need, PinnedCommitment } from "../commitment/index.ts";
 import type { Answer } from "../providers/types.ts";
 import type { PaymentReceipt, Transfer } from "../payment/index.ts";
 
+// What the buyer set aside, before the purchase, for what it may cost beyond its price, each an upper bound in
+// yoctoNEAR. ratingStorage is also the deposit the rating attaches, so a retried rating signs the same transaction.
+export type FeeReserve = {
+  readonly paymentGas: string;
+  readonly ratingGas: string;
+  readonly ratingStorage: string;
+  readonly firstRating: boolean;
+};
+
+export function reserveTotal(reserve: FeeReserve): bigint {
+  return BigInt(reserve.paymentGas) + BigInt(reserve.ratingGas) + BigInt(reserve.ratingStorage);
+}
+
 export type Order = {
   readonly jobId: JobId;
   readonly providerId: ProviderId;
@@ -11,7 +24,9 @@ export type Order = {
   readonly needs: readonly Need[];
   // What the buyer offers to pay. The shop charges this, or its list price when the offer is higher.
   readonly offer: Price;
+  // The money for this question: the agreed price and every fee must fit in it together.
   readonly budget: Price;
+  readonly reserve: FeeReserve;
   readonly payFrom: AccountId;
   // The shop's root as the buyer read it before opening the job. Every check in the answer is verified against it.
   readonly commitment: PinnedCommitment;

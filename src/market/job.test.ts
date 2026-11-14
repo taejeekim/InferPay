@@ -144,6 +144,7 @@ function fixture() {
     needs: [{ kind: "fact", topic: "operating-profit" }],
     offer: price(quote),
     budget: price(budget),
+    reserve: { paymentGas: "0", ratingGas: "0", ratingStorage: "0", firstRating: false },
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near"), "payFrom"),
     commitment: {
       status: "published",

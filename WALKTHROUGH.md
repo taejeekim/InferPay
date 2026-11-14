@@ -12,6 +12,7 @@ npx inferpay ask "Does this policy cover an outpatient MRI?" --budget 0.10
 
 ```text
 rails: payment=mock inference=stub
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    buy from insurance at 0.02 NEAR (list price)
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.020 NEAR
@@ -21,7 +22,7 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.050 >= 0.020
-job       job_01M7BYJZ6CMV2QXZAT88TKDJ3V opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZANHNG8FNQQ1RGQ1KZ4Z5 opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
@@ -43,6 +44,7 @@ rate      5/5  = 5
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
+spent     0.02 NEAR price + 0 NEAR fees = 0.02 NEAR of the 0.10 NEAR budget
 ```
 
 `--budget` is the most a right answer is worth. `local` is what answering alone is worth. `needs` are the keys the buyer requires the shop to open. Each `option` is a shop. The `rule` line shows the comparison with the numbers filled in.
@@ -57,6 +59,7 @@ npx inferpay ask "What is the capital of France?" --budget 0.10
 
 ```text
 rails: payment=mock inference=stub
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    answer locally, pay nothing
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.99 x value = worth 0.099 NEAR
@@ -69,6 +72,7 @@ decide    answer locally, pay nothing
           rule    answer locally when confidence >= 0.50: 0.99 >= 0.50
 answer    Paris is the capital of France.
 checks    none, this is the buyer's own answer
+spent     0 NEAR price + 0 NEAR fees = 0 NEAR of the 0.10 NEAR budget
 ```
 
 ## 3. Counter once when the ask is over plan
@@ -81,6 +85,7 @@ npx inferpay ask "Does this policy cover an outpatient MRI?" --budget 0.03
 
 ```text
 rails: payment=mock inference=stub
+fees      none reserved: this rail charges no fee, so all of the 0.03 NEAR budget is left for the price
 decide    buy from insurance at 0.018 NEAR (counter-offer accepted)
           value   0.03 NEAR, the budget: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.006 NEAR
@@ -93,7 +98,7 @@ decide    buy from insurance at 0.018 NEAR (counter-offer accepted)
           reserve (0.80 - 0.20) x 0.03 = 0.018 NEAR, where buying equals the local worth
           counter 0.018 NEAR against the ask of 0.02 NEAR
           reply   insurance accepted
-job       job_01M7BYJZ7H088GVV1X4BH3AN9M opened with insurance at the agreed 0.018 NEAR
+job       job_01M7BZANJW6D7YKTFJVNKTCR2V opened with insurance at the agreed 0.018 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
@@ -115,6 +120,7 @@ rate      5/5  = 5
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
+spent     0.018 NEAR price + 0 NEAR fees = 0.018 NEAR of the 0.03 NEAR budget
 ```
 
 ## 4. Walk away when the counter is refused
@@ -127,6 +133,7 @@ npx inferpay ask "What was Samsung's Q3 2025 revenue?" --budget 0.10
 
 ```text
 rails: payment=mock inference=stub
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    answer locally, pay nothing (counter-offer refused)
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.55 x value = worth 0.055 NEAR
@@ -142,6 +149,7 @@ decide    answer locally, pay nothing (counter-offer refused)
           rule    answer locally when confidence >= 0.50: 0.55 >= 0.50
 answer    Samsung reported about KRW 86 trillion in revenue for Q3 2025. I have not checked that against the filing.
 checks    none, this is the buyer's own answer
+spent     0 NEAR price + 0 NEAR fees = 0 NEAR of the 0.10 NEAR budget
 ```
 
 ## 5. Grade an honest shop that got a figure wrong
@@ -154,6 +162,7 @@ npx inferpay ask "What copay does this policy charge for an outpatient MRI?" --b
 
 ```text
 rails: payment=mock inference=stub
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    buy from insurance at 0.02 NEAR (list price)
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.020 NEAR
@@ -163,7 +172,7 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.065 >= 0.020
-job       job_01M7BYJZ8EZXTE35FZNPGPNAEA opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZANKTCJK81RD902X8D9NE opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    Outpatient MRI is covered with a 10 percent copay.
 checks    2 of 2 needed keys opened and verified against the shop's committed root
@@ -187,6 +196,7 @@ rate      4/5  = 5 - 1 x 1 mismatch = 4
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
+spent     0.02 NEAR price + 0 NEAR fees = 0.02 NEAR of the 0.10 NEAR budget
 ```
 
 ## 6. Catch a shop that forges its evidence
@@ -200,6 +210,7 @@ INFERPAY_TEST_LIAR=insurance npx inferpay ask "What copay does this policy charg
 ```text
 rails: payment=mock inference=stub
 hook      INFERPAY_TEST_LIAR=insurance: this shop rewrites each check that is not a match or a raised flag into one, with forged evidence
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    buy from insurance at 0.02 NEAR (list price)
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.020 NEAR
@@ -209,7 +220,7 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.063 >= 0.020
-job       job_01M7BYJZ9A9WY5D4S7VXK7NJ4C opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZANMRT4835HK5HRGZNAQ2 opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 hook      insurance forged 1 check; the buyer should mark it FORGED and rate insurance 1/5
 answer    Outpatient MRI is covered with a 10 percent copay.
@@ -233,6 +244,7 @@ rate      1/5  forged evidence sets the rating to 1
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
+spent     0 NEAR price + 0 NEAR fees = 0 NEAR of the 0.10 NEAR budget
 ```
 
 ## 7. Catch a shop that leaves a needed key out
@@ -246,6 +258,7 @@ INFERPAY_TEST_WITHHOLD=insurance npx inferpay ask "What copay does this policy c
 ```text
 rails: payment=mock inference=stub
 hook      INFERPAY_TEST_WITHHOLD=insurance: this shop drops each check that does not back its answer, needed keys included
+fees      none reserved: this rail charges no fee, so all of the 0.10 NEAR budget is left for the price
 decide    buy from insurance at 0.02 NEAR (list price)
           value   0.10 NEAR, the budget: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.020 NEAR
@@ -255,7 +268,7 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.70 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.049 >= 0.020
-job       job_01M7BYJZ9WZT3R3XQZZYN9GJ7G opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZANNC2EPRV0CT9VW8N5A9 opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 hook      insurance dropped 1 check; the buyer should mark each needed key it dropped WITHHELD
 answer    Outpatient MRI is covered with a 10 percent copay.
@@ -280,11 +293,12 @@ rate      3/5  = 5 - 2 x 1 withheld = 3
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
+spent     0.01 NEAR price + 0 NEAR fees = 0.01 NEAR of the 0.10 NEAR budget
 ```
 
 ## 8. Give it a whole task and one budget
 
-The buyer splits the task into parts, gives each part a share of the budget, and carries what a part leaves unspent to the next part. It ends with one receipt.
+The buyer splits the task into parts, gives each part a share of the budget, and carries what a part leaves unspent to the next part. It ends with one receipt that shows, per part, the agreed price, what the buyer paid after verifying, and the fees. On the mock rail no fee is charged; on testnet the fees come out of the same budget.
 
 ```sh
 npx inferpay task "Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit" --budget 0.10
@@ -302,6 +316,7 @@ plan      4 parts under one budget of 0.10 NEAR, each given its share of it
 
 part 1/4  What is the capital of France?
           allot   0.02 NEAR share + 0 NEAR carried = 0.02 NEAR
+fees      none reserved: this rail charges no fee, so all of the 0.02 NEAR part's allotment is left for the price
 decide    answer locally, pay nothing
           value   0.02 NEAR, the part's allotment: the most a right answer is worth
           local   confidence 0.99 x value = worth 0.0198 NEAR
@@ -314,10 +329,11 @@ decide    answer locally, pay nothing
           rule    answer locally when confidence >= 0.50: 0.99 >= 0.50
 answer    Paris is the capital of France.
 checks    none, this is the buyer's own answer
-unspent   0.02 NEAR - 0 NEAR spent = 0.02 NEAR, carried to part 2
+unspent   0.02 NEAR - 0 NEAR price - 0 NEAR fees = 0.02 NEAR, carried to part 2
 
 part 2/4  Does this NDA's unlimited indemnification clause fail our playbook?
           allot   0.02 NEAR share + 0.02 NEAR carried = 0.04 NEAR
+fees      none reserved: this rail charges no fee, so all of the 0.04 NEAR part's allotment is left for the price
 decide    buy from legal at 0.024 NEAR (counter-offer accepted)
           value   0.04 NEAR, the part's allotment: the most a right answer is worth
           local   confidence 0.10 x value = worth 0.004 NEAR
@@ -330,7 +346,7 @@ decide    buy from legal at 0.024 NEAR (counter-offer accepted)
           reserve (0.70 - 0.10) x 0.04 = 0.024 NEAR, where buying equals the local worth
           counter 0.024 NEAR against the ask of 0.03 NEAR
           reply   legal accepted
-job       job_01M7BYJZAVNB3X7MFKTXS9KDC9 opened with legal at the agreed 0.024 NEAR
+job       job_01M7BZANP9W0MZ48BETRRTW3AC opened with legal at the agreed 0.024 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    The unlimited indemnification clause fails the playbook.
 checks    1 of 1 needed key opened and verified against the shop's committed root
@@ -352,10 +368,11 @@ rate      5/5  = 5
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
-unspent   0.04 NEAR - 0.024 NEAR spent = 0.016 NEAR, carried to part 3
+unspent   0.04 NEAR - 0.024 NEAR price - 0 NEAR fees = 0.016 NEAR, carried to part 3
 
 part 3/4  Does this policy cover an outpatient MRI?
           allot   0.03 NEAR share + 0.016 NEAR carried = 0.046 NEAR
+fees      none reserved: this rail charges no fee, so all of the 0.046 NEAR part's allotment is left for the price
 decide    buy from insurance at 0.02 NEAR (list price)
           value   0.046 NEAR, the part's allotment: the most a right answer is worth
           local   confidence 0.20 x value = worth 0.0092 NEAR
@@ -365,7 +382,7 @@ decide    buy from insurance at 0.02 NEAR (list price)
           option  disclosure  ask 0.02  cover 0.00 x rep 0.70 = quality 0.00  net -0.020
           option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
           rule    net = quality x value - ask; buy when net >= local worth: 0.01036 >= 0.0092
-job       job_01M7BYJZBSMQBSYM1WYGK529EP opened with insurance at the agreed 0.02 NEAR
+job       job_01M7BZANQ8BVD7HKNHXN4SW91F opened with insurance at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    Outpatient MRI is covered at a 20 percent copay.
 checks    1 of 1 needed key opened and verified against the shop's committed root
@@ -387,10 +404,11 @@ rate      5/5  = 5
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
-unspent   0.046 NEAR - 0.02 NEAR spent = 0.026 NEAR, carried to part 4
+unspent   0.046 NEAR - 0.02 NEAR price - 0 NEAR fees = 0.026 NEAR, carried to part 4
 
 part 4/4  What was Samsung's Q3 2025 operating profit?
           allot   0.03 NEAR share + 0.026 NEAR carried = 0.056 NEAR
+fees      none reserved: this rail charges no fee, so all of the 0.056 NEAR part's allotment is left for the price
 decide    buy from disclosure at 0.02 NEAR (list price)
           value   0.056 NEAR, the part's allotment: the most a right answer is worth
           local   confidence 0.30 x value = worth 0.0168 NEAR
@@ -400,7 +418,7 @@ decide    buy from disclosure at 0.02 NEAR (list price)
           option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
           option  insurance   ask 0.02  cover 0.00 x rep 0.71 = quality 0.00  net -0.020
           rule    net = quality x value - ask; buy when net >= local worth: 0.0192 >= 0.0168
-job       job_01M7BYJZCR33D7X4MVHR9RSEBC opened with disclosure at the agreed 0.02 NEAR
+job       job_01M7BZANR6T3GB757A4RP2SAZR opened with disclosure at the agreed 0.02 NEAR
           order   the shop delivers first; the buyer verifies every proof, then pays for what it verified
 answer    Operating profit matches across both documents: KRW 12.2T.
 checks    1 of 1 needed key opened and verified against the shop's committed root, 1 unrequested
@@ -425,25 +443,25 @@ rate      5/5  = 5
                   at least 2 unless a check is forged, and 1 if any check is forged;
                   checks the buyer did not ask for never count
           kept      in this machine's ledger, because the mock rail has no chain
-unspent   0.056 NEAR - 0.02 NEAR spent = 0.036 NEAR, kept: this was the last part
+unspent   0.056 NEAR - 0.02 NEAR price - 0 NEAR fees = 0.036 NEAR, kept: this was the last part
 
-receipt   task_01M7BYJZDM6ZCC5336FVMCF1J0
+receipt   task_01M7BZANS6G3NGQCP36ANHW3PW
           task    Brief me for Monday: France's capital, our NDA's indemnity clause, outpatient MRI cover, and Samsung's Q3 2025 operating profit
-          #  DONE BY                            LIST  AGREED            PAID        CHECK
-          1  the buyer itself                   -     -                 nothing     own answer, confidence 0.99
+          #  DONE BY                            LIST  AGREED            PAID        FEES  CHECK
+          1  the buyer itself                   -     -                 nothing     -     own answer, confidence 0.99
              asked  What is the capital of France?
-          2  legal.stella.inferpay.testnet      0.03  0.024 on counter  0.024 NEAR  1 verified; rated 5/5
+          2  legal.stella.inferpay.testnet      0.03  0.024 on counter  0.024 NEAR  -     1 verified; rated 5/5
              asked  Does this NDA's unlimited indemnification clause fail our playbook?
-             job    job_01M7BYJZAVNB3X7MFKTXS9KDC9
-          3  insurance.ban.inferpay.testnet     0.02  0.02 at list      0.02 NEAR   1 verified; rated 5/5
+             job    job_01M7BZANP9W0MZ48BETRRTW3AC
+          3  insurance.ban.inferpay.testnet     0.02  0.02 at list      0.02 NEAR   -     1 verified; rated 5/5
              asked  Does this policy cover an outpatient MRI?
-             job    job_01M7BYJZBSMQBSYM1WYGK529EP
-          4  disclosure.david.inferpay.testnet  0.02  0.02 at list      0.02 NEAR   1 verified; rated 5/5
+             job    job_01M7BZANQ8BVD7HKNHXN4SW91F
+          4  disclosure.david.inferpay.testnet  0.02  0.02 at list      0.02 NEAR   -     1 verified; rated 5/5
              asked  What was Samsung's Q3 2025 operating profit?
-             job    job_01M7BYJZCR33D7X4MVHR9RSEBC
-total     spent 0.064 NEAR of the 0.10 NEAR budget, 0.036 NEAR left
-fees      none: this rail reports no network fees
-saved     .inferpay/tasks/task_01M7BYJZDM6ZCC5336FVMCF1J0.json
+             job    job_01M7BZANR6T3GB757A4RP2SAZR
+total     prices 0.064 NEAR + fees 0 NEAR = 0.064 NEAR of the 0.10 NEAR budget, 0.036 NEAR left
+fees      none on this run: no part paid a network fee
+saved     .inferpay/tasks/task_01M7BZANS6G3NGQCP36ANHW3PW.json
 ```
 
 ## 9. Ask something with no recording
@@ -456,6 +474,7 @@ npx inferpay ask "Schedule a meeting on Monday" --budget 0.10
 
 ```text
 rails: payment=mock inference=stub
+spent     0 NEAR price + 0 NEAR fees = 0 NEAR of the 0.10 NEAR budget
 Inference failed. No NEAR moved. The stub replays only these recorded questions:
   npx inferpay ask "What was Samsung's Q3 2025 operating profit?" --budget 0.10
   npx inferpay ask "Does Samsung Electronics' Q3 2025 operating profit in the earnings release match the quarterly report?" --budget 0.10
@@ -503,16 +522,16 @@ catalog     the keys each shop holds an entry for, without their values; a buyer
 This is the job from the counter-offer step, in the order it happened. The `quote` is the agreed price. The lines under `delivered` are the shop's answer and the evidence for each check. `payout-decided` is what the buyer owed after verifying, and only then does the payment appear.
 
 ```sh
-npx inferpay job job_01M7BYJZ7H088GVV1X4BH3AN9M
+npx inferpay job job_01M7BZANJW6D7YKTFJVNKTCR2V
 ```
 
 ```text
 rails: payment=mock inference=stub
-opened            02:36:05 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
+opened            02:49:02 UTC  insurance  quote 0.018 NEAR  budget 0.03 NEAR  researcher.kyle.inferpay.testnet -> insurance.ban.inferpay.testnet
                   commitment d26d1609271e8c546648dc3d83990ff7540d60bf40cdf738d693ec655602b68f
                              3 leaves, inferpay-keyed-merkle-sha256-v1, from the shop's listing
                   needs      outpatient-mri
-delivered         02:36:05 UTC  1 check; 1 of 1 needed key opened, 0 withheld
+delivered         02:49:02 UTC  1 check; 1 of 1 needed key opened, 0 withheld
                   answer     Outpatient MRI is covered at a 20 percent copay.
                   verified  match  outpatient MRI
                     key       ["fact","outpatient-mri"]
@@ -523,9 +542,9 @@ delivered         02:36:05 UTC  1 check; 1 of 1 needed key opened, 0 withheld
                     level 30  8e40665dd381bd01781149ce8b210ddc7ea07112aee780e879a58e2bc7369b64
                     path      32 levels, 31 of them empty subtrees
                     root      equals the commitment above
-payout-decided    02:36:05 UTC  0.018 NEAR of the agreed 0.018 NEAR: 1 of 1 needed key opened to an entry and verified
+payout-decided    02:49:02 UTC  0.018 NEAR of the agreed 0.018 NEAR: 1 of 1 needed key opened to an entry and verified
                   0.018 x 1 / 1 = 0.018 NEAR
-payment-intended  02:36:05 UTC  key mock_d2aebb15-0ba6-45c8-bc5b-564d1c1a4e82
-payment-settled   02:36:05 UTC  0.018 NEAR to insurance.ban.inferpay.testnet  correlation mock-38a4
-rated             02:36:05 UTC  5/5
+payment-intended  02:49:02 UTC  key mock_a44c6666-556d-4c14-ab73-d2d2fb1627ac
+payment-settled   02:49:02 UTC  0.018 NEAR to insurance.ban.inferpay.testnet  correlation mock-ecec
+rated             02:49:02 UTC  5/5
 ```

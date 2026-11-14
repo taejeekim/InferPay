@@ -7,7 +7,7 @@ import type { AccountId } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import { createRuntime, type Runtime } from "../runtime.ts";
 import { testnetCommand } from "./testnet.ts";
-import { attestLines, configErrorText, unknownJobText, failureText, hookLine, hookReportLine, jobText, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
+import { attestLines, configErrorText, unknownJobText, failureText, hookLine, hookReportLine, jobText, localAnswerText, progressLine, providersTable, railsLine, receiptBlock, spendText, taskProgressLine, unknownBotText, usageText, walletsTable } from "./render.ts";
 
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
@@ -152,10 +152,8 @@ async function jobCommand(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
 }
 
 function finishAsk(outcome: AskOutcome): number {
-  if (outcome.kind === "local") {
-    process.stdout.write(`${localAnswerText(outcome.text)}\n`);
-    return 0;
-  }
+  if (outcome.kind === "local") process.stdout.write(`${localAnswerText(outcome.text)}\n`);
+  if (outcome.spend !== null) process.stdout.write(`${spendText(outcome.spend)}\n`);
   if (outcome.kind === "failed") {
     process.stderr.write(`${failureText(outcome.reason)}\n`);
     return 1;

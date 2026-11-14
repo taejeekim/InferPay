@@ -23,6 +23,7 @@ function fakeChain() {
     broadcastResults: [] as TxResult[],
   };
   const port: Port = {
+    gasPrice: async () => 100_000_000n,
     async sign(credential, receiverId) {
       const n = state.signed.length + 1;
       const tx: SignedTx = { hash: `hash${n}`, signerId: credential.accountId, receiverId, nonce: String(n), base64: `bytes${n}` };
@@ -214,3 +215,8 @@ function must<T>(value: T | null): T {
   if (value === null) throw new Error("fixture failed its check");
   return value;
 }
+
+test("the payment fee bound is a transfer's gas at the current price plus a tenth", async () => {
+  const { rail } = await railOn(fakeChain());
+  assert.equal(await rail.paymentFeeBound(), 55_000_000_000_000_000_000n);
+});

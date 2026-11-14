@@ -101,11 +101,19 @@ export type TxResult =
   | { readonly kind: "pending" }
   | { readonly kind: "unreachable"; readonly detail: string };
 
+// The gas price can rise between a bound and the transaction, by at most one percent a block, so a bound allows a
+// tenth more than the price read now.
+export function gasBound(gas: bigint, price: bigint): bigint {
+  return (gas * price * 11n) / 10n;
+}
+
 export interface NearClient {
   balance(accountId: AccountId): Promise<bigint | null>;
   hasKey(accountId: AccountId, publicKey: string): Promise<boolean>;
   // Calls a contract's read-only method at the final block. No key and no fee.
   view(contractId: AccountId, method: string, args: { readonly [key: string]: unknown }): Promise<unknown>;
+  // yoctoNEAR per unit of gas at the latest block.
+  gasPrice(): Promise<bigint>;
   sign(credential: Credential, receiverId: AccountId, txActions: readonly Action[]): Promise<SignedTx>;
   broadcast(tx: SignedTx, wait: "FINAL" | "NONE"): Promise<TxResult>;
   status(tx: { readonly hash: string; readonly signerId: AccountId }): Promise<TxResult>;
@@ -140,6 +148,10 @@ export function createNearClient(network: typeof TESTNET = TESTNET): NearClient 
 
     async view(contractId, method, args) {
       return await rpc.callFunction({ contractId, method, args: { ...args }, blockQuery: { finality: "final" } }) ?? null;
+    },
+
+    async gasPrice() {
+      return BigInt((await rpc.viewGasPrice()).gas_price);
     },
 
     async sign(credential, receiverId, txActions) {
