@@ -371,7 +371,7 @@ function ruleRows(decision: Decision, bound: Bound): string[] {
     case "nothing-affordable":
       return [field("rule", `never pay above the ${bound}: every ask is outside ${money(value)}`), localRule];
     case "no-coverage":
-      return [field("rule", "buy only from a shop that covers a missing fact: no shop within the budget does"), localRule];
+      return [field("rule", `buy only from a shop that covers a missing fact: no shop within the ${bound} does`), localRule];
     case "no-price-worth-paying":
       return [
         buyRule(because.option),
