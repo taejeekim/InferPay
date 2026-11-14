@@ -88,7 +88,7 @@ const count = z.number().int().nonnegative();
 const ratingSchema = z.object({
   shop: z.string(),
   stars: z.number(),
-  payment: z.string(),
+  payment: z.string().nullable(),
   root: z.string().nullable(),
   verified: count,
   unproven: count,

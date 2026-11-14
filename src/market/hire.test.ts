@@ -19,7 +19,8 @@ import { parseCommitment, SCHEME, type Commitment } from "../commitment/index.ts
 import type { Inference } from "../inference/index.ts";
 import { createMockRail } from "../payment/mock.ts";
 import type { Answer, Provider } from "../providers/types.ts";
-import { createMarketplace, type Marketplace } from "./index.ts";
+import type { PaymentReceipt } from "../payment/index.ts";
+import { createMarketplace, type Marketplace, type SettledJob } from "./index.ts";
 import { createFileLedger } from "./ledger.ts";
 
 function fixedClock() {
@@ -32,21 +33,70 @@ test("hire pays once, then a second hire skips the transfer", async () => {
   const { market, order, root } = await harness("none");
   try {
     const first = await market.hire(order);
-    assert.equal(first.kind, "completed");
-    if (first.kind !== "completed") return;
+    assert.equal(first.kind, "settled");
+    if (first.kind !== "settled") return;
     assert.equal(first.transfer, "called");
     const view = await market.job(order.jobId);
     assert.deepEqual(view?.events.map((event) => event.type), [
       "opened",
+      "delivered",
+      "payout-decided",
       "payment-intended",
       "payment-settled",
-      "fulfilled",
     ]);
     const again = await market.hire(order);
-    assert.equal(again.kind, "completed");
-    if (again.kind !== "completed") return;
+    assert.equal(again.kind, "settled");
+    if (again.kind !== "settled") return;
     assert.equal(again.transfer, "skipped");
-    assert.equal(again.job.paid.key, first.job.paid.key);
+    assert.equal(paidOf(again.job).key, paidOf(first.job).key);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a crash after the delivery is written resumes to payment without asking the shop again", async () => {
+  let asked = 0;
+  const { market, deps, order, root } = await harness("none", async () => {
+    asked += 1;
+    return { ok: true, answer: sampleAnswer() };
+  });
+  try {
+    const crashing = createMarketplace({ ...deps, afterDelivery: () => { throw new Error("crash"); } });
+    await assert.rejects(crashing.hire(order), /crash/);
+    assert.deepEqual((await market.job(order.jobId))?.events.map((event) => event.type), ["opened", "delivered"]);
+    const resumed = await market.hire(order);
+    assert.equal(resumed.kind, "settled");
+    assert.equal(asked, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a forged delivery settles unpaid: no transfer is attempted, and a resume reports it and pays nothing", async () => {
+  const { market, order, root } = await harness("none", undefined, (opened) => ({ amount: { ...opened.quote, amount: must(parseDecimalAmount("0")) }, basis: { kind: "forged", forged: 1 } }));
+  try {
+    const progress: string[] = [];
+    const first = await market.hire(order, (step) => progress.push(step.step));
+    assert.ok(first.kind === "settled");
+    assert.deepEqual([first.transfer, first.job.settlement], ["none", { kind: "unpaid" }]);
+    assert.deepEqual(progress, ["opened", "answer", "payout"]);
+    assert.deepEqual((await readdir(root)).filter((name) => name !== "jobs"), [], "the rail was never called");
+    const again = await market.hire(order);
+    assert.ok(again.kind === "settled");
+    assert.deepEqual([again.transfer, again.job.settlement], ["none", { kind: "unpaid" }]);
+    assert.deepEqual((await market.job(order.jobId))?.events.map((event) => event.type), ["opened", "delivered", "payout-decided"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a partial payout transfers only its share of the agreed price", async () => {
+  const { market, order, root } = await harness("none", undefined, (opened) => ({ amount: { ...opened.quote, amount: must(parseDecimalAmount("0.01")) }, basis: { kind: "share", proven: 1, needed: 2 } }));
+  try {
+    const done = await market.hire(order);
+    assert.ok(done.kind === "settled");
+    assert.equal(done.job.quote.amount, "0.02");
+    assert.equal(paidOf(done.job).amount.amount, "0.01");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -63,11 +113,11 @@ test("an uncertain transfer settles on resume with the same key", async () => {
     const intended = mid?.events.find((event) => event.type === "payment-intended");
     assert.equal(intended?.type, "payment-intended");
     const resumed = await market.hire(order);
-    assert.equal(resumed.kind, "completed");
-    if (resumed.kind !== "completed" || intended?.type !== "payment-intended") return;
+    assert.equal(resumed.kind, "settled");
+    if (resumed.kind !== "settled" || intended?.type !== "payment-intended") return;
     assert.equal(resumed.transfer, "called");
-    assert.equal(resumed.job.paid.key, intended.key);
-    assert.equal(resumed.job.paid.correlationId, waiting.correlationId);
+    assert.equal(paidOf(resumed.job).key, intended.key);
+    assert.equal(paidOf(resumed.job).correlationId, waiting.correlationId);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -106,9 +156,9 @@ test("a counter-offer at the shop's floor is accepted, and the job pays the agre
     const offer = price("0.015");
     assert.equal(await market.counter(order.providerId, offer), "accepted");
     const done = await market.hire({ ...order, offer });
-    assert.equal(done.kind, "completed");
-    if (done.kind !== "completed") return;
-    assert.equal(done.job.paid.amount.amount, "0.015");
+    assert.equal(done.kind, "settled");
+    if (done.kind !== "settled") return;
+    assert.equal(paidOf(done.job).amount.amount, "0.015");
     const view = await market.job(order.jobId);
     const opened = view?.events[0];
     assert.equal(opened?.type, "opened");
@@ -139,9 +189,9 @@ test("an offer above the list price pays the list price", async () => {
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire({ ...order, offer: price("0.05") });
-    assert.equal(done.kind, "completed");
-    if (done.kind !== "completed") return;
-    assert.equal(done.job.paid.amount.amount, "0.02");
+    assert.equal(done.kind, "settled");
+    if (done.kind !== "settled") return;
+    assert.equal(paidOf(done.job).amount.amount, "0.02");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -151,7 +201,7 @@ test("a second hire with a different offer conflicts", async () => {
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire(order);
-    assert.equal(done.kind, "completed");
+    assert.equal(done.kind, "settled");
     const again = await market.hire({ ...order, offer: price("0.015") });
     assert.equal(again.kind, "failed");
     if (again.kind !== "failed") return;
@@ -165,8 +215,8 @@ test("the same stars stay recorded and different stars are rejected", async () =
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire(order);
-    assert.equal(done.kind, "completed");
-    if (done.kind !== "completed") return;
+    assert.equal(done.kind, "settled");
+    if (done.kind !== "settled") return;
     const stars = parseStars(4);
     const other = parseStars(5);
     assert.ok(stars && other);
@@ -207,7 +257,7 @@ test("a second hire waits while the first still holds the job", async () => {
     if (second.kind === "failed") assert.equal(second.reason.kind, "job-busy");
     release();
     const done = await first;
-    assert.equal(done.kind, "completed");
+    assert.equal(done.kind, "settled");
   } finally {
     release();
     await rm(root, { recursive: true, force: true });
@@ -222,7 +272,8 @@ test("an answer the ledger could not read back is refused, and the job stays rea
     const outcome = await market.hire(order);
     assert.deepEqual(outcome, { kind: "failed", jobId: order.jobId, reason: { kind: "provider-failed", reason: "the shop's answer was malformed" } });
     const view = await market.job(order.jobId);
-    assert.deepEqual(view?.events.map((event) => event.type), ["opened", "payment-intended", "payment-settled", "fulfil-failed"]);
+    assert.deepEqual(view?.events.map((event) => event.type), ["opened", "fulfil-failed"]);
+    assert.deepEqual((await readdir(root)).filter((name) => name !== "jobs"), [], "nothing was paid");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -232,7 +283,7 @@ test("a second hire that pins a different root conflicts", async () => {
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire(order);
-    assert.equal(done.kind, "completed");
+    assert.equal(done.kind, "settled");
     const other = must(parseCommitment({ scheme: SCHEME, root: "cd".repeat(32), leaves: 1 }));
     const again = await market.hire({ ...order, commitment: { ...order.commitment, commitment: other } });
     assert.equal(again.kind, "failed");
@@ -247,7 +298,7 @@ test("a second hire with a different payer conflicts", async () => {
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire(order);
-    assert.equal(done.kind, "completed");
+    assert.equal(done.kind, "settled");
     const again = await market.hire({ ...order, payFrom: must(parseAccountId("clerk.kyle.inferpay.near")) });
     assert.equal(again.kind, "failed");
     if (again.kind !== "failed") return;
@@ -261,11 +312,11 @@ test("a trailing partial line does not block resume", async () => {
   const { market, order, root } = await harness("none");
   try {
     const done = await market.hire(order);
-    assert.equal(done.kind, "completed");
+    assert.equal(done.kind, "settled");
     await appendFile(join(root, "jobs", `${order.jobId}.jsonl`), "{\"type\":\"rated\"");
     const again = await market.hire(order);
-    assert.equal(again.kind, "completed");
-    if (again.kind !== "completed") return;
+    assert.equal(again.kind, "settled");
+    if (again.kind !== "settled") return;
     assert.equal(again.transfer, "skipped");
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -275,7 +326,8 @@ test("a trailing partial line does not block resume", async () => {
 async function harness(
   chaos: "none" | "uncertain-once",
   fulfil?: Provider["fulfil"],
-): Promise<{ market: Marketplace; order: ReturnType<typeof sampleOrder>; root: string }> {
+  payout?: Parameters<typeof createMarketplace>[0]["payout"],
+): Promise<{ market: Marketplace; deps: Parameters<typeof createMarketplace>[0]; order: ReturnType<typeof sampleOrder>; root: string }> {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   const provider = sampleProvider(fulfil);
   const inference: Inference = {
@@ -285,7 +337,7 @@ async function harness(
       return { ok: false, reason: "no-fixture", detail: "unused" };
     },
   };
-  const market = createMarketplace({
+  const deps: Parameters<typeof createMarketplace>[0] = {
     ledger: createFileLedger(root),
     rail: createMockRail({ root, chaos }),
     inference,
@@ -303,8 +355,9 @@ async function harness(
     }],
     registry: null,
     clock: fixedClock,
-  });
-  return { market, order: sampleOrder(), root };
+    payout: payout ?? ((opened) => ({ amount: opened.quote, basis: { kind: "share", proven: 1, needed: 1 } })),
+  };
+  return { market: createMarketplace(deps), deps, order: sampleOrder(), root };
 }
 
 function sampleProvider(fulfil?: Provider["fulfil"]): Provider {
@@ -328,7 +381,7 @@ function sampleOrder() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure")),
     question: "Does the filing match?",
-    needs: [],
+    needs: [{ kind: "fact" as const, topic: "operating-profit" }],
     offer: price("0.02"),
     budget: price("0.10"),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near")),
@@ -356,6 +409,12 @@ function price(amount: string): Price {
     symbol: "NEAR",
     amount: must(parseDecimalAmount(amount)),
   };
+}
+
+function paidOf(job: SettledJob): PaymentReceipt {
+  assert.equal(job.settlement.kind, "paid");
+  if (job.settlement.kind !== "paid") throw new Error("expected a paid job");
+  return job.settlement.receipt;
 }
 
 function must<T>(value: T | null): T {

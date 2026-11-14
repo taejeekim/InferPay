@@ -48,6 +48,8 @@ export type Config = {
   // A test hook: one shop that cheats, so a run can show the buyer catching it. forge rewrites checks into its
   // favour with forged evidence; withhold drops every check that does not back its answer.
   readonly hook: { readonly shop: ProviderId; readonly mode: "forge" | "withhold" } | null;
+  // A test hook on any rail: exit once the shop's delivery is in the ledger, before the buyer verifies and pays.
+  readonly crashAfterDelivery: boolean;
 };
 
 export type ConfigError =
@@ -60,7 +62,7 @@ const PAYMENT_ENV = [
   "INFERPAY_GRANT_TOKEN",
 ];
 
-const CRASH_POINTS = ["after-sign", "after-broadcast", "after-rating-sign", "after-rating-broadcast"];
+const CRASH_POINTS = ["after-delivery", "after-sign", "after-broadcast", "after-rating-sign", "after-rating-broadcast"];
 
 const DEFAULT_NEAR_ASSET = "nep141:wrap.near";
 const DEFAULT_ROOT_ACCOUNT = "inferpay.testnet";
@@ -165,6 +167,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): { ok: true; value: Config } 
       payment,
       inference,
       hook,
+      crashAfterDelivery: crashRaw === "after-delivery",
     },
   };
 }

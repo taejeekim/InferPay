@@ -123,7 +123,7 @@ function ratingRow(rating, current, earlierRule) {
     h("td", {}, accountLink(rating.shop, firstLabel(rating.shop)), earlierRoot ? h("div", { class: "hint" }, "rated against an earlier root") : null),
     h("td", { class: "counts" }, ...checks),
     h("td", {}, accountLink(rating.rater, firstLabel(rating.rater))),
-    h("td", {}, txLink(rating.payment)),
+    h("td", {}, rating.payment === null ? h("span", { class: "low" }, "nothing paid") : txLink(rating.payment)),
   );
 }
 

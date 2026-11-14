@@ -11,7 +11,7 @@ import {
   type TaskId,
 } from "../domain.ts";
 import type { Inference } from "../inference/index.ts";
-import type { FailReason, Listing, Marketplace } from "../market/index.ts";
+import type { FailReason, Listing, Marketplace, Payout } from "../market/index.ts";
 import type { BuyerSeat } from "../roster.ts";
 import { oneLine } from "./assess.ts";
 import { percentOf, type Decision, type NoDeal, type Percent } from "./decide.ts";
@@ -31,6 +31,10 @@ export type PartOutcome =
       readonly account: AccountId;
       readonly listPrice: Price;
       readonly negotiation: "list-price" | "counter-accepted";
+      // The price agreed when the job opened, and what the buyer paid once it had verified the delivery.
+      readonly agreed: Price;
+      readonly paid: Price;
+      readonly payout: Payout["basis"];
       readonly answer: string;
       readonly verified: number;
       readonly mismatches: number;
@@ -142,7 +146,7 @@ export async function runTask(
       }
       onProgress?.(progress);
     });
-    const spent = outcome.kind === "outsourced" ? toUnits(outcome.job.paid.amount.amount) : seen.held;
+    const spent = outcome.kind === "outsourced" ? toUnits(outcome.job.payout.amount.amount) : seen.held;
     if (spent > allotted) throw new Error(`part ${index + 1} spent more than its allotment`);
     spends.push(spent);
     const row: ReceiptRow = {
@@ -243,9 +247,12 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null, fees: bigin
       return {
         kind: "bought",
         shop: job.providerId,
-        account: job.paid.recipient,
+        account: job.payTo,
         listPrice: decision.option.ask,
         negotiation: decision.negotiation,
+        agreed: job.quote,
+        paid: job.payout.amount,
+        payout: job.payout.basis,
         answer: job.answer.text,
         verified: counts.verified,
         mismatches: counts.mismatches,
@@ -255,7 +262,7 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null, fees: bigin
         stars: outcome.rating,
         feesYocto: fees === null ? null : fees.toString(),
         jobId: job.jobId,
-        tx: job.paid.rail === "near-testnet" ? job.paid.correlationId : null,
+        tx: job.settlement.kind === "paid" && job.settlement.receipt.rail === "near-testnet" ? job.settlement.receipt.correlationId : null,
       };
     }
     case "pending":

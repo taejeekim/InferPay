@@ -18,83 +18,68 @@ import type { PaymentReceipt } from "../payment/index.ts";
 import type { Answer } from "../providers/types.ts";
 import { fold, plan, reputationOf, type JobEvent, type JobState, type Order } from "./job.ts";
 
-test("an empty ledger and a ledger that skips payment are corrupt", () => {
+test("an empty ledger, a payment before delivery, and a second rating are corrupt", () => {
   assert.equal(fold([]).ok, false);
   const world = fixture();
-  const settledFirst: JobEvent = {
-    type: "payment-settled",
-    at: world.at,
-    receipt: world.receipt,
-  };
-  assert.equal(fold([settledFirst]).ok, false);
-  const ratedTwice = fold([...happy(world), rated(world, 4), rated(world, 5)]);
-  assert.equal(ratedTwice.ok, false);
+  assert.equal(fold([settled(world)]).ok, false);
+  assert.equal(fold([opened(world), intended(world)]).ok, false, "no payment before the delivery and its payout");
+  assert.equal(fold([opened(world), delivered(world), intended(world)]).ok, false, "no payment before the payout is decided");
+  assert.equal(fold([opened(world), payout(world, "0.02", 1, 1)]).ok, false, "no payout before delivery");
+  assert.equal(fold([...happy(world), rated(world, 5)]).ok, false);
 });
 
-test("fold walks crash points and plan names the missing step", () => {
+test("fold walks every crash point in deliver, verify, pay order and plan names the missing step", () => {
   const world = fixture();
-  const open = fold([opened(world)]);
-  assert.equal(open.ok, true);
-  if (!open.ok) return;
-  assert.equal(open.state.phase, "open");
-  assert.equal(plan(open.state).kind, "intend-payment");
+  const steps: readonly [readonly JobEvent[], JobState["phase"], string][] = [
+    [[opened(world)], "awaiting-delivery", "fulfil"],
+    [[opened(world), failed(world, true)], "awaiting-delivery", "fulfil"],
+    [[opened(world), delivered(world)], "delivered", "decide-payout"],
+    [throughPayout(world), "payable", "intend-payment"],
+    [[...throughPayout(world), intended(world)], "paying", "settle"],
+    [[...throughPayout(world), intended(world), pendingEvent(world)], "paying", "settle"],
+    [throughSettled(world), "settled", "done"],
+    [happy(world), "rated", "done"],
+  ];
+  for (const [events, phase, effect] of steps) {
+    const folded = state(fold(events));
+    assert.equal(folded.phase, phase, events.map((event) => event.type).join(" > "));
+    assert.equal(plan(folded).kind, effect, phase);
+  }
+  const paying = state(fold([...throughPayout(world), intended(world), pendingEvent(world)]));
+  const settle = plan(paying);
+  assert.ok(settle.kind === "settle" && paying.phase === "paying");
+  assert.equal(paying.correlationId, world.correlation);
+  assert.deepEqual(settle.transfer, { jobId: world.order.jobId, key: world.key, payer: world.order.payFrom, amount: world.quote, recipient: world.payTo });
 
-  const paying = fold([opened(world), intended(world)]);
-  assert.equal(paying.ok, true);
-  if (!paying.ok || paying.state.phase !== "paying") return;
-  const settle = plan(paying.state);
-  assert.equal(settle.kind, "settle");
-  if (settle.kind !== "settle") return;
-  assert.equal(settle.transfer.key, world.key);
+  const exhausted = state(fold([opened(world), failed(world, true), failed(world, true), failed(world, true)]));
+  assert.deepEqual(plan(exhausted), { kind: "stop", reason: { kind: "provider-failed", reason: "transport" } });
+  assert.equal(state(fold([opened(world), failed(world, false)])).phase, "abandoned");
+  assert.equal(fold([opened(world), delivered(world), failed(world, true)]).ok, false, "a delivered job never asks the shop again");
+});
 
-  const pending = fold([opened(world), intended(world), pendingEvent(world)]);
-  assert.equal(pending.ok, true);
-  if (!pending.ok || pending.state.phase !== "paying") return;
-  assert.equal(pending.state.correlationId, world.correlation);
-  assert.equal(plan(pending.state).kind, "settle");
+test("a forged delivery settles unpaid: no transfer is ever planned, and only a rating can follow", () => {
+  const world = fixture();
+  const forged: JobEvent = { type: "payout-decided", at: world.at, payout: { amount: world.price("0"), basis: { kind: "forged", forged: 1 } } };
+  const unpaid = state(fold([opened(world), delivered(world), forged]));
+  assert.ok(unpaid.phase === "settled");
+  assert.deepEqual(unpaid.settlement, { kind: "unpaid" });
+  assert.equal(plan(unpaid).kind, "done");
+  assert.equal(fold([opened(world), delivered(world), forged, intended(world)]).ok, false);
+  assert.equal(state(fold([opened(world), delivered(world), forged, rated(world, 1)])).phase, "rated");
+  const paidForgery: JobEvent = { type: "payout-decided", at: world.at, payout: { amount: world.quote, basis: { kind: "forged", forged: 1 } } };
+  assert.equal(fold([opened(world), delivered(world), paidForgery]).ok, false, "a forged payout above zero is corrupt");
+});
 
-  const paid = fold([opened(world), intended(world), settled(world)]);
-  assert.equal(paid.ok, true);
-  if (!paid.ok) return;
-  assert.equal(paid.state.phase, "paid");
-  assert.equal(plan(paid.state).kind, "fulfil");
-
-  const retrying = fold([opened(world), intended(world), settled(world), failed(world, true)]);
-  assert.equal(retrying.ok, true);
-  if (!retrying.ok || retrying.state.phase !== "paid") return;
-  assert.equal(retrying.state.failures.length, 1);
-  assert.equal(plan(retrying.state).kind, "fulfil");
-
-  const exhausted = fold([
-    opened(world),
-    intended(world),
-    settled(world),
-    failed(world, true),
-    failed(world, true),
-    failed(world, true),
-  ]);
-  assert.equal(exhausted.ok, true);
-  if (!exhausted.ok) return;
-  const stop = plan(exhausted.state);
-  assert.equal(stop.kind, "stop");
-  if (stop.kind !== "stop") return;
-  assert.equal(stop.reason.kind, "provider-failed");
-
-  const abandoned = fold([opened(world), intended(world), settled(world), failed(world, false)]);
-  assert.equal(abandoned.ok, true);
-  if (!abandoned.ok) return;
-  assert.equal(abandoned.state.phase, "abandoned");
-
-  const done = fold([...throughPaid(world), fulfilled(world)]);
-  assert.equal(done.ok, true);
-  if (!done.ok) return;
-  assert.equal(plan(done.state).kind, "done");
-
-  const scored = fold([...throughPaid(world), fulfilled(world), rated(world, 4)]);
-  assert.equal(scored.ok, true);
-  if (!scored.ok) return;
-  assert.equal(scored.state.phase, "rated");
-  assert.equal(plan(scored.state).kind, "done");
+test("a payout never exceeds the agreed price, and a partial payout is what the transfer carries", () => {
+  const world = fixture();
+  assert.equal(fold([opened(world), delivered(world), payout(world, "0.03", 1, 1)]).ok, false);
+  assert.equal(fold([opened(world), delivered(world), payout(world, "0.01", 3, 2)]).ok, false);
+  const half = state(fold([opened(world), delivered(world), payout(world, "0.01", 1, 2), intended(world)]));
+  const effect = plan(half);
+  assert.ok(effect.kind === "settle");
+  assert.equal(effect.transfer.amount.amount, "0.01");
+  const fullReceipt: JobEvent = { type: "payment-settled", at: world.at, receipt: world.receipt };
+  assert.equal(fold([opened(world), delivered(world), payout(world, "0.01", 1, 2), intended(world), fullReceipt]).ok, false, "the receipt must carry the payout");
 });
 
 test("a settled receipt must match the key, the recipient, and the quote", () => {
@@ -102,25 +87,25 @@ test("a settled receipt must match the key, the recipient, and the quote", () =>
   const otherKey = must(parseIdempotencyKey("other-key"), "key");
   const otherPay = must(parseAccountId("legal.stella.inferpay.near"), "recipient");
   const otherAmount = must(parseDecimalAmount("0.03"), "amount");
-  const matching = fold([opened(world), intended(world), settled(world)]);
+  const matching = fold([...throughPayout(world), intended(world), settled(world)]);
   assert.equal(matching.ok, true);
   assert.equal(fold([
-    opened(world),
+    ...throughPayout(world),
     intended(world),
     { type: "payment-settled", at: world.at, receipt: { ...world.receipt, key: otherKey } },
   ]).ok, false);
   assert.equal(fold([
-    opened(world),
+    ...throughPayout(world),
     intended(world),
     { type: "payment-settled", at: world.at, receipt: { ...world.receipt, recipient: otherPay } },
   ]).ok, false);
   assert.equal(fold([
-    opened(world),
+    ...throughPayout(world),
     intended(world),
     { type: "payment-settled", at: world.at, receipt: { ...world.receipt, amount: { ...world.quote, amount: otherAmount } } },
   ]).ok, false);
   assert.equal(fold([
-    opened(world),
+    ...throughPayout(world),
     intended(world),
     { type: "payment-settled", at: world.at, receipt: { ...world.receipt, amount: { ...world.quote, symbol: "USD" } } },
   ]).ok, false);
@@ -128,8 +113,8 @@ test("a settled receipt must match the key, the recipient, and the quote", () =>
 
 test("reputation counts finished jobs and averages only ratings", () => {
   const world = fixture();
-  const completed = state(fold([...throughPaid(world), fulfilled(world)]));
-  const ratedJob = state(fold([...throughPaid(world), fulfilled(world), rated(world, 4)]));
+  const completed = state(fold(throughSettled(world)));
+  const ratedJob = state(fold(happy(world)));
   const open = state(fold([opened(world)]));
   assert.deepEqual(reputationOf([open, completed]), { kind: "unrated", completedJobs: 1 });
   assert.deepEqual(reputationOf([completed, ratedJob]), {
@@ -156,7 +141,7 @@ function fixture() {
     jobId: newJobId(1_700_000_000_000),
     providerId: must(parseProviderId("disclosure"), "provider"),
     question: "Does the filing match?",
-    needs: [],
+    needs: [{ kind: "fact", topic: "operating-profit" }],
     offer: price(quote),
     budget: price(budget),
     payFrom: must(parseAccountId("researcher.kyle.inferpay.near"), "payFrom"),
@@ -179,7 +164,8 @@ function fixture() {
     inference: "stub",
     attestation: [],
   };
-  return { order, quote: price(quote), payTo, key, correlation, at, receipt, answer };
+  const decimal = (amount: string): Price => price(must(parseDecimalAmount(amount), amount));
+  return { order, quote: price(quote), price: decimal, payTo, key, correlation, at, receipt, answer };
 }
 
 function opened(world: ReturnType<typeof fixture>): JobEvent {
@@ -202,20 +188,28 @@ function failed(world: ReturnType<typeof fixture>, retryable: boolean): JobEvent
   return { type: "fulfil-failed", at: world.at, reason: "transport", retryable };
 }
 
-function fulfilled(world: ReturnType<typeof fixture>): JobEvent {
-  return { type: "fulfilled", at: world.at, answer: world.answer };
+function delivered(world: ReturnType<typeof fixture>): JobEvent {
+  return { type: "delivered", at: world.at, answer: world.answer };
+}
+
+function payout(world: ReturnType<typeof fixture>, amount: string, proven: number, needed: number): JobEvent {
+  return { type: "payout-decided", at: world.at, payout: { amount: world.price(amount), basis: { kind: "share", proven, needed } } };
 }
 
 function rated(world: ReturnType<typeof fixture>, stars: 1 | 2 | 3 | 4 | 5): JobEvent {
   return { type: "rated", at: world.at, rating: must(parseStars(stars), "stars") };
 }
 
-function throughPaid(world: ReturnType<typeof fixture>): JobEvent[] {
-  return [opened(world), intended(world), settled(world)];
+function throughPayout(world: ReturnType<typeof fixture>): JobEvent[] {
+  return [opened(world), delivered(world), payout(world, "0.02", 1, 1)];
+}
+
+function throughSettled(world: ReturnType<typeof fixture>): JobEvent[] {
+  return [...throughPayout(world), intended(world), settled(world)];
 }
 
 function happy(world: ReturnType<typeof fixture>): JobEvent[] {
-  return [...throughPaid(world), fulfilled(world), rated(world, 4)];
+  return [...throughSettled(world), rated(world, 4)];
 }
 
 function must<T>(value: T | null, label: string): T {

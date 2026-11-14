@@ -1,4 +1,4 @@
-import type { AccountId, CorrelationId, IdempotencyKey } from "../domain.ts";
+import type { AccountId, CorrelationId, IdempotencyKey, JobId } from "../domain.ts";
 import type { PaymentConfig } from "../config.ts";
 import type { Price } from "../domain.ts";
 import { createMockRail } from "./mock.ts";
@@ -21,6 +21,8 @@ export type PaymentStatus =
   | { readonly kind: "rejected"; readonly reason: string };
 
 export type Transfer = {
+  // The job the transfer pays for, so a crash message can name what to resume.
+  readonly jobId: JobId;
   readonly key: IdempotencyKey;
   readonly payer: AccountId;
   readonly amount: Price;

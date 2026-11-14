@@ -146,8 +146,21 @@ const receiptSchema = z.object({
   feeYocto: z.string().regex(/^\d+$/).nullable(),
 });
 
+const count = z.number().int().nonnegative();
+
+const payoutSchema = z.object({
+  amount: priceSchema,
+  basis: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("forged"), forged: count }),
+    z.object({ kind: z.literal("share"), proven: count, needed: count }),
+  ]),
+});
+
 const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("opened"), at: z.string(), order: orderSchema, quote: priceSchema, payTo: z.string() }),
+  z.object({ type: z.literal("fulfil-failed"), at: z.string(), reason: z.string(), retryable: z.boolean() }),
+  z.object({ type: z.literal("delivered"), at: z.string(), answer: answerSchema }),
+  z.object({ type: z.literal("payout-decided"), at: z.string(), payout: payoutSchema }),
   z.object({ type: z.literal("payment-intended"), at: z.string(), key: z.string() }),
   z.object({
     type: z.literal("payment-pending"),
@@ -157,8 +170,6 @@ const eventSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("payment-settled"), at: z.string(), receipt: receiptSchema }),
   z.object({ type: z.literal("payment-rejected"), at: z.string(), reason: z.string() }),
-  z.object({ type: z.literal("fulfil-failed"), at: z.string(), reason: z.string(), retryable: z.boolean() }),
-  z.object({ type: z.literal("fulfilled"), at: z.string(), answer: answerSchema }),
   z.object({ type: z.literal("rated"), at: z.string(), rating: z.number() }),
   z.object({ type: z.literal("rating-posted"), at: z.string(), tx: z.string().min(1) }),
 ]);
@@ -191,7 +202,12 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
       return { type: "payment-rejected", at, reason: event.reason };
     case "fulfil-failed":
       return { type: "fulfil-failed", at, reason: event.reason, retryable: event.retryable };
-    case "fulfilled": {
+    case "payout-decided": {
+      const amount = brandPrice(event.payout.amount);
+      if (!amount) return null;
+      return { type: "payout-decided", at, payout: { amount, basis: event.payout.basis } };
+    }
+    case "delivered": {
       if (!isModelId(event.answer.model)) return null;
       const attestation: CallAttestation[] = [];
       for (const item of event.answer.attestation) {
@@ -199,7 +215,7 @@ function brandEvent(event: ParsedEvent): JobEvent | null {
         attestation.push({ ...item, model: item.model });
       }
       return {
-        type: "fulfilled",
+        type: "delivered",
         at,
         answer: {
           text: event.answer.text,

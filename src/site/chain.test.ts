@@ -78,6 +78,9 @@ const RAW = {
         job_01M7BK17EQR5WSQH8AEMR1H7MD: { ":block": 106, "": "not json" },
         job_01M7BK17EQR5WSQH8AEMR1H7ME: rating({ withheld: 2, stars: 1 }, 107),
         job_01M7BK17EQR5WSQH8AEMR1H7MF: rating({ withheld: -1 }, 108),
+        // A forged delivery is paid nothing, so its rating names no payment.
+        job_01M7BK17EQR5WSQH8AEMR1H7MJ: rating({ payment: null, forged: 1, stars: 1 }, 109),
+        job_01M7BK17EQR5WSQH8AEMR1H7MK: rating({ payment: 7 }, 110),
         // Written before ratings recorded withheld keys: the CLI skips these.
         job_01M7BK17EQR5WSQH8AEMR1H7MG: rating({ withheld: undefined, stars: 1 }, 400),
         job_01M7BK17EQR5WSQH8AEMR1H7MH: rating({ withheld: undefined, stars: 6 }, 401),
@@ -97,7 +100,8 @@ test("the page keeps and skips the same SocialDB values as src/registry", () => 
   const ours = site.readRatings(RAW, RATERS);
   const theirs = readRatings(RAW, RATERS.map(account));
   assert.deepEqual(ours.map((item) => ({ ...item, block: undefined })), theirs.map((item) => ({ ...item, block: undefined })));
-  assert.equal(ours.length, 5);
+  assert.equal(ours.length, 6);
+  assert.deepEqual(ours.filter((item) => item.payment === null).map((item) => item.jobId), ["job_01M7BK17EQR5WSQH8AEMR1H7MJ"]);
   assert.ok(ours.every((item) => typeof item.withheld === "number"));
   const earlier = site.readEarlierRatings(RAW, RATERS);
   assert.deepEqual(earlier.map((item) => item.jobId), ["job_01M7BK17EQR5WSQH8AEMR1H7MG"], "only a valid rating without withheld is earlier");
@@ -131,15 +135,15 @@ test("the page reads one SocialDB value and each bot's balance, orders ratings n
   assert.equal(requests.filter((kind) => kind === "call_function").length, 1);
   assert.equal(requests.filter((kind) => kind === "view_account").length, 10);
   assert.equal(state.block, 999);
-  assert.deepEqual(state.ratings.map((item) => item.block), [300, 300, 107, 104, 100]);
+  assert.deepEqual(state.ratings.map((item) => item.block), [300, 300, 109, 107, 104, 100]);
   assert.deepEqual(state.earlier.map((item) => item.block), [400]);
   assert.equal(state.ratings[0]?.jobId, "job_01M7BMM6BHX9P6B7M5BDQ3JBF0", "the later job id first within a block");
   assert.equal(state.bots.find((bot) => bot.bot === "writer")?.balance, null);
   assert.equal(state.bots.find((bot) => bot.bot === "researcher")?.balance, 600000000000000000000000n);
   const insurance = state.shops.find((shop) => shop.providerId === "insurance");
-  // Stars 5, 5, 1, and 1; the earlier 1-star rating does not count. The prior of 0.70 counts as two ratings, so
-  // (2 x 0.70 + 4 x (3 - 1) / 4) / 6 = 0.57.
-  assert.deepEqual(insurance?.reputation, { ratings: 4, average: 3, quality: 57 });
+  // Stars 5, 5, 1, 1, and 1; the earlier 1-star rating does not count. The prior of 0.70 counts as two ratings, so
+  // (2 x 0.70 + 5 x (2.6 - 1) / 4) / 7 = 0.49.
+  assert.deepEqual(insurance?.reputation, { ratings: 5, average: 2.6, quality: 49 });
   assert.equal(insurance?.commitment?.root, ROOT);
   assert.equal(state.shops.find((shop) => shop.providerId === "legal")?.commitment, null);
 });

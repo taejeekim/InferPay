@@ -1,6 +1,6 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
-import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
+import type { Fulfilment, JobOrder, Provider } from "../types.ts";
 import { needsPrompt, openNeeds } from "../open.ts";
 import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { flagClauses, parseClauses } from "./flagClauses.ts";
@@ -48,12 +48,12 @@ export const legal: Provider = {
   },
   commitment: () => loadPlaybook().commitment,
   catalog: () => catalogOf(loadPlaybook().entries),
-  fulfil(paid, deps) {
-    return answerLegal(paid, deps.inference);
+  fulfil(order, deps) {
+    return answerLegal(order, deps.inference);
   },
 };
 
-async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
+async function answerLegal(order: JobOrder, inference: Inference): Promise<Fulfilment> {
   const playbook = loadPlaybook();
   const flag = tool({
     name: "flag_clauses",
@@ -70,9 +70,9 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
       "Call flag_clauses with every clause you cite, and name the playbook rule to test each one against.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
-      needsPrompt(paid.needs),
+      needsPrompt(order.needs),
     ].join(" ").trim(),
-    input: paid.question,
+    input: order.question,
     tools: [flag],
     parseOutput: (raw, toolResults) => {
       const text = raw.trim();
@@ -88,7 +88,7 @@ async function answerLegal(paid: PaidOrder, inference: Inference): Promise<Fulfi
     ok: true,
     answer: {
       text: result.value.text,
-      checks: openNeeds(result.value.checks, paid.needs, playbook),
+      checks: openNeeds(result.value.checks, order.needs, playbook),
       model: result.model,
       inference: inference.kind,
       attestation: result.attestation,

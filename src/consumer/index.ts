@@ -1,7 +1,7 @@
 import { newJobId, type JobId, type Price, type Stars } from "../domain.ts";
 import type { BuyerSeat } from "../roster.ts";
 import type { Inference } from "../inference/index.ts";
-import type { CompletedJob, FailReason, HireOutcome, MarketProgress, Marketplace } from "../market/index.ts";
+import type { FailReason, HireOutcome, MarketProgress, Marketplace, Order, SettledJob } from "../market/index.ts";
 import type { RatingPost } from "../registry/index.ts";
 import type { Need, PinnedCommitment } from "../commitment/index.ts";
 import { assess, type Needs } from "./assess.ts";
@@ -28,7 +28,7 @@ export type Progress =
 
 export type AskOutcome =
   | { readonly kind: "local"; readonly text: string }
-  | { readonly kind: "outsourced"; readonly job: CompletedJob; readonly rating: Stars }
+  | { readonly kind: "outsourced"; readonly job: SettledJob; readonly rating: Stars }
   | { readonly kind: "declined" }
   | { readonly kind: "pending"; readonly jobId: JobId; readonly why: "payment-pending" | "payment-uncertain" }
   | { readonly kind: "failed"; readonly reason: FailReason };
@@ -65,28 +65,26 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
       const providerId = decision.option.providerId;
       const listing = listings.find((item) => item.id === providerId);
       if (!listing) return { kind: "failed", reason: { kind: "unknown-provider", providerId } };
-      const outcome = await market.hire(
-        {
-          jobId: newJobId(),
-          providerId,
-          question,
-          needs: assessed.needs.byShop.get(providerId) ?? [],
-          offer: decision.agreed,
-          budget,
-          payFrom: buyer.account,
-          commitment: listing.commitment,
-        },
-        (progress) => onProgress?.(progress),
-      );
-      if (outcome.kind !== "completed") return fromUnfinished(outcome);
+      const order: Order = {
+        jobId: newJobId(),
+        providerId,
+        question,
+        needs: assessed.needs.byShop.get(providerId) ?? [],
+        offer: decision.agreed,
+        budget,
+        payFrom: buyer.account,
+        commitment: listing.commitment,
+      };
+      const outcome = await market.hire(order, withVerification(order, onProgress));
+      if (outcome.kind !== "settled") return fromUnfinished(outcome);
       const rating = await publishRating(market, outcome.job, onProgress);
       return { kind: "outsourced", job: outcome.job, rating };
     },
     async resume(jobId, onProgress) {
       const view = await market.job(jobId);
       if (view === null) return { kind: "failed", reason: { kind: "unknown-job", jobId } };
-      const outcome = await market.hire(view.order, (progress) => onProgress?.(progress));
-      if (outcome.kind !== "completed") return fromUnfinished(outcome);
+      const outcome = await market.hire(view.order, withVerification(view.order, onProgress));
+      if (outcome.kind !== "settled") return fromUnfinished(outcome);
       const rating = await publishRating(market, outcome.job, onProgress);
       return { kind: "outsourced", job: outcome.job, rating };
     },
@@ -94,7 +92,17 @@ export function createConsumerAgent(deps: { readonly market: Marketplace; readon
   return agent;
 }
 
-export function fromUnfinished(outcome: Exclude<HireOutcome, { kind: "completed" }>): AskOutcome {
+// The buyer verifies a delivery as soon as it is in hand, so its checks print before the payout they decide.
+function withVerification(order: Order, onProgress?: (progress: Progress) => void): (progress: MarketProgress) => void {
+  return (progress) => {
+    onProgress?.(progress);
+    if (progress.step !== "answer") return;
+    const checks = verifyChecks(progress.answer.checks, order.commitment, order.question, order.needs);
+    onProgress?.({ step: "verify", checks, needs: order.needs, commitment: order.commitment });
+  };
+}
+
+export function fromUnfinished(outcome: Exclude<HireOutcome, { kind: "settled" }>): AskOutcome {
   switch (outcome.kind) {
     case "waiting":
       return { kind: "pending", jobId: outcome.jobId, why: outcome.why };
@@ -109,12 +117,10 @@ export function fromUnfinished(outcome: Exclude<HireOutcome, { kind: "completed"
 
 async function publishRating(
   market: Marketplace,
-  job: CompletedJob,
+  job: SettledJob,
   onProgress?: (progress: Progress) => void,
 ): Promise<Stars> {
-  const checks = verifyChecks(job.answer.checks, job.commitment, job.question, job.needs);
-  onProgress?.({ step: "verify", checks, needs: job.needs, commitment: job.commitment });
-  const graded = grade(checks);
+  const graded = grade(verifyChecks(job.answer.checks, job.commitment, job.question, job.needs));
   const rating = job.rating ?? graded.stars;
   const { verified, unproven, forged, withheld } = graded.tally;
   // Rating again is how a resumed job finishes an on-chain post that a crash interrupted.

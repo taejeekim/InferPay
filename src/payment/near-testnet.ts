@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { isCorrelationId, isIdempotencyKey } from "../domain.ts";
+import { isCorrelationId, isIdempotencyKey, type JobId } from "../domain.ts";
 import type { PaymentConfig } from "../config.ts";
 import { actions, createNearClient, loadCredential, type SignedTx, type TxResult } from "../near/client.ts";
-import { sendOnce, type OutboxDeps } from "../near/outbox.ts";
+import { sendOnce, type CrashPoint, type OutboxDeps, type StoredTx } from "../near/outbox.ts";
 import type { PaymentRail, PaymentStatus, Transfer } from "./index.ts";
 import { serialize } from "./jsonl.ts";
 import { decimalToAtomic } from "./units.ts";
@@ -14,15 +14,19 @@ export function createNearTestnetRail(config: Extract<PaymentConfig, { kind: "ne
     chain: createNearClient(),
     credential: (payer) => loadCredential(config.credentialsDir, payer),
     crash: config.crash,
-    onCrash(point, tx) {
-      process.stderr.write(`INFERPAY_TEST_CRASH=${point}: exiting with key ${tx.key} and transaction ${tx.hash} stored\n`);
+    onCrash(point, tx, jobId) {
+      process.stderr.write(`INFERPAY_TEST_CRASH=${point}: exiting with job ${jobId}, key ${tx.key}, and transaction ${tx.hash} stored. Run: npx inferpay resume ${jobId}\n`);
       process.exit(137);
     },
   });
 }
 
+export type TestnetRailDeps = Omit<OutboxDeps, "onCrash"> & {
+  readonly onCrash: (point: CrashPoint, tx: StoredTx, jobId: JobId) => never;
+};
+
 // The idempotency key is the outbox key, so a retried settle can never move NEAR twice.
-export function createTestnetRail(deps: OutboxDeps): PaymentRail {
+export function createTestnetRail(deps: TestnetRailDeps): PaymentRail {
   const enqueue = serialize();
   return {
     kind: "near-testnet",
@@ -37,7 +41,8 @@ export function createTestnetRail(deps: OutboxDeps): PaymentRail {
   };
 }
 
-async function settle(deps: OutboxDeps, transfer: Transfer): Promise<PaymentStatus> {
+async function settle(rail: TestnetRailDeps, transfer: Transfer): Promise<PaymentStatus> {
+  const deps: OutboxDeps = { ...rail, onCrash: (point, tx) => rail.onCrash(point, tx, transfer.jobId) };
   const yocto = decimalToAtomic(transfer.amount.symbol, transfer.amount.amount);
   if (yocto === null) return { kind: "rejected", reason: `${transfer.amount.amount} ${transfer.amount.symbol} is not a NEAR amount` };
   const sent = await sendOnce(deps, {

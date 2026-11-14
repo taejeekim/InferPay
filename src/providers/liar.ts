@@ -10,8 +10,8 @@ export type HookMode = "forge" | "withhold";
 export function rigged(provider: Provider, mode: HookMode, report: (changed: number) => void): Provider {
   return {
     ...provider,
-    async fulfil(paid, deps) {
-      const result = await provider.fulfil(paid, deps);
+    async fulfil(order, deps) {
+      const result = await provider.fulfil(order, deps);
       if (!result.ok) return result;
       const sent = result.answer.checks;
       const checks = mode === "forge" ? sent.map(lie) : sent.filter(backs);

@@ -1,6 +1,7 @@
 import { join } from "node:path";
-import { isIsoTime, type AccountId, type ProviderId } from "./domain.ts";
+import { isIsoTime, type AccountId, type JobId, type ProviderId } from "./domain.ts";
 import { createConsumerAgent, type ConsumerAgent } from "./consumer/index.ts";
+import { payoutFor } from "./consumer/payout.ts";
 import { createInference, type Inference, type RoleAttestation } from "./inference/index.ts";
 import { createFileLedger, createMarketplace, type Marketplace } from "./market/index.ts";
 import { createPaymentRail, type PaymentRail } from "./payment/index.ts";
@@ -29,7 +30,8 @@ async function chainRegistry(payment: Extract<PaymentConfig, { kind: "near-testn
       credential: (account) => near.loadCredential(payment.credentialsDir, account),
       crash: payment.ratingCrash,
       onCrash(point, tx) {
-        process.stderr.write(`INFERPAY_TEST_CRASH=${point.replace("after-", "after-rating-")}: exiting with rating transaction ${tx.hash} stored\n`);
+        const jobId = tx.key.replace(/^rating:/, "");
+        process.stderr.write(`INFERPAY_TEST_CRASH=${point.replace("after-", "after-rating-")}: exiting with job ${jobId} rated and its rating transaction ${tx.hash} stored. Run: npx inferpay resume ${jobId}\n`);
         process.exit(137);
       },
     },
@@ -61,6 +63,15 @@ export async function createRuntime(config: Config, onChain?: Registry, onHook?:
     inference,
     providers: bound.providers,
     registry,
+    payout: payoutFor,
+    ...(config.crashAfterDelivery
+      ? {
+          afterDelivery(jobId: JobId) {
+            process.stderr.write(`INFERPAY_TEST_CRASH=after-delivery: exiting with job ${jobId} delivered and not yet verified or paid. Run: npx inferpay resume ${jobId}\n`);
+            process.exit(137);
+          },
+        }
+      : {}),
     clock() {
       const now = new Date().toISOString();
       if (!isIsoTime(now)) throw new Error("clock produced a bad timestamp");

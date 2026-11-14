@@ -1,6 +1,6 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
-import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
+import type { Fulfilment, JobOrder, Provider } from "../types.ts";
 import { needsPrompt, openNeeds } from "../open.ts";
 import { catalogOf, parseAssertedChecks, type Figure } from "../../commitment/index.ts";
 import { crossValidate, parseClaims } from "./crossValidate.ts";
@@ -52,12 +52,12 @@ export const disclosure: Provider = {
   },
   commitment: () => loadFacts().commitment,
   catalog: () => catalogOf(loadFacts().entries),
-  fulfil(paid, deps) {
-    return answerDisclosure(paid, deps.inference);
+  fulfil(order, deps) {
+    return answerDisclosure(order, deps.inference);
   },
 };
 
-async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
+async function answerDisclosure(order: JobOrder, inference: Inference): Promise<Fulfilment> {
   const data = loadFacts();
   const validate = tool({
     name: "cross_validate_numbers",
@@ -74,9 +74,9 @@ async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<
       "Call cross_validate_numbers with every figure you cite.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
-      needsPrompt(paid.needs),
+      needsPrompt(order.needs),
     ].join(" ").trim(),
-    input: paid.question,
+    input: order.question,
     tools: [validate],
     parseOutput: (raw, toolResults) => {
       const text = raw.trim();
@@ -92,7 +92,7 @@ async function answerDisclosure(paid: PaidOrder, inference: Inference): Promise<
     ok: true,
     answer: {
       text: result.value.text,
-      checks: openNeeds(result.value.checks, paid.needs, data),
+      checks: openNeeds(result.value.checks, order.needs, data),
       model: result.model,
       inference: inference.kind,
       attestation: result.attestation,

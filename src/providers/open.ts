@@ -36,5 +36,5 @@ function openNeed<E extends Entry>(need: Need, data: Dataset<E>): AssertedCheck[
 export function needsPrompt(needs: readonly Need[]): string {
   if (needs.length === 0) return "";
   const named = needs.map((need) => (need.kind === "rule" ? `${need.id} on "${need.clause}"` : catalogName(need)));
-  return `The buyer paid for these keys and needs each one in your tool call: ${named.join("; ")}.`;
+  return `The buyer pays only for the keys you open, and needs each one in your tool call: ${named.join("; ")}.`;
 }

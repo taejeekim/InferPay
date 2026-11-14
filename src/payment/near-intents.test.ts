@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAccountId, parseAssetId, parseDecimalAmount, parseIdempotencyKey } from "../domain.ts";
+import { newJobId, parseAccountId, parseAssetId, parseDecimalAmount, parseIdempotencyKey } from "../domain.ts";
 import { mapThrown, mapWireStatus, type WireStatus } from "./near-intents.ts";
 
 test("transfer statuses stay inside PaymentStatus", () => {
@@ -13,6 +13,7 @@ test("transfer statuses stay inside PaymentStatus", () => {
       amount: must(parseDecimalAmount("0.02")),
     },
     recipient: must(parseAccountId("provider.near")),
+    jobId: newJobId(1_700_000_000_000),
   };
   const body = (status: string, failure_code: string | null = null): WireStatus => ({
     status,

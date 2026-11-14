@@ -80,7 +80,7 @@ test("all skips a job file that read would reject", async () => {
   }
 });
 
-test("a fulfilled answer keeps its attestation, and older lines read as unattested", async () => {
+test("a delivered answer keeps its attestation, and older lines read as unattested", async () => {
   const root = await mkdtemp(join(tmpdir(), "inferpay-"));
   try {
     const model = parseModelId("z-ai/glm-5.3-flash");
@@ -93,15 +93,15 @@ test("a fulfilled answer keeps its attestation, and older lines read as unattest
       { verdict: "unverified", model, completionId: "chatcmpl-2", reason: "hash-mismatch", detail: "response hash" },
     ] as const;
     const answer = { text: "Covered.", checks: [], model, inference: "near-ai", attestation } as const;
-    await ledger.append(attested, { type: "fulfilled", at, answer });
-    assert.deepEqual(await ledger.read(attested), [{ type: "fulfilled", at, answer }]);
+    await ledger.append(attested, { type: "delivered", at, answer });
+    assert.deepEqual(await ledger.read(attested), [{ type: "delivered", at, answer }]);
 
     const older = newJobId(1_700_000_000_001);
     await mkdir(join(root, "jobs"), { recursive: true });
-    const line = JSON.stringify({ type: "fulfilled", at, answer: { text: "Covered.", checks: [], model, inference: "stub" } });
+    const line = JSON.stringify({ type: "delivered", at, answer: { text: "Covered.", checks: [], model, inference: "stub" } });
     await writeFile(join(root, "jobs", `${older}.jsonl`), `${line}\n`);
     const [event] = await ledger.read(older);
-    assert.deepEqual(event?.type === "fulfilled" && event.answer.attestation, []);
+    assert.deepEqual(event?.type === "delivered" && event.answer.attestation, []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

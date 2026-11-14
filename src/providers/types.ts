@@ -1,6 +1,5 @@
 import type { AccountId, AssetId, DecimalAmount, JobId, ModelId, ParentAccount, ProviderId } from "../domain.ts";
 import type { Brand } from "../domain.ts";
-import type { PaymentReceipt } from "../payment/index.ts";
 import type { Inference } from "../inference/index.ts";
 import type { CallAttestation } from "../inference/attest.ts";
 import type { AssertedCheck, CatalogItem, Commitment, Need } from "../commitment/index.ts";
@@ -33,15 +32,16 @@ export type ProviderListing = {
   readonly catalog: readonly CatalogItem[];
 };
 
-export type PaidOrder = Brand<
+// An open job at an agreed price. The shop delivers before it is paid, and the buyer pays for what it verifies.
+export type JobOrder = Brand<
   {
     readonly jobId: JobId;
     readonly question: string;
     // The keys the buyer requires opened in the answer.
     readonly needs: readonly Need[];
-    readonly receipt: PaymentReceipt;
+    readonly quote: PriceFields;
   },
-  "PaidOrder"
+  "JobOrder"
 >;
 
 export type Fulfilment =
@@ -55,5 +55,5 @@ export interface Provider {
   readonly describe: Omit<ProviderListing, "price" | "owner" | "payTo" | "declared" | "catalog">;
   commitment(): Commitment;
   catalog(): readonly CatalogItem[];
-  fulfil(paid: PaidOrder, deps: { readonly inference: Inference }): Promise<Fulfilment>;
+  fulfil(order: JobOrder, deps: { readonly inference: Inference }): Promise<Fulfilment>;
 }

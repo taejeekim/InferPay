@@ -1,6 +1,6 @@
 import { parseDecimalAmount, parseProviderId } from "../../domain.ts";
 import { tool, type Inference } from "../../inference/index.ts";
-import type { Fulfilment, PaidOrder, Provider } from "../types.ts";
+import type { Fulfilment, JobOrder, Provider } from "../types.ts";
 import { needsPrompt, openNeeds } from "../open.ts";
 import { catalogOf, parseAssertedChecks } from "../../commitment/index.ts";
 import { lookupCoverage, parseFactClaims } from "./lookup.ts";
@@ -51,12 +51,12 @@ export const insurance: Provider = {
   },
   commitment: () => loadCoverage().commitment,
   catalog: () => catalogOf(loadCoverage().entries),
-  fulfil(paid, deps) {
-    return answerInsurance(paid, deps.inference);
+  fulfil(order, deps) {
+    return answerInsurance(order, deps.inference);
   },
 };
 
-async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<Fulfilment> {
+async function answerInsurance(order: JobOrder, inference: Inference): Promise<Fulfilment> {
   const data = loadCoverage();
   const lookup = tool({
     name: "lookup_coverage",
@@ -73,9 +73,9 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
       "Call lookup_coverage with every coverage claim you cite.",
       "Then answer in one sentence.",
       "Do not restate the tool's verdicts.",
-      needsPrompt(paid.needs),
+      needsPrompt(order.needs),
     ].join(" ").trim(),
-    input: paid.question,
+    input: order.question,
     tools: [lookup],
     parseOutput: (raw, toolResults) => {
       const text = raw.trim();
@@ -91,7 +91,7 @@ async function answerInsurance(paid: PaidOrder, inference: Inference): Promise<F
     ok: true,
     answer: {
       text: result.value.text,
-      checks: openNeeds(result.value.checks, paid.needs, data),
+      checks: openNeeds(result.value.checks, order.needs, data),
       model: result.model,
       inference: inference.kind,
       attestation: result.attestation,

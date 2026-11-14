@@ -200,7 +200,7 @@ test("a root read from chain names its block, its SocialDB key, and a link to th
   const profitOnly = NEEDS.slice(0, 1);
   assert.deepEqual(verifyBlock([figure(PROFIT, 12.2, "match")], pinned, "near-testnet", profitOnly).slice(3), [
     `          root      ${SHOP.commitment.root.slice(0, 12)}…${SHOP.commitment.root.slice(-4)}  2 leaves  inferpay-keyed-merkle-sha256-v1`,
-    "          from      NEAR testnet, written at block 277573383 and read before paying",
+    "          from      NEAR testnet, written at block 277573383 and read before the job opened",
     "          key       disclosure.david.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet",
     "          link      https://testnet.nearblocks.io/address/disclosure.david.inferpay.testnet",
   ]);

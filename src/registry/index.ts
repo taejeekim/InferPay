@@ -7,8 +7,9 @@ export type OnChainRating = {
   readonly rater: AccountId;
   readonly shop: AccountId;
   readonly stars: Stars;
-  // The transfer that paid for the job, so a reader can check the rater bought what it rated.
-  readonly payment: string;
+  // The transfer that paid for the job, so a reader can check the rater bought what it rated. Null when the buyer
+  // verified the delivery and owed nothing, as after a forged check.
+  readonly payment: string | null;
   // The root the checks were verified against, or null when the shop had published none.
   readonly root: Hash | null;
   readonly verified: number;

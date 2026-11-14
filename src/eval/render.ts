@@ -1,3 +1,5 @@
+import { formatUnits } from "../domain.ts";
+import { units } from "./cli.ts";
 import type { PolicyName, Report } from "./measure.ts";
 
 const POLICY_LABEL: Record<PolicyName, string> = {
@@ -29,13 +31,23 @@ export function renderReport(report: Report): string {
     if (shop === null) Object.assign(total, sums);
     lines.push(row([shop ?? "all", String(sums.questions), String(sums.withLie), String(sums.planted), `${sums.caught} of ${sums.planted}`, `${sums.one} of ${sums.withLie}`, String(sums.flags)], FORGERY_WIDTHS));
   }
+  const lying = forgery.filter((item) => item.planted > 0);
   lines.push(
+    `NEAR paid to a shop in a run with a planted lie: ${sumDecimal(lying.map((item) => item.lyingPaid))} across ${lying.length} runs.`,
     "",
     "2. Omission. The same purchases with the withhold hook: the shop drops checks that do not back it.",
-    row(["shop", "question", "honest", "keys withheld", "withholding"], OMISSION_WIDTHS),
+    row(["shop", "question", "honest", "paid", "withheld", "withholding", "paid"], OMISSION_WIDTHS),
   );
   for (const item of omission) {
-    lines.push(row([item.shop, clip(item.question, 46), stars(item.honestRating), String(item.withheld), stars(item.withholdingRating)], OMISSION_WIDTHS));
+    lines.push(row([
+      item.shop,
+      clip(item.question, 32),
+      stars(item.honestRating),
+      item.honestPaid,
+      String(item.withheld),
+      stars(item.withholdingRating),
+      item.withholdingPaid,
+    ], OMISSION_WIDTHS));
   }
   lines.push(
     "",
@@ -60,7 +72,7 @@ export function renderReport(report: Report): string {
   return lines.join("\n");
 }
 
-const OMISSION_WIDTHS = [12, 47, 7, 14, 11] as const;
+const OMISSION_WIDTHS = [12, 33, 7, 9, 9, 12, 8] as const;
 const FORGERY_WIDTHS = [12, 10, 16, 13, 10, 10, 18] as const;
 const ECON_WIDTHS = [8, 12, 12, 17, 12, 10] as const;
 const REP_WIDTHS = [58, 6, 9, 11] as const;
@@ -77,6 +89,10 @@ function clip(text: string, width: number): string {
   return text.length <= width ? text : `${text.slice(0, width - 1)}…`;
 }
 
+function sumDecimal(values: readonly string[]): string {
+  return formatUnits(values.reduce((total, value) => total + units(value), 0n));
+}
+
 function sum(values: readonly number[]): number {
   return values.reduce((a, b) => a + b, 0);
 }
@@ -85,7 +101,7 @@ const NOTES = [
   "a. Recorded questions replayed by the stub, not a benchmark of model accuracy. The liar is a test hook that rewrites each check that is not a match or a raised flag into one and cannot change its committed root. Caught means the buyer printed FORGED for it.",
   "b. verified means at least one needed key opened in the answer's favour: a buyer-verified match, or a rule raised or cleared. Baselines reuse the decide block's options and list prices. always buy pays the best-covering affordable shop its list price and credits it the checks that shop returns when bought at 1.00 NEAR. Both baselines answer alone at confidence >= 0.50, else give no answer. always buy pays list price where InferPay judged it not worth paying, so it leaves fewer questions unanswered.",
   "c. Lies planted are checks whose asserted verdict differs from the honest run's, read from jobs/*.jsonl. A purchase where every check was already a match or a raised flag leaves the liar nothing to forge, and the run prints a hook line saying so. Every shop has a recorded purchase with something to forge.",
-  "d. keys withheld is the WITHHELD count the buyer printed. A withheld key costs 2 stars and a proven mismatch 1, so withholding rates below the honest run whenever it hides a needed key.",
+  "d. withheld is the WITHHELD count the buyer printed. A withheld key costs 2 stars and a proven mismatch 1, so withholding rates below the honest run whenever it hides a needed key. paid is the payout in NEAR: the agreed price times the share of needed keys the shop opened, so each withheld key also costs its share of the price. A forged check voids the payout.",
   "e. Reputation rows are the shop's rep in the decide block of the next job; job two runs with the liar.",
 ];
 

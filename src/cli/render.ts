@@ -3,7 +3,7 @@ import type { HookReport } from "../runtime.ts";
 import { formatUnits, toUnits, type Price } from "../domain.ts";
 import type { ForestRow, Roster } from "../roster.ts";
 import { LOCAL_FLOOR, type Decision, type Needs, type Option, type PricedOption, type Progress } from "../consumer/index.ts";
-import type { FailReason, JobView, Listing } from "../market/index.ts";
+import type { FailReason, JobView, Listing, Payout } from "../market/index.ts";
 import {
   canonical,
   catalogName,
@@ -60,6 +60,10 @@ export function progressLine(progress: Progress, rail: PaymentRail["kind"]): str
   switch (progress.step) {
     case "decide":
       return decideBlock(progress.decision, progress.needs, "budget");
+    case "opened":
+      return openedBlock(progress);
+    case "payout":
+      return payoutBlock(progress).join("\n");
     case "pay":
       return payBlock(progress, rail);
     case "answer":
@@ -144,26 +148,29 @@ export function jobText(view: JobView): string {
           ...pinnedRows(event.order.commitment).map(under),
           under(`needs      ${event.order.needs.length === 0 ? "none" : event.order.needs.map(needText).join("; ")}`),
         ].join("\n");
-      case "payment-intended":
-        return `${label}${time}  key ${event.key}`;
-      case "payment-pending":
-        return `${label}${time}  correlation ${event.correlationId ?? "none"}${event.uncertain ? " uncertain" : ""}`;
-      case "payment-settled":
-        return `${label}${time}  correlation ${event.receipt.correlationId}`;
-      case "payment-rejected":
-        return `${label}${time}  ${event.reason}`;
-      case "fulfil-failed":
-        return `${label}${time}  ${event.reason}`;
-      case "fulfilled": {
+      case "delivered": {
         const checks = verifyChecks(event.answer.checks, view.order.commitment, view.order.question, view.order.needs);
         const { needs } = view.order;
         const withheld = tally(checks).withheld;
         return [
           `${label}${time}  ${plural(event.answer.checks.length, "check", "checks")}; ${needs.length - withheld} of ${plural(needs.length, "needed key", "needed keys")} opened, ${withheld} withheld`,
+          under(`answer     ${event.answer.text}`),
           ...attestLines("specialist", event.answer.attestation).map(under),
           ...checks.flatMap(proofRows).map(under),
         ].join("\n");
       }
+      case "payout-decided":
+        return [`${label}${time}  ${payoutHeadline(event.payout, view.state.quote)}`, under(payoutSum(event.payout, view.state.quote))].join("\n");
+      case "payment-intended":
+        return `${label}${time}  key ${event.key}`;
+      case "payment-pending":
+        return `${label}${time}  correlation ${event.correlationId ?? "none"}${event.uncertain ? " uncertain" : ""}`;
+      case "payment-settled":
+        return `${label}${time}  ${money(event.receipt.amount)} to ${event.receipt.recipient}  correlation ${event.receipt.correlationId}`;
+      case "payment-rejected":
+        return `${label}${time}  ${event.reason}`;
+      case "fulfil-failed":
+        return `${label}${time}  ${event.reason}`;
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
       case "rating-posted":
@@ -195,6 +202,8 @@ export function failureText(reason: FailReason): string {
       return `${reason.providerId} turned the order down before payment: its dataset no longer seals to the root it published. The shop publishes again with: npx inferpay testnet setup`;
     case "no-commitment":
       return `${reason.providerId} has published no root, so nothing it sent could be verified. No job was opened and no NEAR moved.`;
+    case "no-needs":
+      return `The buyer named no key for ${reason.providerId} to open, so nothing it sent could be verified. No job was opened and no NEAR moved.`;
     case "offer-refused":
       return `${reason.providerId} refused ${reason.offer.amount} ${reason.offer.symbol}.`;
     case "order-conflict":
@@ -235,9 +244,17 @@ export function usageText(): string {
     "                                   flag it has nothing to forge, and the run prints a hook line saying so",
     "  INFERPAY_TEST_WITHHOLD=<shop id> that shop drops each check that does not back its answer; the buyer should",
     "                                   mark each needed key it dropped WITHHELD, at 2 stars each",
-    "  INFERPAY_TEST_CRASH=<point>      near-testnet only: exit at that point, then run inferpay resume <jobId>;",
-    "                                   after-sign or after-broadcast stops the payment,",
-    "                                   after-rating-sign or after-rating-broadcast stops the on-chain rating",
+    "  INFERPAY_TEST_CRASH=<point>      exit at that point, then run inferpay resume <jobId>; the job line and the",
+    "                                   crash message print the id. after-delivery, on any rail, stops once the",
+    "                                   shop's answer is in the ledger, before the buyer verifies and pays;",
+    "                                   near-testnet only: after-sign or after-broadcast stops the payment,",
+    "                                   after-rating-sign or after-rating-broadcast stops the on-chain rating.",
+    "                                   A stored payment whose nonce another payment from the same bot took",
+    "                                   settles only once the stored transaction expires, about a day later",
+    "",
+    "limits:",
+    "  The shop delivers before it is paid, so the shop carries the risk that the buyer never pays. A real",
+    "  deployment would hold the agreed price in an escrow that releases on a verified proof. This one has none.",
   ].join("\n");
 }
 
@@ -422,6 +439,47 @@ function near(units: bigint): string {
   return `${whole ?? "0"}.${(frac ?? "").slice(0, 6).padEnd(3, "0")}`;
 }
 
+function openedBlock(progress: Extract<Progress, { step: "opened" }>): string {
+  const head = progress.resumed
+    ? `${progress.jobId} resumed from this machine's ledger, with ${progress.providerId} at the agreed ${money(progress.quote)}`
+    : `${progress.jobId} opened with ${progress.providerId} at the agreed ${money(progress.quote)}`;
+  return [
+    line("job", head),
+    field("order", "the shop delivers first; the buyer verifies every proof, then pays for what it verified"),
+  ].join("\n");
+}
+
+// The payout rule as it applies to this job, with the numbers filled in. src/consumer/payout.ts applies it.
+function payoutBlock(progress: Extract<Progress, { step: "payout" }>): string[] {
+  const { payout, quote } = progress;
+  const rows = [
+    line("payout", payoutHeadline(payout, quote)),
+    field("rule", "nothing if any check is forged; else agreed x proven / needed, rounded down;"),
+    field("", "proven counts needed keys opened to a verified entry, mismatches included, empty slots not"),
+    field("sum", payoutSum(payout, quote)),
+  ];
+  if (toUnits(payout.amount.amount) === 0n) {
+    rows.push(line("pay", payout.basis.kind === "forged"
+      ? "nothing sent: a forged check voids the payout, and no transfer is ever attempted for this job"
+      : "nothing sent: the shop opened no needed key to an entry, and no transfer is ever attempted for this job"));
+  }
+  return rows;
+}
+
+function payoutHeadline(payout: Payout, quote: Price): string {
+  if (payout.basis.kind === "forged") {
+    return `nothing of the agreed ${money(quote)}: ${plural(payout.basis.forged, "check", "checks")} FORGED`;
+  }
+  const { proven, needed } = payout.basis;
+  const paid = toUnits(payout.amount.amount) === 0n ? "nothing" : money(payout.amount);
+  return `${paid} of the agreed ${money(quote)}: ${proven} of ${plural(needed, "needed key", "needed keys")} opened to an entry and verified`;
+}
+
+function payoutSum(payout: Payout, quote: Price): string {
+  if (payout.basis.kind === "forged") return `a forged check leaves nothing owed: 0 ${quote.symbol}`;
+  return `${quote.amount} x ${payout.basis.proven} / ${payout.basis.needed} = ${money(payout.amount)}`;
+}
+
 function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRail["kind"]): string {
   const money = `${progress.amount.amount} ${progress.amount.symbol}`;
   const rows = [
@@ -429,7 +487,6 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     field("from", progress.payer),
     field("to", progress.recipient),
     field("via", viaText(rail)),
-    field("job", progress.jobId),
   ];
   if (rail === "near-testnet" && progress.correlationId) rows.push(field("tx", txUrl(progress.correlationId)));
   if (progress.feeYocto !== null) rows.push(field("fee", `${fee(BigInt(progress.feeYocto))} NEAR gas on top of the price, from the transaction outcome`));
@@ -439,7 +496,9 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
   }
   if (progress.status === "uncertain") {
     rows.push(field("note", "resume rebroadcasts the same signed transaction, so this transfer cannot be paid twice;"));
-    rows.push(field("", "it settles once that transaction is found on chain, or is signed again once it has expired"));
+    rows.push(field("", "it settles once that transaction is found on chain, or is signed again once it has expired."));
+    rows.push(field("", "If another payment from this bot took its nonce, that is only after it expires, about a day."));
+    rows.push(field("resume", `npx inferpay resume ${progress.jobId}`));
   }
   if (progress.transfer === "skipped" && progress.status === "settled") {
     rows.push(field("note", "already paid, transfer skipped"));
@@ -689,7 +748,7 @@ function commitmentRows(pinned: PinnedCommitment, rail: PaymentRail["kind"]): st
   }
   return [
     root,
-    row("from", `NEAR testnet, written at block ${source.block} and read before paying`),
+    row("from", `NEAR testnet, written at block ${source.block} and read before the job opened`),
     row("key", `${commitmentKey(source.account)} in SocialDB ${source.contract}`),
     row("link", accountUrl(source.account)),
   ];
@@ -822,7 +881,7 @@ function partDoneRows(progress: Extract<TaskProgress, { step: "part-done" }>): s
 }
 
 export function receiptBlock(receipt: Receipt, saved: string): string {
-  const header = ["#", "DONE BY", "LIST", "PAID", "CHECK"];
+  const header = ["#", "DONE BY", "LIST", "AGREED", "PAID", "CHECK"];
   const cells = receipt.parts.map((row, index) => [String(index + 1), ...receiptCells(row)]);
   const [head, ...lines] = table([header, ...cells]).split("\n");
   const pad = "".padEnd(String(receipt.parts.length).length + 2);
@@ -844,7 +903,7 @@ export function receiptBlock(receipt: Receipt, saved: string): string {
   ].join("\n");
 }
 
-function receiptCells(row: ReceiptRow): [string, string, string, string] {
+function receiptCells(row: ReceiptRow): [string, string, string, string, string] {
   const { outcome, spent } = row;
   const paid = toUnits(spent.amount) === 0n ? "nothing" : money(spent);
   switch (outcome.kind) {
@@ -852,17 +911,18 @@ function receiptCells(row: ReceiptRow): [string, string, string, string] {
       return [
         outcome.account,
         outcome.listPrice.amount,
-        `${money(spent)} ${outcome.negotiation === "list-price" ? "at list" : "on counter"}`,
+        `${outcome.agreed.amount} ${outcome.negotiation === "list-price" ? "at list" : "on counter"}`,
+        paid,
         boughtCheck(outcome),
       ];
     case "answered-locally":
-      return ["the buyer itself", "-", paid, `own answer, confidence ${share(outcome.confidence)}`];
+      return ["the buyer itself", "-", "-", paid, `own answer, confidence ${share(outcome.confidence)}`];
     case "declined":
-      return ["nobody", "-", paid, `declined: ${declineText(outcome.because)}`];
+      return ["nobody", "-", "-", paid, `declined: ${declineText(outcome.because)}`];
     case "pending":
-      return ["-", "-", `${paid} held`, "PENDING: payment not settled"];
+      return ["-", "-", "-", `${paid} held`, "PENDING: payment not settled"];
     case "failed":
-      return ["-", "-", paid, "FAILED"];
+      return ["-", "-", "-", paid, "FAILED"];
     default: {
       const unreachable: never = outcome;
       return unreachable;

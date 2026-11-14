@@ -158,7 +158,7 @@
 
   <div class="needs-panel" aria-labelledby="needs-title">
     <h3 id="needs-title">The keys the buyer needed</h3>
-    <p class="lede">Before it pays, the buyer names the keys from the shop's catalog that a right answer needs, and the shop must open each one. A needed key the shop does not open is withheld and costs 2 stars, more than a wrong value costs, so for any number of needed keys hiding an entry rates lower than showing it. Any honest delivery rates at least 2, above a forgery. A check on a key the buyer did not ask for counts neither for nor against the shop.</p>
+    <p class="lede">Before the job opens, the buyer names the keys from the shop's catalog that a right answer needs, and the shop must open each one. A needed key the shop does not open is withheld and costs 2 stars, more than a wrong value costs, so for any number of needed keys hiding an entry rates lower than showing it. Any honest delivery rates at least 2, above a forgery. A check on a key the buyer did not ask for counts neither for nor against the shop.</p>
     <p class="kv-line"><span class="label">Question</span> <q id="n-question"></q></p>
     <p class="kv-line"><span class="label">Needed keys</span> <span id="n-needs" class="mono"></span></p>
     <div class="table-wrap"><table id="n-checks">
@@ -201,7 +201,7 @@
 
 <section id="run" class="wrap" aria-labelledby="run-title">
   <h2 id="run-title">A recorded run</h2>
-  <p class="lede">One live run from 2026-11-13, recorded before the buyer named the keys it needs. Today's CLI prints more: <code>needs</code> rows in the decide block, which needed keys the shop opened or withheld in the checks block, and network fees in the pay and rate blocks. This run used live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
+  <p class="lede">One live run from 2026-11-13, recorded before the buyer named the keys it needs. Today's CLI prints more: <code>needs</code> rows in the decide block, which needed keys the shop opened or withheld in the checks block, and network fees in the pay and rate blocks. It also takes delivery and verifies before it pays: the job, answer, and checks print before a payout block and the pay block. This run used live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
   <ol class="captions">
     <li><strong>decide.</strong> The buyer rated its own confidence at 0.10, so answering alone was worth 0.005 NEAR. The insurance shop nets +0.025, so the buyer paid the list price.</li>
     <li><strong>pay and attest.</strong> A native NEAR transfer from <code>editor.kyle.inferpay.testnet</code>, with its explorer link. Each model call was signed inside NEAR AI Cloud's TEE, and the buyer checked the signature against the attestation report.</li>
@@ -249,9 +249,10 @@ attest    buyer 1/1 calls verified
   <h3>Real</h3>
   <ul>
     <li>The buy-or-answer decision, the one counter-offer, the check verification, and the grade run in every mode.</li>
-    <li>The grade counts only the keys the buyer named before it paid. It starts at 5 and loses 1 per mismatch, 1 per empty slot, 1 per needed key opened with no claim, and 2 per needed key withheld. It is at least 2 unless a check is forged, and 1 if any check is forged.</li>
+    <li>The shop delivers first, and the buyer verifies before it pays. It pays nothing if any check is forged, and otherwise the agreed price times the share of needed keys the shop opened to an entry it verified, so a withheld key costs the shop its share. A rating with nothing paid shows <q>nothing paid</q> in the Payment column.</li>
+    <li>The grade counts only the keys the buyer named before the job opened. It starts at 5 and loses 1 per mismatch, 1 per empty slot, 1 per needed key opened with no claim, and 2 per needed key withheld. It is at least 2 unless a check is forged, and 1 if any check is forged.</li>
     <li><code>--budget</code> bounds the price paid to shops. On testnet the bot also pays network fees for the payment and the rating, and the CLI prints them separately.</li>
-    <li>On the testnet rail, payment is a native NEAR transfer from the buyer bot's own sub-account, and the buyer reads each shop's dataset hash from NEAR testnet before it pays.</li>
+    <li>On the testnet rail, payment is a native NEAR transfer from the buyer bot's own sub-account, and the buyer reads each shop's dataset hash from NEAR testnet before it opens a job.</li>
     <li>Reputation on the testnet rail comes from ratings that the buyer bots write on NEAR testnet. The 18 accounts are real named accounts on testnet, created through the faucet.</li>
     <li>With a NEAR AI Cloud key, answers come from NEAR AI Cloud, and each model response is checked against NEAR AI's TEE attestation report.</li>
   </ul>
@@ -265,9 +266,9 @@ attest    buyer 1/1 calls verified
     <li>The sample datasets and their salts are in the repository, so they are not secret. That is why this page can show a proof.</li>
     <li>Ratings can be gamed. Anyone can create an account and write a rating. The CLI and this page read only the ratings of the buyer bots under one root.</li>
     <li>The buyer and the specialists run in one process on one machine.</li>
-    <li>The buyer pays before the answer. If the specialist fails three times, the job is abandoned without a refund.</li>
+    <li>The shop delivers before it is paid, so the shop carries the risk that the buyer never pays. A real deployment would hold the agreed price in an escrow that releases on a verified proof. This demo has none. A shop that fails three times is never paid.</li>
     <li>The TDX and GPU quotes in the attestation report are not re-verified locally.</li>
-    <li>Two CLI processes paying from the same bot at the same moment can collide on a nonce. The second payment reports uncertain, and <code>resume</code> settles it.</li>
+    <li>Two CLI processes paying from the same bot at the same moment can collide on a nonce. The second payment reports uncertain, and <code>resume</code> settles it once the first transaction is found, or, when the first one took its nonce, once its own stored transaction expires, about a day later.</li>
   </ul>
 </section>
 </main>

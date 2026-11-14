@@ -104,7 +104,7 @@ export async function ask(question: string, budget: string, opts: RunOpts): Prom
     net: match[6] ?? "",
   }));
   const confidence = Number(out.match(/^ {10}local {3}confidence ([\d.]+)/m)?.[1] ?? "NaN");
-  const jobId = out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+  const jobId = out.match(/^job {7}(job_\w+) /m)?.[1];
   const buyerChecks = [...out.matchAll(/^ {10}(verified|unrequested|WITHHELD|unproven|FORGED) +(.{14})/gm)].map((match) => ({ status: match[1] ?? "", verdict: (match[2] ?? "").trim() }));
   const forged = Number(out.match(/^checks .* (\d+) FORGED$/m)?.[1] ?? 0);
   const withheld = Number(out.match(/^checks .*, (\d+) WITHHELD/m)?.[1] ?? 0);
@@ -122,11 +122,12 @@ export async function ask(question: string, budget: string, opts: RunOpts): Prom
     localConfident: Math.round(confidence * 100) >= LOCAL_FLOOR,
     countered,
     shop: String(find("opened")?.order?.providerId),
-    spent: units(String(find("payment-settled")?.receipt?.amount.amount)),
+    // A forged or empty delivery is settled with no payment at all.
+    spent: units(find("payment-settled")?.receipt?.amount.amount ?? "0"),
     buyerChecks,
     forged,
     withheld,
-    assertedVerdicts: (find("fulfilled")?.answer?.checks ?? []).map((check) => check.verdict),
+    assertedVerdicts: (find("delivered")?.answer?.checks ?? []).map((check) => check.verdict),
     rating: find("rated")?.rating ?? null,
   };
 }

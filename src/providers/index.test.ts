@@ -70,7 +70,7 @@ test("a shop's code opens every needed key its model did not mention, so the buy
         payFrom: config.value.roster.defaultBuyer.account,
         commitment: listing.commitment,
       });
-      assert.ok(outcome.kind === "completed", id);
+      assert.ok(outcome.kind === "settled", id);
       const checks = verifyChecks(outcome.job.answer.checks, outcome.job.commitment, question, needs);
       assert.deepEqual(checks.filter((check) => check.status === "withheld" || check.status === "forged"), [], id);
       assert.ok(checks.some((check) => check.status === "verified"), id);

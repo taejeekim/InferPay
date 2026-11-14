@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { parseAccountId, parseAssetId, parseDecimalAmount, parseIdempotencyKey, type AccountId } from "../domain.ts";
+import { newJobId, parseAccountId, parseAssetId, parseDecimalAmount, parseIdempotencyKey, type AccountId } from "../domain.ts";
 import { newCredential, type SignedTx, type TxResult } from "../near/client.ts";
 import type { PaymentRail, Transfer } from "./index.ts";
 import { createTestnetRail } from "./near-testnet.ts";
@@ -58,6 +58,7 @@ async function railOn(chain: ReturnType<typeof fakeChain>, file?: string): Promi
 
 function transfer(overrides: Partial<Transfer> = {}): Transfer {
   return {
+    jobId: newJobId(1_700_000_000_000),
     key: must(parseIdempotencyKey("nt_test-key")),
     payer: CLERK,
     recipient: SHOP,

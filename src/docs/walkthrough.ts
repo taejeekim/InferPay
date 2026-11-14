@@ -22,9 +22,9 @@ const BRIEFING = "Brief me for Monday: France's capital, our NDA's indemnity cla
 const STEPS: readonly Step[] = [
   {
     title: "Buy an answer the buyer cannot work out alone",
-    before: "The buyer rates its own confidence at 0.20, names the catalog key the answer depends on, and buys from the insurance shop at the list price. The shop opens that key, and the buyer verifies it against the shop's committed root.",
+    before: "The buyer rates its own confidence at 0.20, names the catalog key the answer depends on, and opens a job with the insurance shop at the list price. The shop delivers first and opens that key. The buyer verifies it against the shop's committed root, and only then pays.",
     argv: () => ["ask", MRI, "--budget", "0.10"],
-    shows: /buy from insurance at 0\.02 NEAR \(list price\)[\s\S]*1 of 1 needed key opened and verified[\s\S]*rate {6}5\/5/,
+    shows: /buy from insurance at 0\.02 NEAR \(list price\)[\s\S]*^job {7}job_\w+ opened[\s\S]*1 of 1 needed key opened and verified[\s\S]*^payout {4}0\.02 NEAR of the agreed 0\.02 NEAR[\s\S]*^pay {7}settled {2}0\.02 NEAR[\s\S]*rate {6}5\/5/m,
     after: "`--budget` is the most a right answer is worth. `local` is what answering alone is worth. `needs` are the keys the buyer requires the shop to open. Each `option` is a shop. The `rule` line shows the comparison with the numbers filled in.",
   },
   {
@@ -54,17 +54,17 @@ const STEPS: readonly Step[] = [
   },
   {
     title: "Catch a shop that forges its evidence",
-    before: "`INFERPAY_TEST_LIAR` is a test hook. The named shop rewrites the mismatch into a match and fabricates the evidence. It cannot change the root it already published, so the fabricated evidence does not open to that root.",
+    before: "`INFERPAY_TEST_LIAR` is a test hook. The named shop rewrites the mismatch into a match and fabricates the evidence. It cannot change the root it already published, so the fabricated evidence does not open to that root. The buyer verifies before it pays, so the forger gets nothing.",
     argv: () => ["ask", COPAY, "--budget", "0.10"],
     hook: { liar: "insurance" },
-    shows: /FORGED[\s\S]*rate {6}1\/5/,
+    shows: /FORGED[\s\S]*^payout {4}nothing of the agreed 0\.02 NEAR[\s\S]*^pay {7}nothing sent[\s\S]*rate {6}1\/5/m,
   },
   {
     title: "Catch a shop that leaves a needed key out",
-    before: "`INFERPAY_TEST_WITHHOLD` is the other test hook. The named shop drops the check that does not back its answer. The buyer named that key as needed, so the missing opening is marked `WITHHELD` and costs two stars, which is more than the honest mismatch cost.",
+    before: "`INFERPAY_TEST_WITHHOLD` is the other test hook. The named shop drops the check that does not back its answer. The buyer named that key as needed, so the missing opening is marked `WITHHELD`. It costs the shop that key's share of the price and two stars, which is more than the honest mismatch cost.",
     argv: () => ["ask", COPAY, "--budget", "0.10"],
     hook: { withhold: "insurance" },
-    shows: /WITHHELD[\s\S]*rate {6}3\/5/,
+    shows: /WITHHELD[\s\S]*^payout {4}0\.01 NEAR of the agreed 0\.02 NEAR[\s\S]*rate {6}3\/5/m,
   },
   {
     title: "Give it a whole task and one budget",
@@ -86,9 +86,9 @@ const STEPS: readonly Step[] = [
   },
   {
     title: "Read one job's log",
-    before: "This is the job from the counter-offer step. The `quote` is the agreed price, and the lines under `fulfilled` are the evidence for each check.",
+    before: "This is the job from the counter-offer step, in the order it happened. The `quote` is the agreed price. The lines under `delivered` are the shop's answer and the evidence for each check. `payout-decided` is what the buyer owed after verifying, and only then does the payment appear.",
     argv: (ids) => ["job", ids.get("countered") ?? ""],
-    shows: /quote 0\.0[0-9]+ NEAR[\s\S]*root {6}equals the commitment above/,
+    shows: /quote 0\.0[0-9]+ NEAR[\s\S]*^delivered[\s\S]*root {6}equals the commitment above[\s\S]*^payout-decided[\s\S]*^payment-settled/m,
   },
 ];
 

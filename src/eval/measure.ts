@@ -10,6 +10,8 @@ export type ForgeryRow = {
   readonly planted: number;
   readonly caught: number;
   readonly lyingRating: number | null;
+  // What the buyer paid the shop in the run with the liar hook.
+  readonly lyingPaid: string;
   readonly honestForged: number;
 };
 
@@ -18,8 +20,10 @@ export type OmissionRow = {
   readonly shop: string;
   readonly question: string;
   readonly honestRating: number | null;
+  readonly honestPaid: string;
   readonly withheld: number;
   readonly withholdingRating: number | null;
+  readonly withholdingPaid: string;
 };
 
 export type PolicyName = "inferpay" | "always-buy" | "never-buy";
@@ -66,11 +70,13 @@ export async function measure(budgets: readonly string[] = BUDGETS): Promise<Rep
     if (row.honestForged !== 0) failures.push(`false positive: ${row.shop} on "${row.question}" had ${row.honestForged} forged checks in an honest run`);
     if (row.caught !== row.planted) failures.push(`lie not caught exactly: ${row.shop} on "${row.question}" planted ${row.planted}, buyer marked ${row.caught} FORGED`);
     if (row.planted > 0 && row.lyingRating !== 1) failures.push(`lie rated ${row.lyingRating}/5, not 1/5: ${row.shop} on "${row.question}"`);
+    if (row.planted > 0 && row.lyingPaid !== "0") failures.push(`a forger was paid ${row.lyingPaid} NEAR: ${row.shop} on "${row.question}"`);
   }
   for (const row of omission) {
     const lower = row.withholdingRating !== null && row.honestRating !== null && row.withholdingRating < row.honestRating;
     if (row.withheld > 0 && !lower) failures.push(`withholding did not cost: ${row.shop} on "${row.question}" rated ${row.withholdingRating}/5 against ${row.honestRating}/5 honest`);
     if (row.withheld === 0 && row.withholdingRating !== row.honestRating) failures.push(`withholding nothing changed the rating: ${row.shop} on "${row.question}"`);
+    if (row.withheld > 0 && !(Number(row.withholdingPaid) < Number(row.honestPaid))) failures.push(`withholding did not cut the payout: ${row.shop} on "${row.question}"`);
   }
   return { rails: "payment=mock inference=stub", cliRuns: cliRunCount() - startRuns, questions: questions.length, forgery, omission, economics, reputation, failures };
 }
@@ -83,7 +89,7 @@ async function measureForgery(questions: readonly string[]): Promise<ForgeryRow[
     const shop = honest.shop;
     const lying = await withFreshDir((dir) => ask(question, "0.10", { dataDir: dir, liar: shop }));
     const planted = lying.assertedVerdicts.filter((verdict, index) => verdict !== honest.assertedVerdicts[index]).length;
-    rows.push({ shop, question, planted, caught: lying.forged, lyingRating: lying.rating, honestForged: honest.forged });
+    rows.push({ shop, question, planted, caught: lying.forged, lyingRating: lying.rating, lyingPaid: formatUnits(lying.spent), honestForged: honest.forged });
   }
   return rows;
 }
@@ -95,7 +101,15 @@ async function measureOmission(questions: readonly string[]): Promise<OmissionRo
     if (honest.shop === null) continue;
     const shop = honest.shop;
     const withholding = await withFreshDir((dir) => ask(question, "0.10", { dataDir: dir, withhold: shop }));
-    rows.push({ shop, question, honestRating: honest.rating, withheld: withholding.withheld, withholdingRating: withholding.rating });
+    rows.push({
+      shop,
+      question,
+      honestRating: honest.rating,
+      honestPaid: formatUnits(honest.spent),
+      withheld: withholding.withheld,
+      withholdingRating: withholding.rating,
+      withholdingPaid: formatUnits(withholding.spent),
+    });
   }
   return rows;
 }

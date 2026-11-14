@@ -84,7 +84,7 @@ function parsedRatings(raw, raters) {
       const value = leaf === null ? null : parseJson(leaf.value);
       if (!JOB_ID.test(jobId) || !isNode(value)) continue;
       const { shop, stars, payment, root, verified, unproven, forged, withheld } = value;
-      if (!isAccountId(shop) || ![1, 2, 3, 4, 5].includes(stars) || typeof payment !== "string") continue;
+      if (!isAccountId(shop) || ![1, 2, 3, 4, 5].includes(stars) || !(payment === null || typeof payment === "string")) continue;
       if (!(root === null || isHash(root)) || !isCount(verified) || !isCount(unproven) || !isCount(forged)) continue;
       if (withheld !== undefined && !isCount(withheld)) continue;
       ratings.push({ jobId, rater, shop, stars, payment, root, verified, unproven, forged, withheld, block: leaf.block });

@@ -331,7 +331,7 @@ test("the buyer verifies against the root it read from chain and says where it r
   await withRoot(async (root) => {
     const text = await askOn(await published(), root, MRI);
     assert.match(text, /^checks {4}1 of 1 needed key opened and verified against the shop's committed root$/m);
-    assert.match(text, /^ {10}from {6}NEAR testnet, written at block 1003 and read before paying$/m);
+    assert.match(text, /^ {10}from {6}NEAR testnet, written at block 1003 and read before the job opened$/m);
     assert.match(text, /^ {10}key {7}insurance\.ban\.inferpay\.testnet\/inferpay\/commitment in SocialDB v1\.social08\.testnet$/m);
     assert.match(text, /^ {10}link {6}https:\/\/testnet\.nearblocks\.io\/address\/insurance\.ban\.inferpay\.testnet$/m);
     assert.match(text, /^rate {6}5\/5 {2}= 5$/m);
@@ -353,7 +353,7 @@ test("a shop whose data no longer seals to its root on chain turns the order dow
   });
 });
 
-test("a forged check is rated 1 on chain, with the forgery counted and the root it was checked against", async () => {
+test("a forged check is rated 1 on chain with no payment, the forgery counted, and the root it was checked against", async () => {
   await withRoot(async (root) => {
     const chain = await published();
     const config = loadConfig({ INFERPAY_DATA_DIR: root, INFERPAY_TEST_LIAR: "disclosure" });
@@ -365,9 +365,10 @@ test("a forged check is rated 1 on chain, with the forgery counted and the root 
     const [call] = ratingCalls(chain);
     const posted = JSON.parse(Object.values((call?.args as { data: Record<string, { inferpay: { ratings: Record<string, string> } }> }).data[RESEARCHER]?.inferpay.ratings ?? {})[0] ?? "");
     assert.deepEqual(
-      [posted.shop, posted.stars, posted.verified, posted.unproven, posted.forged, posted.root],
-      [DISCLOSURE, 1, 1, 0, 1, "4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a"],
+      [posted.shop, posted.stars, posted.payment, posted.verified, posted.unproven, posted.forged, posted.root],
+      [DISCLOSURE, 1, null, 1, 0, 1, "4bc59b533ac3b45997fa8cb2af6bac1052a8fa9c88247405fbc8c1087cd2a40a"],
     );
+    assert.deepEqual((await readdir(root)).filter((name) => name.includes("rail")), [], "no transfer was attempted");
   });
 });
 
@@ -387,7 +388,7 @@ test("the buyer bot writes its rating under its own account, with the shop, the 
   await withRoot(async (root) => {
     const chain = await published();
     const text = await askOn(chain, root, MRI);
-    const jobId = text.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+    const jobId = text.match(/^job {7}(job_\w+) /m)?.[1];
     const payment = JSON.parse((await readFile(join(root, "mock-rail.jsonl"), "utf8")).trim().split("\n")[0] ?? "").correlationId;
     assert.ok(jobId && typeof payment === "string");
     assert.deepEqual(ratingCalls(chain), [{

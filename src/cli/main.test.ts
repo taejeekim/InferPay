@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { basename, dirname, join } from "node:path";
 import type { Receipt } from "../consumer/task.ts";
 import test from "node:test";
@@ -78,7 +80,7 @@ test("ask pays the named Kyle bot", async () => {
     assert.match(stdout.text(), /from    clerk\.kyle\.inferpay\.testnet/);
     assert.match(stdout.text(), /to      insurance\.ban\.inferpay\.testnet/);
     assert.match(stdout.text(), /via     mock receipt \(no NEAR moved\)/);
-    assert.match(stdout.text(), /^ {10}job {5}job_[0-9A-Z]{26}$/m);
+    assert.match(stdout.text(), /^job {7}job_[0-9A-Z]{26} opened with insurance at the agreed 0\.02 NEAR$/m);
   } finally {
     stdout.restore();
     await rm(root, { recursive: true, force: true });
@@ -97,10 +99,10 @@ test("an uncertain payment prints its job id and the retry-key note once, and re
     assert.equal(code, 0);
     const text = first.text();
     assert.match(text, /uncertain {2}0\.02 NEAR/);
-    assert.equal(text.match(/^ {10}job {5}job_/gm)?.length, 1);
+    assert.equal(text.match(/^job {7}job_/gm)?.length, 1);
     assert.match(text, /^ {10}note {4}resume rebroadcasts the same signed transaction, so this transfer cannot be paid twice;$/m);
-    assert.match(text, /^ {18}it settles once that transaction is found on chain, or is signed again once it has expired$/m);
-    jobId = text.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+    assert.match(text, /^ {18}it settles once that transaction is found on chain, or is signed again once it has expired\.$/m);
+    jobId = text.match(/^job {7}(job_\w+) /m)?.[1];
   } finally {
     first.restore();
   }
@@ -318,7 +320,7 @@ test("on the mock rail the buyer verifies each check against the listed root, an
     assert.match(asked.out, /^rate {6}5\/5 {2}= 5$/m);
     const short = asked.out.match(/^ {10}root {6}([0-9a-f]{12})…([0-9a-f]{4}) {2}2 leaves/m);
     assert.ok(short);
-    const jobId = asked.out.match(/^ {10}job {5}(job_\w+)$/m)?.[1];
+    const jobId = asked.out.match(/^job {7}(job_\w+) /m)?.[1];
     assert.ok(jobId);
     const stdout = capture(process.stdout);
     try {
@@ -327,7 +329,7 @@ test("on the mock rail the buyer verifies each check against the listed root, an
       assert.ok(full);
       assert.ok(full.startsWith(short[1] ?? "x") && full.endsWith(short[2] ?? "x"));
       assert.match(stdout.text(), /^ {18}needs {6}Samsung Electronics \/ Q3 2025 \/ operating profit$/m);
-      assert.match(stdout.text(), /^fulfilled .* 2 checks; 1 of 1 needed key opened, 0 withheld$/m);
+      assert.match(stdout.text(), /^delivered .* 2 checks; 1 of 1 needed key opened, 0 withheld$/m);
       assert.match(stdout.text(), /^ {18}unrequested {2}mismatch {2}revenue Q3 2025$/m);
       assert.match(stdout.text(), /^ {20}salt {6}[0-9a-f]{64}$/m);
       assert.match(stdout.text(), /^ {20}leaf {6}[0-9a-f]{64}$/m);
@@ -501,10 +503,10 @@ test("the briefing answers one part itself, carries its money forward, and buys 
   assert.equal(code, 0);
   assert.match(out, /^part 2\/4 {2}Does this NDA's unlimited indemnification clause fail our playbook\?\n {10}allot {3}0\.02 NEAR share \+ 0\.02 NEAR carried = 0\.04 NEAR$/m);
   assert.match(out, /^ {10}allot {3}0\.03 NEAR share \+ 0\.026 NEAR carried = 0\.056 NEAR$/m);
-  assert.match(out, /^ {10}1  the buyer itself {19}- {5}nothing {16}own answer, confidence 0\.99$/m);
-  assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet {6}0\.03  0\.024 NEAR on counter  1 verified; rated 5\/5$/m);
-  assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet {5}0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
-  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet  0\.02  0\.02 NEAR at list {6}1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}1  the buyer itself +- +- +nothing +own answer, confidence 0\.99$/m);
+  assert.match(out, /^ {10}2  legal\.stella\.inferpay\.testnet +0\.03 +0\.024 on counter +0\.024 NEAR +1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}3  insurance\.ban\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +1 verified; rated 5\/5$/m);
+  assert.match(out, /^ {10}4  disclosure\.david\.inferpay\.testnet +0\.02 +0\.02 at list +0\.02 NEAR +1 verified; rated 5\/5$/m);
   assert.match(out, /^total {5}spent 0\.064 NEAR of the 0\.10 NEAR budget, 0\.036 NEAR left$/m);
   assert.match(out, /^fees {6}none: this rail reports no network fees$/m);
   assert.match(out, /^ {10}value {3}0\.04 NEAR, the part's allotment: the most a right answer is worth$/m);
@@ -524,7 +526,7 @@ test("the briefing answers one part itself, carries its money forward, and buys 
 test("the tight policy check declines one part and stays inside its budget", async () => {
   const { code, out, receipt, jobs } = await runTask(POLICY_CHECK, "0.04");
   assert.equal(code, 0);
-  assert.match(out, /^ {10}1  nobody +- +nothing +declined: counter-offer refused$/m);
+  assert.match(out, /^ {10}1  nobody +- +- +nothing +declined: counter-offer refused$/m);
   assert.match(out, /^total {5}spent 0\.014 NEAR of the 0\.04 NEAR budget, 0\.026 NEAR left$/m);
   assert.deepEqual(receipt.parts.map((row) => [row.outcome.kind, row.allotted.amount, row.spent.amount]), [
     ["declined", "0.02", "0"],
@@ -586,3 +588,31 @@ function capture(stream: NodeJS.WriteStream): { text(): string; restore(): void 
     },
   };
 }
+
+test("a crash after the delivery is written prints the job id, and resume verifies and pays without asking the shop again", async () => {
+  await withDataDir(async (root) => {
+    const bin = fileURLToPath(new URL("../../bin/inferpay.js", import.meta.url));
+    const crashed = spawnSync(process.execPath, [bin, "ask", "Does this policy cover an outpatient MRI?", "--budget", "0.10"], {
+      cwd: root,
+      env: { PATH: process.env.PATH, INFERPAY_DATA_DIR: join(root, "data"), INFERPAY_TEST_CRASH: "after-delivery" },
+      encoding: "utf8",
+    });
+    assert.equal(crashed.status, 137);
+    const jobId = crashed.stdout.match(/^job {7}(job_\w+) opened/m)?.[1];
+    assert.ok(jobId);
+    assert.equal(crashed.stderr, `INFERPAY_TEST_CRASH=after-delivery: exiting with job ${jobId} delivered and not yet verified or paid. Run: npx inferpay resume ${jobId}\n`);
+    assert.doesNotMatch(crashed.stdout, /^(checks|payout|pay) /m);
+    const env = { INFERPAY_DATA_DIR: join(root, "data") };
+    const stdout = capture(process.stdout);
+    try {
+      assert.equal(await main(["resume", jobId], env), 0);
+      const text = stdout.text();
+      assert.match(text, new RegExp(`^job {7}${jobId} resumed from this machine's ledger`, "m"));
+      assert.match(text, /^answer[\s\S]*^checks[\s\S]*^payout {4}0\.02 NEAR[\s\S]*^pay {7}settled {2}0\.02 NEAR[\s\S]*^rate {6}5\/5/m);
+    } finally {
+      stdout.restore();
+    }
+    const lines = (await readFile(join(root, "data", "jobs", `${jobId}.jsonl`), "utf8")).trim().split("\n").map((line) => JSON.parse(line).type);
+    assert.deepEqual(lines, ["opened", "delivered", "payout-decided", "payment-intended", "payment-settled", "rated"]);
+  });
+});
