@@ -153,12 +153,16 @@ export function jobText(view: JobView): string {
         return `${label}${time}  ${event.reason}`;
       case "fulfil-failed":
         return `${label}${time}  ${event.reason}`;
-      case "fulfilled":
+      case "fulfilled": {
+        const checks = verifyChecks(event.answer.checks, view.order.commitment, view.order.question, view.order.needs);
+        const { needs } = view.order;
+        const withheld = tally(checks).withheld;
         return [
-          `${label}${time}  ${event.answer.checks.length} checks`,
+          `${label}${time}  ${plural(event.answer.checks.length, "check", "checks")}; ${needs.length - withheld} of ${plural(needs.length, "needed key", "needed keys")} opened, ${withheld} withheld`,
           ...attestLines("specialist", event.answer.attestation).map(under),
-          ...verifyChecks(event.answer.checks, view.order.commitment, view.order.question, view.order.needs).flatMap(proofRows).map(under),
+          ...checks.flatMap(proofRows).map(under),
         ].join("\n");
+      }
       case "rated":
         return `${label}${time}  ${event.rating}/5`;
       case "rating-posted":

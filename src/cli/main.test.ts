@@ -326,6 +326,9 @@ test("on the mock rail the buyer verifies each check against the listed root, an
       const full = stdout.text().match(/commitment ([0-9a-f]{64})$/m)?.[1];
       assert.ok(full);
       assert.ok(full.startsWith(short[1] ?? "x") && full.endsWith(short[2] ?? "x"));
+      assert.match(stdout.text(), /^ {18}needs {6}Samsung Electronics \/ Q3 2025 \/ operating profit$/m);
+      assert.match(stdout.text(), /^fulfilled .* 2 checks; 1 of 1 needed key opened, 0 withheld$/m);
+      assert.match(stdout.text(), /^ {18}unrequested {2}mismatch {2}revenue Q3 2025$/m);
       assert.match(stdout.text(), /^ {20}salt {6}[0-9a-f]{64}$/m);
       assert.match(stdout.text(), /^ {20}leaf {6}[0-9a-f]{64}$/m);
     } finally {
