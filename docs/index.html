@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InferPay</title>
+<meta name="description" content="A buyer agent that decides with visible arithmetic whether to pay a specialist in NEAR, verifies the specialist's checks against a Merkle root on NEAR testnet, and writes its rating on chain.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="js/page.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
+  <div class="wrap">
+    <p class="brand">InferPay <span class="pill">NEAR testnet</span></p>
+    <nav aria-label="Sections">
+      <a href="#what">What it is</a>
+      <a href="#live">Live state</a>
+      <a href="#verify">Verify a proof</a>
+      <a href="#decide">How it decides</a>
+      <a href="#run">A recorded run</a>
+      <a href="#limits">What is real</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section id="what" class="wrap prose">
+  <h1>A buyer agent that pays only for answers it needs and can check</h1>
+  <p>An agent with a budget can waste it two ways: it can pay for an answer it already knows, and it can pay for an answer it cannot check. InferPay is a command-line buyer agent that prices each purchase against its own confidence before any NEAR moves, and shows the arithmetic.</p>
+  <p>When it buys, the specialist must send checks with evidence. The buyer recomputes each check against a hash of the specialist's dataset that the specialist published on NEAR testnet, grades the answer from what it verified, and writes the rating on chain, where it becomes the specialist's reputation for the next decision.</p>
+  <p class="links">
+    <a href="https://github.com/taejeekim/InferPay">Source code on GitHub</a>
+    <a id="demo-link" href="" hidden>Demo post</a>
+  </p>
+  <p class="note">Everything below that says <strong>live</strong> is read by your browser from a public NEAR testnet RPC node when the page loads. Nothing on this page is served by us.</p>
+</section>
+
+<section id="live" class="wrap" aria-labelledby="live-title">
+  <h2 id="live-title">Live from NEAR testnet</h2>
+  <div class="statusbar">
+    <p id="live-status" role="status">Reading NEAR testnet…</p>
+    <form id="root-form" class="root-form" method="get" action="">
+      <label for="root-input">Root account</label>
+      <input id="root-input" name="root" autocomplete="off" spellcheck="false" inputmode="url">
+      <button type="submit">Read</button>
+    </form>
+  </div>
+
+  <h3>Shops</h3>
+  <p class="lede">Each shop publishes only a hash of its private dataset: the Merkle root, the number of entries, and the scheme. Reputation is computed here from the buyer bots' on-chain ratings, the same way the CLI computes it before it decides.</p>
+  <div id="shops" class="cards"></div>
+
+  <h3>Buyer bots</h3>
+  <p class="lede">A native NEAR transfer needs a full-access key, and each bot holds the key to its own sub-account only, so a bot's balance is the most it can ever spend.</p>
+  <div class="table-wrap"><table id="bots">
+    <thead><tr><th scope="col">Bot account</th><th scope="col" class="num">Spend cap (balance)</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+
+  <h3>Latest ratings</h3>
+  <p class="lede" id="ratings-lede">Each rating is written by a buyer bot under its own account in the SocialDB contract <code>v1.social08.testnet</code>. Newest first, ordered by the block that wrote the rating.</p>
+  <div class="table-wrap"><table id="ratings">
+    <thead><tr>
+      <th scope="col">Block</th><th scope="col">Stars</th><th scope="col">Shop</th><th scope="col">Checks</th><th scope="col">Rated by</th><th scope="col">Payment</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<section id="verify" class="wrap" aria-labelledby="verify-title">
+  <h2 id="verify-title">Verify a proof yourself</h2>
+  <p class="lede">This is one real check the insurance shop sent a buyer, with its evidence. Your browser recomputes the shop's Merkle root from it with WebCrypto and compares the result with the root the shop published on chain. Edit the evidence and watch the proof fail.</p>
+
+  <div class="tabs" role="tablist" aria-label="Proof">
+    <button role="tab" id="tab-present" aria-controls="proof" aria-selected="true">An entry the shop holds</button>
+    <button role="tab" id="tab-absent" aria-controls="proof" aria-selected="false" tabindex="-1">A key the shop holds nothing for</button>
+  </div>
+
+  <div id="proof" role="tabpanel" class="proof">
+    <div class="proof-inputs">
+      <div class="claim">
+        <p class="label">The claim</p>
+        <p id="claim-text" class="claim-text"></p>
+        <p class="label">The shop's verdict</p>
+        <p id="claim-verdict" class="mono"></p>
+      </div>
+
+      <fieldset id="entry-fields">
+        <legend>Dataset entry the shop revealed</legend>
+        <label for="f-topic">topic</label>
+        <input id="f-topic" class="mono" spellcheck="false" autocomplete="off">
+        <label for="f-value">value</label>
+        <input id="f-value" class="mono" spellcheck="false" autocomplete="off">
+        <label for="f-source">source</label>
+        <input id="f-source" class="mono" spellcheck="false" autocomplete="off">
+        <label for="f-salt">salt</label>
+        <input id="f-salt" class="mono" spellcheck="false" autocomplete="off" maxlength="64">
+      </fieldset>
+
+      <fieldset id="absent-fields" hidden>
+        <legend>Key the claim is about</legend>
+        <label for="f-absent-topic">topic</label>
+        <input id="f-absent-topic" class="mono" spellcheck="false" autocomplete="off">
+        <p class="hint">The evidence is the path from this key's slot, which is empty. Point the claim at a key the shop does hold, such as <code>mri-copay</code>, and the empty-slot proof no longer opens to the root.</p>
+      </fieldset>
+
+      <div class="actions" id="tamper-actions">
+        <button type="button" id="tamper-value">Change <code>covered</code> to <code>excluded</code></button>
+        <button type="button" id="tamper-salt">Flip one salt character</button>
+        <button type="button" id="reset-proof">Reset</button>
+      </div>
+      <div id="verdict" class="verdict" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="proof-work">
+      <ol class="steps">
+        <li>
+          <p class="step-title">Slot from the key</p>
+          <p class="mono kv"><span>key</span><span id="w-key"></span></p>
+          <p class="mono kv"><span>sha256(03 ‖ key)</span><span id="w-keyhash"></span></p>
+          <p class="mono kv"><span>slot = first 4 bytes</span><span id="w-slot"></span></p>
+        </li>
+        <li>
+          <p class="step-title" id="w-leaf-title">Leaf hash</p>
+          <p class="mono kv"><span id="w-leaf-formula">sha256(00 ‖ salt ‖ entry)</span><span id="w-leaf"></span></p>
+          <p class="mono kv" id="w-entry-row"><span>entry, canonical JSON</span><span id="w-entry" class="wrap-any"></span></p>
+        </li>
+        <li>
+          <p class="step-title">Up 32 levels to the root</p>
+          <p class="hint">At each level the slot's bit decides whether the running hash is the left or right child: sha256(01 ‖ left ‖ right). E<sub>n</sub> is the hash of an empty subtree of height n, which anyone can compute. Highlighted rows use a sibling hash the shop supplied. After an edit, hashes in red differ from the honest computation.</p>
+          <div class="table-wrap"><table id="w-levels" class="levels">
+            <thead><tr><th scope="col">Level</th><th scope="col">Side</th><th scope="col">Sibling</th><th scope="col">Hash after this level</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </li>
+        <li>
+          <p class="step-title">Compare with the chain</p>
+          <p class="mono kv"><span>recomputed root</span><span id="w-root"></span></p>
+          <p class="mono kv"><span>root on chain</span><span id="w-chain-root"></span></p>
+          <p class="hint" id="w-chain-source"></p>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="decide" class="wrap" aria-labelledby="decide-title">
+  <h2 id="decide-title">How the buyer decides</h2>
+  <p class="lede">The decision is a pure function. This calculator runs the same rule as the CLI and prints the same lines. A test in the repository compares the two over thousands of inputs.</p>
+  <div class="actions" id="presets" aria-label="Examples from the README">
+    <button type="button" data-preset="list">Buy at list price</button>
+    <button type="button" data-preset="accepted">Counter accepted</button>
+    <button type="button" data-preset="refused">Counter refused, answer alone</button>
+    <button type="button" data-preset="decline">Counter refused, decline</button>
+    <button type="button" data-preset="local">Answer alone</button>
+  </div>
+  <form id="calc" class="calc" novalidate>
+    <div class="field"><label for="c-shop">Shop</label>
+      <select id="c-shop"><option>insurance</option><option>disclosure</option><option>legal</option></select></div>
+    <div class="field"><label for="c-budget">Budget, NEAR</label><input id="c-budget" inputmode="decimal" class="mono"></div>
+    <div class="field"><label for="c-confidence">Buyer's confidence, 0 to 1</label><input id="c-confidence" inputmode="decimal" class="mono"></div>
+    <div class="field"><label for="c-coverage">Shop's coverage, 0 to 1</label><input id="c-coverage" inputmode="decimal" class="mono"></div>
+    <div class="field"><label for="c-average">Average stars, 1 to 5</label><input id="c-average" inputmode="decimal" class="mono" placeholder="unrated"></div>
+    <div class="field"><label for="c-count">Number of ratings</label><input id="c-count" inputmode="numeric" class="mono"></div>
+    <div class="field"><label for="c-ask">Shop's ask, NEAR</label><input id="c-ask" inputmode="decimal" class="mono"></div>
+    <div class="field"><label for="c-floor">Shop's private floor, NEAR</label><input id="c-floor" inputmode="decimal" class="mono"></div>
+    <div class="field wide"><button type="button" id="c-live">Use this shop's live reputation</button> <span id="c-live-note" class="hint"></span></div>
+  </form>
+  <p id="calc-outcome" class="outcome" role="status"></p>
+  <pre id="calc-out" class="terminal" tabindex="0" aria-label="Decide block"></pre>
+  <p class="hint">Confidence and coverage come from the buyer's model call in a real run; here you set them. Reputation with no ratings is the prior, 0.70, which counts as two ratings. A shop accepts any counter-offer at or above its floor.</p>
+</section>
+
+<section id="run" class="wrap" aria-labelledby="run-title">
+  <h2 id="run-title">A recorded run</h2>
+  <p class="lede">One live run from 2026-11-13: live NEAR AI inference and real testnet payment together. The question was <q>Is an outpatient MRI covered under this policy, and what copay do I pay?</q> with a budget of 0.05 NEAR, paid from the bot <code>editor</code>.</p>
+  <ol class="captions">
+    <li><strong>decide.</strong> The buyer rated its own confidence at 0.10, so answering alone was worth 0.005 NEAR. The insurance shop nets +0.025, so the buyer paid the list price.</li>
+    <li><strong>pay and attest.</strong> A native NEAR transfer from <code>editor.kyle.inferpay.testnet</code>, with its explorer link. Each model call was signed inside NEAR AI Cloud's TEE, and the buyer checked the signature against the attestation report.</li>
+    <li><strong>checks and rate.</strong> Both checks were verified against the root the buyer read from chain before it paid. The 5/5 rating went to SocialDB, and it appears in the live ratings above.</li>
+  </ol>
+  <pre id="run-log" class="terminal" tabindex="0" aria-label="Terminal output of the run">rails: payment=near-testnet inference=near-ai
+decide    buy from insurance at 0.02 NEAR (list price)
+          value   0.05 NEAR, the budget: the most a right answer is worth
+          local   confidence 0.10 x value = worth 0.005 NEAR
+          missing whether outpatient MRI (with/without contrast) is a covered benefit under this specific policy; the exact copay or coinsurance amount for outpatient imaging;
+          option  insurance   ask 0.02  cover 1.00 x rep 0.90 = quality 0.90  net +0.025
+          option  disclosure  ask 0.02  cover 0.00 x rep 0.58 = quality 0.00  net -0.020
+          option  legal       ask 0.03  cover 0.00 x rep 0.80 = quality 0.00  net -0.030
+          rule    net = quality x value - ask; buy when net &gt;= local worth: 0.025 &gt;= 0.005
+pay       settled  0.02 NEAR
+          from    editor.kyle.inferpay.testnet
+          to      insurance.ban.inferpay.testnet
+          via     NEAR testnet transfer
+          job     job_01M7BMM6BHX9P6B7M5BDQ3JBF0
+          tx      <a href="https://testnet.nearblocks.io/txns/2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH">https://testnet.nearblocks.io/txns/2ZfUeo28H8cFs8tF55WEKbfHTs88KCejSYJrR5isP3sH</a>
+answer    Yes, outpatient MRI is covered under your policy (per schedule §4.2), and your copay is 20%.
+attest    specialist 2/2 calls verified
+          signed by 0x3b753b4406613c5e70ae640508632b600424fa0c, a key in NEAR AI's attestation report for z-ai/glm-5.3-flash
+          request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally
+checks    2 of 2 verified by the buyer against the shop's committed root
+          verified  match         outpatient MRI coverage  covered
+                    Policy schedule §4.2. Outpatient MRI is covered at 20% copay.
+          verified  match         MRI copay                20
+                    Policy schedule §4.2. Outpatient MRI copay is 20 percent.
+          root      d26d1609271e…b68f  3 leaves  inferpay-keyed-merkle-sha256-v1
+          from      NEAR testnet, written at block 277578399 and read before paying
+          key       insurance.ban.inferpay.testnet/inferpay/commitment in SocialDB v1.social08.testnet
+          link      <a href="https://testnet.nearblocks.io/address/insurance.ban.inferpay.testnet">https://testnet.nearblocks.io/address/insurance.ban.inferpay.testnet</a>
+rate      5/5
+          on chain  SocialDB v1.social08.testnet, written by the buyer bot under its own account
+          key       editor.kyle.inferpay.testnet/inferpay/ratings/job_01M7BMM6BHX9P6B7M5BDQ3JBF0
+          tx        <a href="https://testnet.nearblocks.io/txns/2sq3LcmcMbHAZxukfggumA66SCasqDetk7iZ893qxkh4">https://testnet.nearblocks.io/txns/2sq3LcmcMbHAZxukfggumA66SCasqDetk7iZ893qxkh4</a>
+attest    buyer 1/1 calls verified
+          signed by 0x3b753b4406613c5e70ae640508632b600424fa0c, a key in NEAR AI's attestation report for z-ai/glm-5.3-flash
+          request and response hashes match; report echoed our nonce; TDX and GPU quotes not re-verified locally</pre>
+</section>
+
+<section id="limits" class="wrap prose" aria-labelledby="limits-title">
+  <h2 id="limits-title">What is real and what is not</h2>
+  <h3>Real</h3>
+  <ul>
+    <li>The buy-or-answer decision, the one counter-offer, the check verification, and the grade run in every mode.</li>
+    <li>On the testnet rail, payment is a native NEAR transfer from the buyer bot's own sub-account, and the buyer reads each shop's dataset hash from NEAR testnet before it pays.</li>
+    <li>Reputation on the testnet rail comes from ratings that the buyer bots write on NEAR testnet. The 18 accounts are real named accounts on testnet, created through the faucet.</li>
+    <li>With a NEAR AI Cloud key, answers come from NEAR AI Cloud, and each model response is checked against NEAR AI's TEE attestation report.</li>
+  </ul>
+  <h3>Not real, or not yet</h3>
+  <ul>
+    <li>Without a NEAR AI key, answers are replayed from 8 recorded questions. Any other question stops before payment.</li>
+    <li>The NEAR Intents rail for mainnet has never run. Every on-chain action shown here is on testnet.</li>
+    <li>The buyer verifies claims, not prose. It does not check that the answer sentence says what the checks say.</li>
+    <li>A commitment proves consistency, not truth. It shows that a check agrees with the dataset the shop published, not that the dataset is right.</li>
+    <li>The sample datasets and their salts are in the repository, so they are not secret. That is why this page can show a proof.</li>
+    <li>Ratings can be gamed. Anyone can create an account and write a rating. The CLI and this page read only the ratings of the buyer bots under one root.</li>
+    <li>The buyer and the specialists run in one process on one machine.</li>
+    <li>The buyer pays before the answer. If the specialist fails three times, the job is abandoned without a refund.</li>
+    <li>The TDX and GPU quotes in the attestation report are not re-verified locally.</li>
+    <li>Two CLI processes paying from the same bot at the same moment can collide on a nonce. The second payment reports uncertain, and <code>resume</code> settles it.</li>
+  </ul>
+</section>
+</main>
+
+<footer class="wrap footer">
+  <p>Reads <code>https://test.rpc.fastnear.com</code>. No cookies, no analytics, no external scripts. MIT licensed.</p>
+</footer>
+</body>
+</html>
