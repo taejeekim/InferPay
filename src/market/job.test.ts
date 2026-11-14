@@ -171,7 +171,7 @@ function fixture() {
   const at = must(parseIsoTime("2026-10-24T14:02:11.000Z"), "time");
   const payTo = must(parseAccountId("disclosure.david.inferpay.near"), "payTo");
   const model = must(parseModelId("stub"), "model");
-  const receipt: PaymentReceipt = { key, correlationId: correlation, amount: price(quote), recipient: payTo, rail: "mock" };
+  const receipt: PaymentReceipt = { key, correlationId: correlation, amount: price(quote), recipient: payTo, rail: "mock", feeYocto: null };
   const answer: Answer = {
     text: "Operating profit matches across both documents: KRW 12.2T.",
     checks: [],

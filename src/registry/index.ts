@@ -18,8 +18,13 @@ export type OnChainRating = {
   readonly withheld: number;
 };
 
+// What writing the rating cost the bot on top of any price: the gas it burnt, from the transaction outcome, and
+// the storage SocialDB kept for the new bytes, from the bot's SocialDB storage balance before and after.
+export type RatingCost = { readonly gas: bigint; readonly storage: bigint };
+
 export type RatingPost =
-  | { readonly kind: "posted"; readonly tx: string; readonly contract: AccountId; readonly key: string }
+  // cost is null when an earlier run sent the transaction, so this run saw neither balance before it.
+  | { readonly kind: "posted"; readonly tx: string; readonly contract: AccountId; readonly key: string; readonly cost: RatingCost | null }
   | { readonly kind: "pending"; readonly tx: string | null; readonly detail: string }
   | { readonly kind: "failed"; readonly reason: string };
 

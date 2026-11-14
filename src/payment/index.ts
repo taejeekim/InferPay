@@ -9,6 +9,9 @@ export type PaymentReceipt = {
   readonly amount: Price;
   readonly recipient: AccountId;
   readonly rail: PaymentRail["kind"];
+  // The gas the payer paid on top of the amount, in yoctoNEAR, from the transaction outcome. Null on a rail that
+  // reports none.
+  readonly feeYocto: string | null;
 };
 
 export type PaymentStatus =

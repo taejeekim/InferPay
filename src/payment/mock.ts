@@ -51,6 +51,7 @@ function settled(transfer: Transfer, correlation: string): PaymentStatus {
     amount: transfer.amount,
     recipient: transfer.recipient,
     rail: "mock",
+    feeYocto: null,
   };
   return { kind: "settled", receipt };
 }

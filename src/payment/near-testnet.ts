@@ -62,7 +62,14 @@ function toStatus(result: TxResult, tx: SignedTx, transfer: Transfer): PaymentSt
     case "success":
       return {
         kind: "settled",
-        receipt: { key: transfer.key, correlationId, amount: transfer.amount, recipient: transfer.recipient, rail: "near-testnet" },
+        receipt: {
+          key: transfer.key,
+          correlationId,
+          amount: transfer.amount,
+          recipient: transfer.recipient,
+          rail: "near-testnet",
+          feeYocto: result.burnt.toString(),
+        },
       };
     case "failed":
       return { kind: "rejected", reason: `transaction ${tx.hash} failed on chain: ${result.reason}` };

@@ -70,6 +70,8 @@ export type MarketProgress =
       readonly transfer: "called" | "skipped";
       readonly status: "settled" | "pending" | "uncertain" | "rejected";
       readonly amount: Price;
+      // The gas the payer paid on top of the amount, in yoctoNEAR, when the rail reports it.
+      readonly feeYocto: string | null;
       readonly payer: AccountId;
       readonly recipient: AccountId;
       readonly correlationId: CorrelationId | null;
@@ -233,6 +235,7 @@ export function createMarketplace(deps: {
             onProgress?.(payProgress(folded.state, {
               transfer: "called",
               status: "settled",
+              feeYocto: status.receipt.feeYocto,
               correlationId: status.receipt.correlationId,
               key: status.receipt.key,
               jobId: order.jobId,
@@ -250,6 +253,7 @@ export function createMarketplace(deps: {
             onProgress?.(payProgress(folded.state, {
               transfer: "called",
               status: status.kind,
+              feeYocto: null,
               correlationId: status.correlationId,
               key: effect.transfer.key,
               jobId: order.jobId,
@@ -261,6 +265,7 @@ export function createMarketplace(deps: {
           onProgress?.(payProgress(folded.state, {
             transfer: "called",
             status: "rejected",
+            feeYocto: null,
             correlationId: null,
             key: effect.transfer.key,
             jobId: order.jobId,
@@ -292,6 +297,7 @@ export function createMarketplace(deps: {
             onProgress?.(payProgress(folded.state, {
               transfer: "skipped",
               status: "settled",
+              feeYocto: folded.state.receipt.feeYocto,
               correlationId: folded.state.receipt.correlationId,
               key: folded.state.receipt.key,
               jobId: order.jobId,
@@ -354,6 +360,7 @@ function payProgress(
   payment: {
     readonly transfer: "called" | "skipped";
     readonly status: "settled" | "pending" | "uncertain" | "rejected";
+    readonly feeYocto: string | null;
     readonly correlationId: CorrelationId | null;
     readonly key: IdempotencyKey;
     readonly jobId: JobId;
@@ -363,6 +370,7 @@ function payProgress(
     step: "pay",
     transfer: payment.transfer,
     status: payment.status,
+    feeYocto: payment.feeYocto,
     amount: opened.quote,
     payer: opened.order.payFrom,
     recipient: opened.payTo,

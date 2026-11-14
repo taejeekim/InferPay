@@ -6,7 +6,7 @@ import { actions, type Credential, type NearClient, type TxResult } from "../nea
 import { sendOnce, type OutboxDeps } from "../near/outbox.ts";
 import { SOCIAL_DB, SOCIAL_DEPOSIT, socialGet, socialSet, type SocialValue } from "../near/social.ts";
 import { formatNear, nearOf } from "../payment/units.ts";
-import type { OnChainRating, RatingPost, Registry } from "./index.ts";
+import type { OnChainRating, RatingCost, RatingPost, Registry } from "./index.ts";
 import { commitmentKey, ratingKey, ratingsPattern } from "./keys.ts";
 
 export function createChainRegistry(deps: {
@@ -22,6 +22,7 @@ export function createChainRegistry(deps: {
       return readRatings(await socialGet(deps.chain, deps.raters.map(ratingsPattern)), deps.raters);
     },
     async postRating(rating) {
+      const before = await storageOf(deps.chain, rating.rater);
       // One key for each job, so a retry reuses the transaction the first attempt signed.
       const sent = await sendOnce(deps.outbox, {
         key: `rating:${rating.jobId}`,
@@ -34,15 +35,26 @@ export function createChainRegistry(deps: {
       });
       if (sent.kind === "no-credential") return { kind: "failed", reason: `no saved key for ${rating.rater}` };
       if (sent.kind === "key-reused") return { kind: "failed", reason: `the rating of ${rating.jobId} was already signed by another account` };
-      return toPost(sent.result, sent.tx.hash, ratingKey(rating.rater, rating.jobId));
+      const cost = sent.fresh && sent.result.kind === "success"
+        ? { gas: sent.result.burnt, storage: (await storageOf(deps.chain, rating.rater)) - before }
+        : null;
+      return toPost(sent.result, sent.tx.hash, ratingKey(rating.rater, rating.jobId), cost);
     },
   };
 }
 
-function toPost(result: TxResult, tx: string, key: string): RatingPost {
+// SocialDB refunds whatever part of the attached deposit the write did not use, so the storage balance it keeps
+// for an account grows by exactly the bytes each write adds.
+async function storageOf(chain: Pick<NearClient, "view">, account: AccountId): Promise<bigint> {
+  const balance = await chain.view(SOCIAL_DB, "storage_balance_of", { account_id: account });
+  const parsed = z.object({ total: z.string().regex(/^\d+$/) }).nullable().safeParse(balance);
+  return parsed.success && parsed.data !== null ? BigInt(parsed.data.total) : 0n;
+}
+
+function toPost(result: TxResult, tx: string, key: string, cost: RatingCost | null): RatingPost {
   switch (result.kind) {
     case "success":
-      return { kind: "posted", tx, contract: SOCIAL_DB, key };
+      return { kind: "posted", tx, contract: SOCIAL_DB, key, cost };
     case "failed":
       return { kind: "failed", reason: `transaction ${tx} failed on chain: ${result.reason}` };
     case "refused":

@@ -92,8 +92,9 @@ export type SignedTx = {
   readonly base64: string;
 };
 
+// burnt is the yoctoNEAR the signer paid in gas, summed over the transaction and every receipt it caused.
 export type TxResult =
-  | { readonly kind: "success" }
+  | { readonly kind: "success"; readonly burnt: bigint }
   | { readonly kind: "failed"; readonly reason: string }
   | { readonly kind: "refused"; readonly reason: string; readonly never: "expired" | "nonce-used" | null }
   | { readonly kind: "unknown" }
@@ -207,7 +208,8 @@ function fromResponse(response: RpcTransactionResponse): TxResult {
   const status = response.status;
   if (response.final_execution_status !== "FINAL" || typeof status !== "object") return { kind: "pending" };
   if ("Failure" in status) return { kind: "failed", reason: JSON.stringify(status.Failure) };
-  return { kind: "success" };
+  const outcomes = [response.transaction_outcome, ...response.receipts_outcome];
+  return { kind: "success", burnt: outcomes.reduce((sum, item) => sum + BigInt(item.outcome.tokens_burnt), 0n) };
 }
 
 function fromThrown(error: unknown): TxResult {

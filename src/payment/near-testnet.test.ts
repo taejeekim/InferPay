@@ -8,6 +8,8 @@ import { newCredential, type SignedTx, type TxResult } from "../near/client.ts";
 import type { PaymentRail, Transfer } from "./index.ts";
 import { createTestnetRail } from "./near-testnet.ts";
 
+const GAS = 44_600_000_000_000_000_000n;
+
 const CLERK = must(parseAccountId("clerk.kyle.inferpay.testnet"));
 const SHOP = must(parseAccountId("legal.stella.inferpay.testnet"));
 
@@ -29,12 +31,12 @@ function fakeChain() {
     },
     async broadcast(tx, wait) {
       state.sent.push({ base64: tx.base64, wait });
-      const next = state.broadcastResults.shift() ?? { kind: "success" };
+      const next = state.broadcastResults.shift() ?? { kind: "success", burnt: GAS };
       if (next.kind === "success") state.landed.add(tx.hash);
       return next;
     },
     async status(tx) {
-      return state.landed.has(tx.hash) ? { kind: "success" } : { kind: "unknown" };
+      return state.landed.has(tx.hash) ? { kind: "success", burnt: GAS } : { kind: "unknown" };
     },
   };
   return Object.assign(state, { port });
@@ -142,7 +144,7 @@ test("a fresh signature only after the chain refuses the stored bytes as expired
   chain.broadcastResults = [
     { kind: "unreachable", detail: "timeout" },
     { kind: "refused", reason: "transaction expired", never: "expired" },
-    { kind: "success" },
+    { kind: "success", burnt: GAS },
   ];
   await rail.settle(transfer());
   const status = await rail.settle(transfer());
@@ -162,7 +164,7 @@ test("an expired transaction that had landed settles under its own hash", async 
   let lookups = 0;
   chain.port.status = async () => {
     lookups += 1;
-    return lookups === 1 ? { kind: "unknown" } : { kind: "success" };
+    return lookups === 1 ? { kind: "unknown" } : { kind: "success", burnt: GAS };
   };
   const settled = await rail.settle(transfer());
   assert.equal(settled.kind, "settled");
@@ -172,7 +174,7 @@ test("an expired transaction that had landed settles under its own hash", async 
 
 test("chain outcomes map onto payment statuses", async () => {
   const cases: { result: TxResult; kind: string }[] = [
-    { result: { kind: "success" }, kind: "settled" },
+    { result: { kind: "success", burnt: GAS }, kind: "settled" },
     { result: { kind: "failed", reason: "{\"ActionError\":{}}" }, kind: "rejected" },
     { result: { kind: "refused", reason: "NotEnoughBalanceError: balance 1 is below cost 2", never: null }, kind: "rejected" },
     { result: { kind: "pending" }, kind: "pending" },

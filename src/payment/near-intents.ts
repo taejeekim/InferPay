@@ -22,6 +22,7 @@ export function mapWireStatus(body: WireStatus, transfer: Transfer): PaymentStat
           amount: transfer.amount,
           recipient: transfer.recipient,
           rail: "near-intents",
+          feeYocto: null,
         },
       };
     case "UNCERTAIN":

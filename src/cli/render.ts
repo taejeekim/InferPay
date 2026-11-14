@@ -27,7 +27,7 @@ import type { PartOutcome, Receipt, ReceiptRow, TaskProgress } from "../consumer
 import { verifyChecks, type BuyerCheck, type Forgery, type UnprovenCheck, type VerifiedCheck } from "../consumer/verify.ts";
 import type { AccountId } from "../domain.ts";
 import { accountUrl, txUrl } from "../near/explorer.ts";
-import type { RatingPost } from "../registry/index.ts";
+import type { RatingCost, RatingPost } from "../registry/index.ts";
 import { commitmentKey } from "../registry/keys.ts";
 import { formatNear } from "../payment/units.ts";
 
@@ -214,6 +214,8 @@ export function usageText(): string {
     "inferpay providers",
     "inferpay ask <question> --budget <amount> [--from <bot>]",
     "inferpay task <task> --budget <amount> [--from <bot>]",
+    "  --budget bounds the price paid to shops. On NEAR testnet the bot also pays network fees outside it:",
+    "  gas for each payment and rating, and SocialDB storage for each rating. Each one is printed.",
     "inferpay resume <jobId>",
     "inferpay job <jobId>",
     "inferpay testnet setup [--root <name>.testnet]",
@@ -400,6 +402,7 @@ function payBlock(progress: Extract<Progress, { step: "pay" }>, rail: PaymentRai
     field("job", progress.jobId),
   ];
   if (rail === "near-testnet" && progress.correlationId) rows.push(field("tx", txUrl(progress.correlationId)));
+  if (progress.feeYocto !== null) rows.push(field("fee", `${fee(BigInt(progress.feeYocto))} NEAR gas on top of the price, from the transaction outcome`));
   if (progress.status === "pending" || progress.status === "uncertain") {
     rows.push(field("key", progress.key));
     if (progress.correlationId) rows.push(field("corr", progress.correlationId));
@@ -473,6 +476,7 @@ function ratingRows(onChain: RatingPost | null, jobId: string, rail: PaymentRail
         row("on chain", `SocialDB ${onChain.contract}, written by the buyer bot under its own account`),
         row("key", onChain.key),
         row("tx", txUrl(onChain.tx)),
+        ...costRows(onChain.cost).map(([name, value]) => row(name, value)),
       ];
     case "pending":
       return [row("on chain", `not yet: ${onChain.detail}`), row("", `the rating is in the local ledger. Run: npx inferpay resume ${jobId}`)];
@@ -483,6 +487,20 @@ function ratingRows(onChain: RatingPost | null, jobId: string, rail: PaymentRail
       return unreachable;
     }
   }
+}
+
+// The rating is paid on top of any price, so the CLI shows what it cost and where each figure came from.
+function costRows(cost: RatingCost | null): (readonly [string, string])[] {
+  if (cost === null) return [["cost", "not measured: an earlier run sent this transaction"]];
+  return [
+    ["cost", `${fee(cost.gas + cost.storage)} NEAR on top of the price: ${fee(cost.gas)} gas, from the transaction outcome,`],
+    ["", `+ ${fee(cost.storage)} SocialDB storage, from the bot's storage_balance_of before and after`],
+  ];
+}
+
+// Fees are small, so they show eight decimals where a price shows four.
+function fee(yocto: bigint): string {
+  return formatNear(yocto, 8);
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -784,6 +802,9 @@ export function receiptBlock(receipt: Receipt, saved: string): string {
       ...receiptDetails(row).map(([name, value]) => detail(name, value)),
     ]),
     line("total", `spent ${money(receipt.spent)} of the ${money(receipt.budget)} budget, ${money(receipt.left)} left`),
+    line("fees", receipt.feesYocto === null
+      ? "none: this rail reports no network fees"
+      : `${fee(BigInt(receipt.feesYocto))} NEAR outside the budget: gas for each payment and rating, and SocialDB storage for each rating`),
     line("saved", saved),
   ].join("\n");
 }

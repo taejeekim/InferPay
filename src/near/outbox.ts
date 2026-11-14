@@ -25,8 +25,9 @@ export type Outgoing = {
   readonly idempotent: boolean;
 };
 
+// fresh is true when this call signed the transaction, false when it found one an earlier call stored.
 export type Sent =
-  | { readonly kind: "sent"; readonly tx: SignedTx; readonly result: TxResult }
+  | { readonly kind: "sent"; readonly tx: SignedTx; readonly result: TxResult; readonly fresh: boolean }
   | { readonly kind: "key-reused" }
   | { readonly kind: "no-credential" };
 
@@ -41,17 +42,17 @@ export async function sendOnce(deps: OutboxDeps, out: Outgoing): Promise<Sent> {
   }
 
   const seen = await deps.chain.status(stored);
-  if (seen.kind !== "unknown") return { kind: "sent", tx: stored, result: seen };
+  if (seen.kind !== "unknown") return { kind: "sent", tx: stored, result: seen, fresh: false };
 
   const again = await deps.chain.broadcast(stored, "FINAL");
   // A used nonce can also mean these bytes landed and the archival node has not caught up, so it retires them only
   // for an idempotent write.
   const dead = again.kind === "refused" && (again.never === "expired" || (again.never === "nonce-used" && out.idempotent));
-  if (!dead) return { kind: "sent", tx: stored, result: again };
+  if (!dead) return { kind: "sent", tx: stored, result: again, fresh: false };
   // The stored bytes can no longer land. Ask once more in case they landed before the chain refused them.
   const last = await deps.chain.status(stored);
   if (last.kind === "unknown") return signAndSend(deps, out);
-  return { kind: "sent", tx: stored, result: last };
+  return { kind: "sent", tx: stored, result: last, fresh: false };
 }
 
 async function signAndSend(deps: OutboxDeps, out: Outgoing): Promise<Sent> {
@@ -65,7 +66,7 @@ async function signAndSend(deps: OutboxDeps, out: Outgoing): Promise<Sent> {
     await deps.chain.broadcast(signed, "NONE");
     deps.onCrash("after-broadcast", signed);
   }
-  return { kind: "sent", tx: signed, result: await deps.chain.broadcast(signed, "FINAL") };
+  return { kind: "sent", tx: signed, result: await deps.chain.broadcast(signed, "FINAL"), fresh: true };
 }
 
 async function latest(file: string, key: string): Promise<StoredTx | null> {

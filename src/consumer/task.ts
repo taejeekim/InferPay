@@ -38,6 +38,9 @@ export type PartOutcome =
       readonly forged: number;
       readonly withheld: number;
       readonly stars: Stars;
+      // Gas for the payment and the rating and SocialDB storage for the rating, in yoctoNEAR, on top of spent.
+      // Null on a rail that reports none.
+      readonly feesYocto: string | null;
       readonly jobId: JobId;
       // The payment transaction, on a rail that has one on chain.
       readonly tx: string | null;
@@ -62,6 +65,8 @@ export type Receipt = {
   readonly parts: readonly ReceiptRow[];
   readonly spent: Price;
   readonly left: Price;
+  // The sum of every bought part's network fees, in yoctoNEAR. They are paid on top of spent and outside the budget.
+  readonly feesYocto: string | null;
 };
 
 export type TaskProgress =
@@ -124,10 +129,17 @@ export async function runTask(
       carried: price(budget, allotted - base),
       allotted: price(budget, allotted),
     });
-    const seen: { decision: Decision | null; held: bigint } = { decision: null, held: 0n };
+    const seen: { decision: Decision | null; held: bigint; fees: bigint | null } = { decision: null, held: 0n, fees: null };
+    const addFee = (yocto: bigint): void => {
+      seen.fees = (seen.fees ?? 0n) + yocto;
+    };
     const outcome = await deps.ask(part.question, { budget: price(budget, allotted), buyer: opts.buyer }, (progress) => {
       if (progress.step === "decide") seen.decision = progress.decision;
       if (progress.step === "pay") seen.held = progress.status === "rejected" ? 0n : toUnits(progress.amount.amount);
+      if (progress.step === "pay" && progress.transfer === "called" && progress.feeYocto !== null) addFee(BigInt(progress.feeYocto));
+      if (progress.step === "rate" && progress.onChain?.kind === "posted" && progress.onChain.cost !== null) {
+        addFee(progress.onChain.cost.gas + progress.onChain.cost.storage);
+      }
       onProgress?.(progress);
     });
     const spent = outcome.kind === "outsourced" ? toUnits(outcome.job.paid.amount.amount) : seen.held;
@@ -137,13 +149,14 @@ export async function runTask(
       part,
       allotted: price(budget, allotted),
       spent: price(budget, spent),
-      outcome: partOutcome(outcome, seen.decision),
+      outcome: partOutcome(outcome, seen.decision, seen.fees),
     };
     rows.push(row);
     onProgress?.({ step: "part-done", index, count: parts.length, row });
   }
   const total = spends.reduce((sum, units) => sum + units, 0n);
   if (total > budgetUnits) throw new Error("the task spent more than its budget");
+  const fees = rows.flatMap((row) => (row.outcome.kind === "bought" && row.outcome.feesYocto !== null ? [BigInt(row.outcome.feesYocto)] : []));
   return {
     kind: "done",
     receipt: {
@@ -153,6 +166,7 @@ export async function runTask(
       parts: rows,
       spent: price(budget, total),
       left: price(budget, budgetUnits - total),
+      feesYocto: fees.length === 0 ? null : fees.reduce((sum, fee) => sum + fee, 0n).toString(),
     },
   };
 }
@@ -214,7 +228,7 @@ export function nextAllotment(bases: readonly bigint[], spends: readonly bigint[
   return allotment;
 }
 
-function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcome {
+function partOutcome(outcome: AskOutcome, decision: Decision | null, fees: bigint | null): PartOutcome {
   switch (outcome.kind) {
     case "local":
       if (decision === null) throw new Error("a local answer came without a decision");
@@ -239,6 +253,7 @@ function partOutcome(outcome: AskOutcome, decision: Decision | null): PartOutcom
         forged: counts.forged,
         withheld: counts.withheld,
         stars: outcome.rating,
+        feesYocto: fees === null ? null : fees.toString(),
         jobId: job.jobId,
         tx: job.paid.rail === "near-testnet" ? job.paid.correlationId : null,
       };

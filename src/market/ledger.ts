@@ -143,6 +143,7 @@ const receiptSchema = z.object({
   amount: priceSchema,
   recipient: z.string(),
   rail: z.enum(["mock", "near-intents", "near-testnet"]),
+  feeYocto: z.string().regex(/^\d+$/).nullable(),
 });
 
 const eventSchema = z.discriminatedUnion("type", [
@@ -262,6 +263,7 @@ function brandReceipt(receipt: z.infer<typeof receiptSchema>) {
     amount,
     recipient: receipt.recipient,
     rail: receipt.rail,
+    feeYocto: receipt.feeYocto,
   };
 }
 

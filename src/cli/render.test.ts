@@ -67,6 +67,7 @@ function pay(correlation: string | null) {
     step: "pay" as const,
     transfer: "called" as const,
     status: "settled" as const,
+    feeYocto: "44600000000000000000",
     amount: { asset: must(parseAssetId("nep141:wrap.near")), symbol: "NEAR", amount: must(parseDecimalAmount("0.02")) },
     payer: must(parseAccountId("clerk.kyle.inferpay.testnet")),
     recipient: must(parseAccountId("insurance.ban.inferpay.testnet")),
@@ -81,6 +82,7 @@ test("a testnet payment names the rail and links the transaction", () => {
   const block = progressLine(pay(HASH), "near-testnet");
   assert.match(block, /via +NEAR testnet transfer/);
   assert.match(block, new RegExp(`tx +https://testnet\\.nearblocks\\.io/txns/${HASH}`));
+  assert.match(block, /^ {10}fee {5}0\.0000446 NEAR gas on top of the price, from the transaction outcome$/m);
   assert.doesNotMatch(progressLine(pay("mock-ab12"), "mock"), /tx +http/);
 });
 

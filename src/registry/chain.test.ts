@@ -12,7 +12,7 @@ import { createRuntime } from "../runtime.ts";
 import { parseCommitment, SCHEME, type Commitment } from "../commitment/index.ts";
 import { newCredential, type Action, type NearClient, type SignedTx, type TxResult } from "../near/client.ts";
 import { SOCIAL_DB } from "../near/social.ts";
-import { nearOf } from "../payment/units.ts";
+import { formatNear, nearOf } from "../payment/units.ts";
 import type { CrashPoint } from "../near/outbox.ts";
 import { COMMIT_RESERVE, createChainRegistry, publishCommitments, readCommitments, readRatings, type Published, type ShopCommitment } from "./chain.ts";
 
@@ -37,6 +37,9 @@ type Call = { readonly signer: AccountId; readonly receiver: AccountId; readonly
 
 // Stands in for testnet and the SocialDB contract: `set` stores each string under its key path with the block it
 // landed in, and `get` nests the stored values the way the live contract does with block heights on.
+const RATING_GAS = 900_000_000_000_000_000_000n;
+const BYTE_PRICE = 10_000_000_000_000_000_000n;
+
 function fakeChain(balances: Readonly<Record<string, bigint>>) {
   const state = {
     height: 1000,
@@ -48,6 +51,8 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
     broadcasts: [] as string[],
     landed: new Set<string>(),
     failNext: null as TxResult | null,
+    // What SocialDB keeps for each account: one yoctoNEAR price per byte written, as the contract charges.
+    storage: new Map<string, bigint>(),
   };
   const store = (prefix: string, value: unknown): void => {
     if (typeof value === "string") {
@@ -68,6 +73,7 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
       const data = (args as { data: Record<string, unknown> }).data;
       assert.deepEqual(Object.keys(data), [signer], "SocialDB lets an account write only under its own id");
       store(signer, data[signer]);
+      state.storage.set(signer, (state.storage.get(signer) ?? 0n) + BigInt(JSON.stringify(data[signer]).length) * BYTE_PRICE);
     }
   };
   const land = (tx: SignedTx): void => {
@@ -90,13 +96,17 @@ function fakeChain(balances: Readonly<Record<string, bigint>>) {
         return result;
       }
       land(tx);
-      return wait === "NONE" ? { kind: "pending" } : { kind: "success" };
+      return wait === "NONE" ? { kind: "pending" } : { kind: "success", burnt: RATING_GAS };
     },
     async status(tx) {
-      return state.landed.has(tx.hash) ? { kind: "success" } : { kind: "unknown" };
+      return state.landed.has(tx.hash) ? { kind: "success", burnt: RATING_GAS } : { kind: "unknown" };
     },
     async view(contractId, method, args) {
       assert.equal(contractId, SOCIAL_DB);
+      if (method === "storage_balance_of") {
+        const total = state.storage.get(String(args.account_id));
+        return total === undefined ? null : { total: total.toString(), available: "0" };
+      }
       assert.equal(method, "get");
       assert.deepEqual(args.options, { with_block_height: true });
       const out: Record<string, unknown> = { ":block": state.height };
@@ -409,6 +419,10 @@ test("the buyer bot writes its rating under its own account, with the shop, the 
     assert.match(text, /^ {10}on chain {2}SocialDB v1\.social08\.testnet, written by the buyer bot under its own account$/m);
     assert.match(text, new RegExp(`^ {10}key {7}researcher\\.kyle\\.inferpay\\.testnet/inferpay/ratings/${jobId}$`, "m"));
     assert.match(text, /^ {10}tx {8}https:\/\/testnet\.nearblocks\.io\/txns\/tx4$/m);
+    const stored = BigInt(JSON.stringify((ratingCalls(chain)[0]?.args as { data: Record<string, unknown> }).data[RESEARCHER]).length) * BYTE_PRICE;
+    const shown = (yocto: bigint): string => formatNear(yocto, 8).replace(".", "\\.");
+    assert.match(text, new RegExp(`^ {10}cost {6}${shown(RATING_GAS + stored)} NEAR on top of the price: ${shown(RATING_GAS)} gas, from the transaction outcome,$`, "m"));
+    assert.match(text, new RegExp(`^ {20}\\+ ${shown(stored)} SocialDB storage, from the bot's storage_balance_of before and after$`, "m"));
   });
 });
 
